@@ -18,3 +18,64 @@ body,
   white-space: pre-wrap;
   z-index: 10;
 }
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  user-select: none;
+}
+
+.hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 22px;
+}
+
+.hud-lives {
+  display: flex;
+  gap: 6px;
+}
+
+.hud-life {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e8c890, #8a5a28 70%, #5a3a18);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.hud-points {
+  font-size: 30px;
+  letter-spacing: 2px;
+}
+
+.hud-sector {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 15px;
+  opacity: 0.85;
+}
+
+.hud-banner {
+  position: absolute;
+  top: 42%;
+  width: 100%;
+  text-align: center;
+  font-size: 44px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.hud-banner-win {
+  color: #ffe9a0;
+}
+
+.hud-banner-over {
+  color: #ff9a7a;
+}

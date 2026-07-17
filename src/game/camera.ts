@@ -17,8 +17,6 @@ import type { InputState } from './input.ts';
 
 export class CamRig {
   readonly camera: THREE.PerspectiveCamera;
-  /** quantized orientation in 90° steps (radians) */
-  private yawSteps = 0;
   private yawCurrent = 0;
   private yawTarget = 0;
   private rotateT = 1;
@@ -32,10 +30,9 @@ export class CamRig {
     this.camera = new THREE.PerspectiveCamera(CAM_FOV, aspect, 0.6, 4000);
   }
 
-  /** Face the level's start direction (Virtools entities look along +Z LH = -Z RH). */
-  resetTo(ballPos: THREE.Vector3, yawSteps = 0): void {
-    this.yawSteps = yawSteps;
-    this.yawCurrent = this.yawTarget = (yawSteps * Math.PI) / 2;
+  /** Snap the rig to a position and view yaw (radians, 0 = looking along -Z). */
+  resetTo(ballPos: THREE.Vector3, yaw = 0): void {
+    this.yawCurrent = this.yawTarget = yaw;
     this.rotateT = 1;
     this.followPos.copy(ballPos);
     this.initialized = true;
@@ -50,8 +47,7 @@ export class CamRig {
       const leftEdge = input.shift && input.left && !this.prevLeft;
       const rightEdge = input.shift && input.right && !this.prevRight;
       if (leftEdge || rightEdge) {
-        this.yawSteps += leftEdge ? 1 : -1;
-        this.yawTarget = (this.yawSteps * Math.PI) / 2;
+        this.yawTarget = this.yawCurrent + (leftEdge ? Math.PI / 2 : -Math.PI / 2);
         this.rotateT = 0;
       }
     }

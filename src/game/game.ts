@@ -1,6 +1,6 @@
 /**
  * Game orchestrator: loads a level, builds render + physics worlds, and runs
- * the fixed-step (66 Hz) simulation loop with the chase camera.
+ * the fixed-step (66 Hz) simulation loop with sector/checkpoint/life rules.
  */
 import * as THREE from 'three';
 import { levelPath, loadNmo, skyLetter } from '../engine/assets.ts';
@@ -9,9 +9,11 @@ import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuild
 import { buildSky } from '../engine/sky.ts';
 import { Ball } from './ball.ts';
 import { CamRig } from './camera.ts';
-import { FLOOR_GROUPS, SIM_DT } from './constants.ts';
+import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
 import { Input } from './input.ts';
+import { LevelLogic } from './level.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
+import { gameStore } from './store.ts';
 
 export interface GameHandle {
   dispose(): void;
@@ -32,6 +34,10 @@ export interface GameDebug {
    * visibility/throttling, then render one frame. Deterministic test driver.
    */
   stepSeconds(seconds: number): void;
+  /** teleport the ball (testing) */
+  teleport(x: number, y: number, z: number): void;
+  state(): { phase: string; lives: number; points: number; sector: number };
+  level: LevelLogic;
   scene: BuiltScene;
   three: THREE.Scene;
 }
@@ -46,10 +52,12 @@ const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
 
+const DEATH_DELAY = 1.2; // seconds between death and respawn
+const POINT_TICK = 0.5; // seconds per -1 point
+
 export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
   bootStage('rapier');
   await initRapier();
-  bootStage('rapier-done');
 
   // preserveDrawingBuffer keeps the last frame capturable (automation screenshots)
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -74,25 +82,34 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   bootStage('colliders');
   const physics = new PhysicsWorld();
   buildStaticColliders(physics, built);
+  const minY = computeMinY(built) - 30;
 
-  // spawn at level start
-  const startEnt = groupEntities(built, 'PS_Levelstart')[0];
-  const spawnPos = startEnt ? startEnt.object.position.clone() : new THREE.Vector3();
-  spawnPos.y += 4;
+  const logic = new LevelLogic(built, minY);
 
   bootStage('ball');
+  const spawn = logic.spawnFor(1);
+  const spawnPos = spawn.position.clone();
+  spawnPos.y += 4;
   const ball = await Ball.create(physics, scene, spawnPos);
   ball.teleport(spawnPos);
   bootStage('done');
 
   const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
-  rig.resetTo(ball.position);
+  rig.resetTo(ball.position, spawn.yaw);
 
   const input = new Input();
   input.attach(window);
 
-  // fall boundary: below the lowest collider by a margin
-  const minY = computeMinY(built) - 30;
+  const store = gameStore.getState();
+  store.set({
+    phase: 'playing',
+    level,
+    lives: 3,
+    points: 1000,
+    sector: 1,
+    sectorCount: logic.sectorCount,
+    ballKind: 'wood',
+  });
 
   let disposed = false;
   const onResize = () => {
@@ -107,19 +124,72 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let simTicks = 0;
   let paused = false;
   let debug: GameDebug | null = null;
+  let deathTimer = 0;
+  let pointTimer = 0;
 
-  let accumulator = 0;
-  let last = performance.now();
-  const pushDir = new THREE.Vector3();
+  const respawn = () => {
+    const s = gameStore.getState();
+    const rp = logic.spawnFor(logic.currentSector);
+    const pos = rp.position.clone();
+    pos.y += 4;
+    ball.setKind(logic.sectorBallKind);
+    ball.teleport(pos);
+    rig.resetTo(pos, rp.yaw);
+    s.set({ phase: 'playing', ballKind: logic.sectorBallKind });
+  };
+
+  const die = () => {
+    const s = gameStore.getState();
+    const lives = s.lives - 1;
+    if (lives <= 0) {
+      s.set({ lives: 0, phase: 'gameover' });
+    } else {
+      s.set({ lives, phase: 'dead' });
+      deathTimer = DEATH_DELAY;
+    }
+  };
 
   const simStep = () => {
+    const s = gameStore.getState();
+    if (s.phase === 'dead') {
+      deathTimer -= SIM_DT;
+      if (deathTimer <= 0) respawn();
+      return;
+    }
+    if (s.phase !== 'playing') return;
+
     rig.pushDirection(input.state, pushDir);
     ball.applyPush(pushDir);
     physics.step();
     simTicks++;
-    if (ball.position.y < minY) {
-      ball.teleport(spawnPos);
-      rig.resetTo(ball.position);
+
+    // point countdown
+    pointTimer += SIM_DT;
+    while (pointTimer >= POINT_TICK) {
+      pointTimer -= POINT_TICK;
+      if (s.points > 0) s.set({ points: s.points - 1 });
+    }
+
+    const pos = ball.position;
+    if (logic.isOutOfWorld(pos)) {
+      die();
+      return;
+    }
+    for (const ev of logic.update(pos, ball.kind)) {
+      switch (ev.kind) {
+        case 'checkpoint':
+          s.set({ sector: ev.sector });
+          break;
+        case 'finish':
+          s.set({ phase: 'finished' });
+          break;
+        case 'extraPoint':
+          s.set({ points: gameStore.getState().points + ev.amount });
+          break;
+        case 'extraLife':
+          s.set({ lives: gameStore.getState().lives + 1 });
+          break;
+      }
     }
   };
 
@@ -129,6 +199,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     sky.position.copy(rig.camera.position);
     renderer.render(scene, rig.camera);
   };
+
+  let accumulator = 0;
+  let last = performance.now();
+  const pushDir = new THREE.Vector3();
 
   const frame = () => {
     const now = performance.now();
@@ -176,6 +250,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         }
         present(SIM_DT);
       },
+      teleport: (x, y, z) => ball.teleport(new THREE.Vector3(x, y, z)),
+      state: () => {
+        const s = gameStore.getState();
+        return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector };
+      },
+      level: logic,
       scene: built,
       three: scene,
     };
@@ -217,3 +297,5 @@ function computeMinY(built: BuiltScene): number {
   }
   return Number.isFinite(minY) ? minY : -100;
 }
+
+export type { BallKind };
