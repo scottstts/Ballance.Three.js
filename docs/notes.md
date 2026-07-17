@@ -79,3 +79,31 @@ Append-only scratchpad of things learned during the port. Read this first when r
   `Floor_Top_Checkpoint.bmp`) → resolve asset paths case-insensitively.
 - Virtools is left-handed Y-up; three.js right-handed Y-up → convert by negating Z of
   positions/normals/matrix third row+column and flipping triangle winding.
+
+## Browser automation lessons (Claude browser pane)
+
+- The pane tab reports document.hidden=true: rAF NEVER fires and page timers clamp to >=1s
+  (tool js waits >2s can blow the 30s tool timeout). The game loop therefore has a
+  setInterval hidden-driver with full catch-up (frameDt cap 1.5s when hidden).
+- For deterministic gameplay verification use window.__game (dev-only debug hook):
+  setPaused(true) -> input.state flags -> stepSeconds(n) -> read ballPosition()/ticks().
+  This steps the 66Hz sim synchronously — throttle-immune and reproducible.
+- ALWAYS setPaused(false) before taking a screenshot: the hidden-tab compositor only
+  presents while the loop renders continuously; a single present() after pause reads
+  black in screenshots even though the canvas contains pixels (verify via drawImage probe).
+- React StrictMode double-mounts the game; window.__game is published/cleared by
+  GameCanvas only for the surviving instance. Beware stale debug handles after HMR.
+- Physics facts confirmed in-engine: wood ball accelerates to ~14 u/s in 3s of push;
+  spawn rests at start entity pos; fall below (lowest collider - 30) respawns.
+
+## Fidelity backlog (visual, deferred to verification pass)
+
+- Sky face seams: Down face misaligned vs side faces (LH->RH mirroring of skybox faces
+  needs empirical fix; the giant pink quad seen at start plaza IS the Down sky face).
+- Rails render flat white: original uses spherical environment mapping
+  (Rail_Environment.bmp) — implement matcap/env channel via material effect flags.
+- Lighting: three.js has no per-material ambient; original ambient response may need a
+  small shader patch (onBeforeCompile) for exact match. Camera look-down angle should be
+  compared against original screenshots (rebuild constants: normal Y=30 Z=17 look-at ball).
+- Shadow group planes + DepthTestCubes: original uses them for decal shadows and kill
+  volumes — kill volumes still to be wired into death logic (currently plain min-Y).
