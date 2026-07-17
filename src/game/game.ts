@@ -7,6 +7,7 @@ import { levelPath, loadNmo, skyLetter } from '../engine/assets.ts';
 import { addLightRig } from '../engine/viewer.ts';
 import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
 import { buildSky } from '../engine/sky.ts';
+import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
@@ -83,7 +84,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   bootStage('colliders');
   const physics = new PhysicsWorld();
-  buildStaticColliders(physics, built);
+  const surfaceByCollider = buildStaticColliders(physics, built);
   const minY = computeMinY(built) - 30;
 
   const logic = new LevelLogic(built, minY);
@@ -116,7 +117,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             s.set({ ballKind: ev.ball });
             break;
           case 'sound':
-            break; // audio task wires this
+            audio.play(ev.name, ev.position, ev.volume ?? 1, scene);
+            break;
         }
       },
     },
@@ -128,6 +130,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
   rig.resetTo(ball.position, spawn.yaw);
+
+  const audio = new AudioManager(rig.camera);
+  audio.startMusic(level);
 
   const input = new Input();
   input.attach(window);
@@ -197,6 +202,20 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     physics.step();
     simTicks++;
 
+    // impact sounds from contact force events
+    physics.eventQueue.drainContactForceEvents((ev) => {
+      const h1 = ev.collider1();
+      const h2 = ev.collider2();
+      const ballHandle = ball.collider.handle;
+      if (h1 !== ballHandle && h2 !== ballHandle) return;
+      const other = h1 === ballHandle ? h2 : h1;
+      const surface = surfaceByCollider.get(other) ?? 'stone';
+      const strength = ev.totalForceMagnitude() / (ball.def.mass * 900);
+      if (strength > 0.1) {
+        audio.hit(ball.kind, surface, ball.position, strength, scene);
+      }
+    });
+
     // point countdown
     pointTimer += SIM_DT;
     while (pointTimer >= POINT_TICK) {
@@ -228,9 +247,20 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
   };
 
+  const contactSurface = (): Surface | null => {
+    let found: Surface | null = null;
+    physics.world.contactPairsWith(ball.collider, (other) => {
+      if (found === null) found = surfaceByCollider.get(other.handle) ?? 'stone';
+    });
+    return found;
+  };
+
   const present = (frameDt: number) => {
     ball.syncVisual();
     rig.update(frameDt, ball.position, input.state);
+    const v = ball.body.linvel();
+    const speed = Math.hypot(v.x, v.y, v.z);
+    audio.updateRoll(ball.kind, contactSurface(), speed, ball.position, scene, frameDt);
     sky.position.copy(rig.camera.position);
     renderer.render(scene, rig.camera);
   };
@@ -310,14 +340,35 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   };
 }
 
-function buildStaticColliders(physics: PhysicsWorld, built: BuiltScene): void {
+/** Sound ID groups map entities to their sound surface: 01=stone 02=wood 03=metal. */
+function soundSurfaceLookup(built: BuiltScene): Map<string, Surface> {
+  const bySoundId: Record<string, Surface> = { '01': 'stone', '02': 'wood', '03': 'metal' };
+  const map = new Map<string, Surface>();
+  for (const [id, surface] of Object.entries(bySoundId)) {
+    const group = built.groups.get(`Sound_RollID_${id}`);
+    if (!group) continue;
+    for (const idx of group.memberIndices) {
+      const name = built.file.objects[idx]?.name;
+      if (name) map.set(name, surface);
+    }
+  }
+  return map;
+}
+
+function buildStaticColliders(physics: PhysicsWorld, built: BuiltScene): Map<number, Surface> {
+  const surfaceOf = soundSurfaceLookup(built);
+  const byCollider = new Map<number, Surface>();
   for (const [groupName, def] of Object.entries(FLOOR_GROUPS)) {
     for (const e of groupEntities(built, groupName)) {
       if (e.object instanceof THREE.Mesh) {
-        physics.addStaticMesh(e.object, def.friction, def.elasticity);
+        const collider = physics.addStaticMesh(e.object, def.friction, def.elasticity);
+        if (collider) {
+          byCollider.set(collider.handle, surfaceOf.get(e.rec.name) ?? def.surface);
+        }
       }
     }
   }
+  return byCollider;
 }
 
 function computeMinY(built: BuiltScene): number {
