@@ -57,8 +57,8 @@ class PhysicsModul extends Modul {
       this.makePrismatic(part, localDirToWorld(instance, pris.axis), pris.limits, pris.spring);
     }
     this.altTarget = phys.altForce ? this.findDynamic(phys.altForce.part) : undefined;
-    // spawn disabled until the sector activates
-    for (const p of this.dynamicParts) p.body.setEnabled(false);
+    // spawn asleep until the sector activates
+    for (const p of this.dynamicParts) p.body.sleep();
   }
 
   override activate(): void {

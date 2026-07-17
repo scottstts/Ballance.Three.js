@@ -40,6 +40,7 @@ export interface GameDebug {
   /** teleport the ball (testing) */
   teleport(x: number, y: number, z: number): void;
   setVelocity(x: number, y: number, z: number): void;
+  setLives(n: number): void;
   state(): { phase: string; lives: number; points: number; sector: number; ballKind: string };
   level: LevelLogic;
   scene: BuiltScene;
@@ -84,8 +85,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   scene.add(sky);
 
   bootStage('colliders');
+  const bootFlags = new URLSearchParams(window.location.search);
   const physics = new PhysicsWorld();
-  const surfaceByCollider = buildStaticColliders(physics, built);
+  const surfaceByCollider = bootFlags.has('nocolliders')
+    ? new Map<number, Surface>()
+    : buildStaticColliders(physics, built);
   const minY = computeMinY(built) - 30;
 
   const logic = new LevelLogic(built, minY);
@@ -98,8 +102,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   ball.teleport(spawnPos);
 
   bootStage('moduls');
+  const onlyModuls = bootFlags.get('moduls')?.split(',');
+  const activeFactories = onlyModuls ? modulFactories.filter((f) => onlyModuls.includes(f.groupName)) : modulFactories;
   const moduls = await ModulManager.create(
-    built,
+    bootFlags.has('nomoduls') ? emptyScene(built) : built,
     {
       physics,
       scene,
@@ -124,7 +130,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         }
       },
     },
-    modulFactories,
+    activeFactories,
     sectorLookup(built),
   );
   moduls.setSector(1);
@@ -333,6 +339,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       },
       teleport: (x, y, z) => ball.teleport(new THREE.Vector3(x, y, z)),
       setVelocity: (x, y, z) => ball.body.setLinvel({ x, y, z }, true),
+      setLives: (n) => gameStore.getState().set({ lives: n }),
       state: () => {
         const s = gameStore.getState();
         return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector, ballKind: s.ballKind };
@@ -388,6 +395,11 @@ function buildStaticColliders(physics: PhysicsWorld, built: BuiltScene): Map<num
     }
   }
   return byCollider;
+}
+
+/** debug: a scene view with no groups, so no moduls get created */
+function emptyScene(built: BuiltScene): BuiltScene {
+  return { ...built, groups: new Map() };
 }
 
 function computeMinY(built: BuiltScene): number {

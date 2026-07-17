@@ -68,17 +68,20 @@ export abstract class Modul {
     return new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld);
   }
 
+  // Inactive moduls sleep rather than disable: Rapier panics on joints
+  // attached to disabled bodies, and IVP "frozen" semantics are sleep-like
+  // anyway (bodies wake on contact once their sector is live).
   activate(): void {
     this.active = true;
     for (const p of this.dynamicParts) {
-      p.body.setEnabled(true);
       if (p.frozen) p.body.sleep();
+      else p.body.wakeUp();
     }
   }
 
   deactivate(): void {
     this.active = false;
-    for (const p of this.dynamicParts) p.body.setEnabled(false);
+    for (const p of this.dynamicParts) p.body.sleep();
   }
 
   /** restore initial state (ball died in this sector) */
