@@ -134,6 +134,15 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   rig.resetTo(ball.position, spawn.yaw);
 
   const audio = new AudioManager(rig.camera);
+  const applyVolumes = () => {
+    const s = gameStore.getState().settings;
+    audio.musicVolume = s.musicVolume;
+    audio.sfxVolume = s.sfxVolume;
+  };
+  applyVolumes();
+  const unsubscribeSettings = gameStore.subscribe((s, prev) => {
+    if (s.settings !== prev.settings) applyVolumes();
+  });
   audio.startMusic(level);
 
   const input = new Input();
@@ -180,6 +189,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const die = () => {
     const s = gameStore.getState();
+    audio.play('Misc_Fall.wav', ball.position, 1, scene);
     const lives = s.lives - 1;
     if (lives <= 0) {
       s.set({ lives: 0, phase: 'gameover' });
@@ -196,7 +206,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       if (deathTimer <= 0) respawn();
       return;
     }
-    if (s.phase !== 'playing') return;
+    if (s.phase !== 'playing') return; // paused/finished/gameover freeze the sim
 
     rig.pushDirection(input.state, pushDir);
     ball.applyPush(pushDir);
@@ -235,9 +245,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         case 'checkpoint':
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
+          audio.play('Music_EndCheckpoint.wav', pos, 0.8, scene);
           break;
         case 'finish':
           s.set({ phase: 'finished' });
+          s.completeLevel(level, gameStore.getState().points);
+          audio.stopMusic();
+          audio.play('Music_Final.wav', pos, 0.9, scene);
           break;
         case 'extraPoint':
           s.set({ points: gameStore.getState().points + ev.amount });
@@ -334,6 +348,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     dispose() {
       disposed = true;
       clearInterval(hiddenDriver);
+      unsubscribeSettings();
+      audio.dispose();
       moduls.dispose();
       input.detach(window);
       window.removeEventListener('resize', onResize);

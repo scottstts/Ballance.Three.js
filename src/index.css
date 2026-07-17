@@ -79,3 +79,96 @@ body,
 .hud-banner-over {
   color: #ff9a7a;
 }
+
+.menu-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  background: radial-gradient(ellipse at 50% 30%, #4a5a78, #1c2436 75%);
+  color: #f2ead8;
+  font-family: Georgia, 'Times New Roman', serif;
+  z-index: 20;
+}
+
+.menu-overlay {
+  background: rgba(12, 16, 26, 0.72);
+}
+
+.menu-title {
+  font-size: 72px;
+  margin: 0;
+  letter-spacing: 10px;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.7);
+}
+
+.menu-subtitle {
+  font-size: 40px;
+  margin: 0;
+  letter-spacing: 4px;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 240px;
+}
+
+.menu-buttons button,
+.level-tile {
+  font: 20px Georgia, serif;
+  color: #f2ead8;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(242, 234, 216, 0.45);
+  border-radius: 6px;
+  padding: 12px 26px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.menu-buttons button:hover:not(:disabled),
+.level-tile:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 92px);
+  gap: 12px;
+}
+
+.level-tile {
+  height: 78px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.level-tile:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.level-num {
+  font-size: 26px;
+}
+
+.level-score {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.finish-score {
+  font-size: 26px;
+}
+
+.menu-hint {
+  font-size: 14px;
+  opacity: 0.7;
+}
