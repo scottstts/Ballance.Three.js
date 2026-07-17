@@ -11,11 +11,13 @@ import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
+import { FlameSystem, LightningSphere, ShatterSystem } from './effects.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
 import { modulFactories } from './moduls/registry.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
+import { PickupSystem } from './pickups.ts';
 import { gameStore } from './store.ts';
 
 export interface GameHandle {
@@ -57,8 +59,9 @@ const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
 
-const DEATH_DELAY = 1.2; // seconds between death and respawn
+const DEATH_DELAY = 2.2; // seconds between death and respawn (shatter plays)
 const POINT_TICK = 0.5; // seconds per -1 point
+const TRAFO_TIME = 2.3; // original transformation animation length
 
 export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
   bootStage('rapier');
@@ -81,8 +84,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const built: BuiltScene = await buildScene(file);
   scene.add(built.root);
   bootStage('sky');
-  const sky = await buildSky(skyLetter(level), fogColor);
+  const builtSky = await buildSky(skyLetter(level), fogColor);
+  const sky = builtSky.group;
   scene.add(sky);
+  // fog matches the level sky's horizon; keep distances Ballance-like
+  scene.fog = new THREE.Fog(builtSky.horizonColor, 380, 1100);
+  renderer.setClearColor(builtSky.horizonColor);
 
   bootStage('colliders');
   const bootFlags = new URLSearchParams(window.location.search);
@@ -100,6 +107,17 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   spawnPos.y += 4;
   const ball = await Ball.create(physics, scene, spawnPos);
   ball.teleport(spawnPos);
+
+  bootStage('effects');
+  const flames = new FlameSystem();
+  await flames.init(built, scene);
+  const lightning = new LightningSphere();
+  await lightning.init();
+  scene.add(lightning.mesh);
+  const shatter = new ShatterSystem(physics, scene);
+  await shatter.init();
+  const pickups = new PickupSystem();
+  await pickups.init(built, scene);
 
   bootStage('moduls');
   const onlyModuls = bootFlags.get('moduls')?.split(',');
@@ -121,8 +139,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             s.set({ lives: gameStore.getState().lives + 1 });
             break;
           case 'trafo':
-            ball.setKind(ev.ball);
-            s.set({ ballKind: ev.ball });
+            // original: lightning plays 2.3s before the ball morphs
+            lightning.start();
+            pendingTrafo = { ball: ev.ball, timer: TRAFO_TIME };
             break;
           case 'sound':
             audio.play(ev.name, ev.position, ev.volume ?? 1, scene);
@@ -180,9 +199,31 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let debug: GameDebug | null = null;
   let deathTimer = 0;
   let pointTimer = 0;
+  let pendingTrafo: { ball: BallKind; timer: number } | null = null;
+  let finishRise = 0;
+  const balloonVisual = groupEntities(built, 'PE_Levelende')[0]?.object ?? null;
+
+  // the original's slowly drifting cloud layer plane
+  const skyLayer = built.entities.get('SkyLayer')?.object ?? null;
+  if (skyLayer instanceof THREE.Mesh) {
+    skyLayer.visible = true;
+    const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
+    for (const m of mats) {
+      const map = (m as THREE.MeshPhongMaterial).map;
+      if (map) {
+        map.wrapS = THREE.RepeatWrapping;
+        map.wrapT = THREE.RepeatWrapping;
+      }
+      m.transparent = true;
+      m.opacity = Math.min((m as THREE.MeshPhongMaterial).opacity, 0.55);
+      m.depthWrite = false;
+    }
+  }
 
   const respawn = () => {
     const s = gameStore.getState();
+    shatter.clear();
+    ball.visual.visible = true;
     const rp = logic.spawnFor(logic.currentSector);
     const pos = rp.position.clone();
     pos.y += 4;
@@ -195,7 +236,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const die = () => {
     const s = gameStore.getState();
-    audio.play('Misc_Fall.wav', ball.position, 1, scene);
+    // original: the ball shatters into its piece meshes
+    shatter.burst(ball.kind, ball.position);
+    ball.visual.visible = false;
+    lightning.stop();
+    pendingTrafo = null;
+    audio.play(`Pieces_${ball.kind[0].toUpperCase()}${ball.kind.slice(1)}.wav`, ball.position, 1, scene);
     const lives = s.lives - 1;
     if (lives <= 0) {
       s.set({ lives: 0, phase: 'gameover' });
@@ -208,11 +254,33 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const simStep = () => {
     const s = gameStore.getState();
     if (s.phase === 'dead') {
+      physics.step(); // pieces keep flying
+      shatter.update();
       deathTimer -= SIM_DT;
       if (deathTimer <= 0) respawn();
       return;
     }
-    if (s.phase !== 'playing') return; // paused/finished/gameover freeze the sim
+    if (s.phase === 'finished' && balloonVisual && finishRise < 12) {
+      // balloon fly-off: the end balloon rises away with a light sway
+      finishRise += SIM_DT;
+      balloonVisual.position.y += SIM_DT * (2.5 + finishRise * 0.6);
+      balloonVisual.position.x += Math.sin(finishRise * 1.3) * 0.02;
+      balloonVisual.rotation.y += SIM_DT * 0.15;
+      balloonVisual.updateMatrix();
+      return;
+    }
+    if (s.phase !== 'playing') return; // paused/gameover freeze the sim
+
+    // pending ball transformation (original: swap after the 2.3s lightning)
+    if (pendingTrafo) {
+      pendingTrafo.timer -= SIM_DT;
+      if (pendingTrafo.timer <= 0) {
+        ball.setKind(pendingTrafo.ball);
+        s.set({ ballKind: pendingTrafo.ball });
+        lightning.stop();
+        pendingTrafo = null;
+      }
+    }
 
     rig.pushDirection(input.state, pushDir);
     ball.applyPush(pushDir);
@@ -251,6 +319,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         case 'checkpoint':
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
+          flames.extinguish(`PC_TwoFlames_${String(ev.sector - 1).padStart(2, '0')}`);
           audio.play('Music_EndCheckpoint.wav', pos, 0.8, scene);
           break;
         case 'finish':
@@ -261,9 +330,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           break;
         case 'extraPoint':
           s.set({ points: gameStore.getState().points + ev.amount });
+          pickups.collect(ev.name);
+          audio.play('Extra_Start.wav', pos, 1, scene);
           break;
         case 'extraLife':
           s.set({ lives: gameStore.getState().lives + 1 });
+          pickups.collect(ev.name);
+          audio.play('Extra_Life_Blob.wav', pos, 1, scene);
           break;
       }
     }
@@ -283,6 +356,17 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const v = ball.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
     audio.updateRoll(ball.kind, contactSurface(), speed, ball.position, scene, frameDt);
+    flames.update(frameDt);
+    pickups.update(frameDt);
+    lightning.update(frameDt, ball.position);
+    shatter.update();
+    if (skyLayer instanceof THREE.Mesh) {
+      const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
+      for (const m of mats) {
+        const map = (m as THREE.MeshPhongMaterial).map;
+        if (map) map.offset.x = (map.offset.x + frameDt * 0.0035) % 1;
+      }
+    }
     sky.position.copy(rig.camera.position);
     renderer.render(scene, rig.camera);
   };
@@ -357,6 +441,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       clearInterval(hiddenDriver);
       unsubscribeSettings();
       audio.dispose();
+      shatter.clear();
       moduls.dispose();
       input.detach(window);
       window.removeEventListener('resize', onResize);

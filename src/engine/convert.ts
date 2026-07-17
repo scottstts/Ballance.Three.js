@@ -99,11 +99,24 @@ export interface MaterialBuildOptions {
   texture: THREE.Texture | null;
   /** texture uses color-key transparency (needs alpha cutout) */
   colorKeyed?: boolean;
+  /** original texture name (drives the spherical-environment material path) */
+  textureName?: string;
 }
 
 export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOptions): THREE.Material {
   const { prelit, texture } = opts;
   const diffuse = rec?.diffuse ?? [1, 1, 1, 1];
+
+  // D3D spherical environment mapping (rails, trafo shells) -> matcap
+  if (texture && opts.textureName?.toLowerCase().includes('environment')) {
+    const mat = new THREE.MeshMatcapMaterial({
+      matcap: texture,
+      color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
+      side: rec?.twoSided ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    return mat;
+  }
+
   const common = {
     map: texture,
     side: rec?.twoSided ? THREE.DoubleSide : THREE.FrontSide,
@@ -114,12 +127,19 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
   if (prelit) {
     mat = new THREE.MeshBasicMaterial({ ...common, color: new THREE.Color(1, 1, 1) });
   } else {
+    // D3D semantics: specularPower 0 disables the specular term entirely,
+    // and emissive is modulated by the texture (three adds it raw, so tint
+    // it through emissiveMap when a texture exists)
+    const specOn = !!rec && rec.specularPower > 0;
     mat = new THREE.MeshPhongMaterial({
       ...common,
       color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
       emissive: rec ? new THREE.Color(rec.emissive[0], rec.emissive[1], rec.emissive[2]) : new THREE.Color(0, 0, 0),
-      specular: rec ? new THREE.Color(rec.specular[0] * 0.5, rec.specular[1] * 0.5, rec.specular[2] * 0.5) : new THREE.Color(0, 0, 0),
-      shininess: rec?.specularPower && rec.specularPower > 0 ? rec.specularPower : 1,
+      emissiveMap: texture,
+      specular: specOn
+        ? new THREE.Color(rec.specular[0] * 0.5, rec.specular[1] * 0.5, rec.specular[2] * 0.5)
+        : new THREE.Color(0, 0, 0),
+      shininess: specOn ? rec.specularPower : 30,
     });
   }
 

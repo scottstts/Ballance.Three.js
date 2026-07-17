@@ -11,8 +11,8 @@ export type LevelEvent =
   | { kind: 'checkpoint'; sector: number }
   | { kind: 'death' }
   | { kind: 'finish' }
-  | { kind: 'extraPoint'; amount: number }
-  | { kind: 'extraLife' };
+  | { kind: 'extraPoint'; amount: number; name: string }
+  | { kind: 'extraLife'; name: string };
 
 export interface ResetPoint {
   position: THREE.Vector3;
@@ -116,7 +116,7 @@ export class LevelLogic {
       if (cylinderContains(p.object.position, ballPos, PICKUP_RADIUS, PICKUP_HEIGHT)) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
-        events.push({ kind: 'extraPoint', amount: EXTRA_POINT_VALUE });
+        events.push({ kind: 'extraPoint', amount: EXTRA_POINT_VALUE, name: p.rec.name });
       }
     }
     for (const p of this.pickupsLife) {
@@ -124,7 +124,7 @@ export class LevelLogic {
       if (cylinderContains(p.object.position, ballPos, PICKUP_RADIUS, PICKUP_HEIGHT)) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
-        events.push({ kind: 'extraLife' });
+        events.push({ kind: 'extraLife', name: p.rec.name });
       }
     }
 

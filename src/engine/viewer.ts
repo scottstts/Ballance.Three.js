@@ -14,13 +14,19 @@ export interface ViewerHandle {
   scene: BuiltScene;
 }
 
-/** Original global lighting: strong white directional + mid gray ambient. */
+/**
+ * Original global lighting, D3D fixed-function energy levels: materials
+ * already add their own emissive lift, so total light stays near 1.
+ */
 export function addLightRig(scene: THREE.Scene): void {
-  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+  const ambient = new THREE.AmbientLight(0xfff4e8, 0.32);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-  sun.position.set(0.35, 1, 0.25).multiplyScalar(100);
+  const sun = new THREE.DirectionalLight(0xfff2e2, 0.95);
+  sun.position.set(-0.45, 1, -0.3).multiplyScalar(100);
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xdde4f0, 0.18);
+  fill.position.set(0.5, 0.4, 0.6).multiplyScalar(100);
+  scene.add(fill);
 }
 
 export async function startViewer(canvas: HTMLCanvasElement, level: number): Promise<ViewerHandle> {
@@ -38,7 +44,7 @@ export async function startViewer(canvas: HTMLCanvasElement, level: number): Pro
   const built = await buildScene(file);
   scene.add(built.root);
 
-  const sky = await buildSky(skyLetter(level), fogColor);
+  const sky = (await buildSky(skyLetter(level), fogColor)).group;
   scene.add(sky);
 
   const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.6, 4000);

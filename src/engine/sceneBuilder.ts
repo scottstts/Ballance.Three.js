@@ -50,6 +50,7 @@ export async function buildScene(file: NmoFile): Promise<BuiltScene> {
       prelit,
       texture,
       colorKeyed: !!texRec?.transparent,
+      textureName: texRec?.fileNames.find(Boolean) ?? texRec?.name,
     });
     mat.name = rec?.name ?? `mtl-${mtlIndex}`;
     materialCache.set(key, mat);

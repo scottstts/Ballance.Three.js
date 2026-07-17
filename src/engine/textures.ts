@@ -128,22 +128,28 @@ export function loadCkTexture(rec: TextureRec): Promise<THREE.Texture> | null {
   const cached = textureCache.get(cacheKey);
   if (cached) return cached;
 
+  const fromEmbedded = (): Promise<DecodedImage> => {
+    if (embedded) {
+      if (embedded.ext === 'tga') return Promise.resolve(decodeTga(embedded.bytes));
+      const copy = new Uint8Array(embedded.bytes);
+      return decodeViaBrowser(copy.buffer, `image/${embedded.ext}`);
+    }
+    if (rec.raw) {
+      const raw = rec.raw;
+      return Promise.resolve({ width: raw.width, height: raw.height, rgba: new Uint8ClampedArray(raw.rgba) });
+    }
+    return Promise.reject(new Error('no texture source'));
+  };
+
   let imgPromise: Promise<DecodedImage>;
   if (fileName) {
-    imgPromise = decodeImageFile(`Textures/${fileName}`);
-  } else if (embedded) {
-    if (embedded.ext === 'tga') {
-      imgPromise = Promise.resolve(decodeTga(embedded.bytes));
-    } else {
-      const copy = new Uint8Array(embedded.bytes);
-      imgPromise = decodeViaBrowser(copy.buffer, `image/${embedded.ext}`);
-    }
-  } else if (rec.raw) {
-    const raw = rec.raw;
-    imgPromise = Promise.resolve({ width: raw.width, height: raw.height, rgba: new Uint8ClampedArray(raw.rgba) });
+    // external file first, embedded/raw data as fallback (some files, e.g.
+    // Balls.nmo, reference names that only exist as embedded slots)
+    imgPromise = decodeImageFile(`Textures/${fileName}`).catch(fromEmbedded);
   } else {
-    return null;
+    imgPromise = fromEmbedded();
   }
+  if (!fileName && !embedded && !rec.raw) return null;
 
   const p = imgPromise.then((img) => {
     if (rec.transparent) applyColorKey(img, rec.transparentColor);

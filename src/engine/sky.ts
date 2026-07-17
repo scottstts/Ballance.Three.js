@@ -33,11 +33,42 @@ function faceTexture(rgba: Uint8ClampedArray, width: number, height: number, mir
   return tex;
 }
 
-export async function buildSky(letter: string, fogColor: THREE.Color): Promise<THREE.Group> {
+export interface BuiltSky {
+  group: THREE.Group;
+  /** average horizon color of the sky faces — the level's fog color */
+  horizonColor: THREE.Color;
+}
+
+export async function buildSky(letter: string, fogColor: THREE.Color): Promise<BuiltSky> {
   const names = ['Front', 'Back', 'Left', 'Right', 'Down'];
   const images = await Promise.all(
     names.map((n) => decodeImageFile(`Textures/Sky/Sky_${letter}_${n}.bmp`).catch(() => null)),
   );
+
+  // sample the bottom rows of the side faces for the fog/horizon color
+  const horizonColor = new THREE.Color(0xbed7e3);
+  {
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    let n = 0;
+    for (const img of images.slice(0, 4)) {
+      if (!img) continue;
+      const rows = 6;
+      for (let y = img.height - rows; y < img.height; y++) {
+        for (let x = 0; x < img.width; x += 4) {
+          const i = (y * img.width + x) * 4;
+          r += img.rgba[i];
+          g += img.rgba[i + 1];
+          b += img.rgba[i + 2];
+          n++;
+        }
+      }
+    }
+    if (n > 0) horizonColor.setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
+  }
+  fogColor.copy(horizonColor);
+
   const group = new THREE.Group();
   group.name = 'sky';
   group.renderOrder = -1000;
@@ -80,5 +111,5 @@ export async function buildSky(letter: string, fogColor: THREE.Color): Promise<T
   top.position.set(0, SIZE, 0);
   top.rotation.x = Math.PI / 2;
 
-  return group;
+  return { group, horizonColor };
 }
