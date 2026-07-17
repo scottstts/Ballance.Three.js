@@ -12,6 +12,8 @@ import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
+import { ModulManager, sectorLookup } from './moduls/manager.ts';
+import { modulFactories } from './moduls/registry.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
 import { gameStore } from './store.ts';
 
@@ -36,7 +38,7 @@ export interface GameDebug {
   stepSeconds(seconds: number): void;
   /** teleport the ball (testing) */
   teleport(x: number, y: number, z: number): void;
-  state(): { phase: string; lives: number; points: number; sector: number };
+  state(): { phase: string; lives: number; points: number; sector: number; ballKind: string };
   level: LevelLogic;
   scene: BuiltScene;
   three: THREE.Scene;
@@ -92,6 +94,36 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   spawnPos.y += 4;
   const ball = await Ball.create(physics, scene, spawnPos);
   ball.teleport(spawnPos);
+
+  bootStage('moduls');
+  const moduls = await ModulManager.create(
+    built,
+    {
+      physics,
+      scene,
+      ball,
+      emit: (ev) => {
+        const s = gameStore.getState();
+        switch (ev.kind) {
+          case 'extraPoint':
+            s.set({ points: gameStore.getState().points + ev.amount });
+            break;
+          case 'extraLife':
+            s.set({ lives: gameStore.getState().lives + 1 });
+            break;
+          case 'trafo':
+            ball.setKind(ev.ball);
+            s.set({ ballKind: ev.ball });
+            break;
+          case 'sound':
+            break; // audio task wires this
+        }
+      },
+    },
+    modulFactories,
+    sectorLookup(built),
+  );
+  moduls.setSector(1);
   bootStage('done');
 
   const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
@@ -135,6 +167,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     ball.setKind(logic.sectorBallKind);
     ball.teleport(pos);
     rig.resetTo(pos, rp.yaw);
+    moduls.resetSector(logic.currentSector);
     s.set({ phase: 'playing', ballKind: logic.sectorBallKind });
   };
 
@@ -160,6 +193,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
     rig.pushDirection(input.state, pushDir);
     ball.applyPush(pushDir);
+    moduls.update(SIM_DT);
     physics.step();
     simTicks++;
 
@@ -179,6 +213,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       switch (ev.kind) {
         case 'checkpoint':
           s.set({ sector: ev.sector });
+          moduls.setSector(ev.sector);
           break;
         case 'finish':
           s.set({ phase: 'finished' });
@@ -253,7 +288,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       teleport: (x, y, z) => ball.teleport(new THREE.Vector3(x, y, z)),
       state: () => {
         const s = gameStore.getState();
-        return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector };
+        return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector, ballKind: s.ballKind };
       },
       level: logic,
       scene: built,
@@ -266,6 +301,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     dispose() {
       disposed = true;
       clearInterval(hiddenDriver);
+      moduls.dispose();
       input.detach(window);
       window.removeEventListener('resize', onResize);
       ball.dispose();
