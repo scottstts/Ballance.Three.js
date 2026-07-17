@@ -39,6 +39,7 @@ export interface GameDebug {
   stepSeconds(seconds: number): void;
   /** teleport the ball (testing) */
   teleport(x: number, y: number, z: number): void;
+  setVelocity(x: number, y: number, z: number): void;
   state(): { phase: string; lives: number; points: number; sector: number; ballKind: string };
   level: LevelLogic;
   scene: BuiltScene;
@@ -103,6 +104,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       physics,
       scene,
       ball,
+      registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
       emit: (ev) => {
         const s = gameStore.getState();
         switch (ev.kind) {
@@ -316,6 +318,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         present(SIM_DT);
       },
       teleport: (x, y, z) => ball.teleport(new THREE.Vector3(x, y, z)),
+      setVelocity: (x, y, z) => ball.body.setLinvel({ x, y, z }, true),
       state: () => {
         const s = gameStore.getState();
         return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector, ballKind: s.ballKind };

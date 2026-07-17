@@ -3,7 +3,6 @@
  * their transforms (hiding the embedded placement previews), assigns each
  * instance to its sector, and drives the sector lifecycle.
  */
-import * as THREE from 'three';
 import type { BuiltScene } from '../../engine/sceneBuilder.ts';
 import { groupEntities } from '../../engine/sceneBuilder.ts';
 import type { Modul, ModulContext } from './base.ts';
@@ -86,6 +85,8 @@ function hidePlacementVisuals(built: BuiltScene, placementName: string): void {
   if (e) e.object.visible = false;
 }
 
+export type { Modul };
+
 /** Build the placement→sector lookup from the level's Sector_XX groups. */
 export function sectorLookup(built: BuiltScene): (name: string) => number {
   const map = new Map<string, number>();
@@ -100,5 +101,3 @@ export function sectorLookup(built: BuiltScene): (name: string) => number {
   }
   return (name) => map.get(name) ?? 1;
 }
-
-export { THREE };

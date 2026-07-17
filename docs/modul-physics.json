@@ -1,0 +1,1315 @@
+{
+ "PE_Balloon": [
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte04"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte05"
+  },
+  {
+   "m_Mass": 4,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    -2,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platform"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon02"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon_Seil02"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte06"
+  },
+  {
+   "m_Mass": 4,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_BoxSlide"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon_Seil03"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon03"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte03"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte07"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon_Seil04"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon_Seil01"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte01"
+  },
+  {
+   "m_Mass": 0.1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    -2,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte00"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon01"
+  },
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Ballon04"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte08"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "PE_Balloon_Platte02"
+  }
+ ],
+ "P_Ball_Paper": [
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.5,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1.5,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Ball_Paper"
+  }
+ ],
+ "P_Ball_Stone": [
+  {
+   "m_Mass": 10,
+   "m_Friction": 0.8,
+   "m_Elasticity": 0.1,
+   "m_LinearSpeedDamping": 0.2,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 2,
+   "m_UseBall": 1,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Ball_Stone"
+  }
+ ],
+ "P_Ball_Wood": [
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.6,
+   "m_Elasticity": 0.2,
+   "m_LinearSpeedDamping": 0.6,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 2,
+   "m_UseBall": 1,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Ball_Wood"
+  }
+ ],
+ "P_Box": [
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.3,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Box"
+  }
+ ],
+ "P_Dome": [
+  {
+   "m_Mass": 0.2,
+   "m_Friction": 0.2,
+   "m_Elasticity": 0.8,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 1,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 1,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Dome_MF"
+  }
+ ],
+ "P_Modul_01": [
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 1,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_01_Rinne"
+  },
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.6,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    -0.45,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_01_Pusher"
+  },
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 1,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 4,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_01_Filter"
+  }
+ ],
+ "P_Modul_03": [
+  {
+   "m_Mass": 3.2,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    -2,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Floor"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall02"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall01"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall03"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall06"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall05"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall04"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Gate"
+  },
+  {
+   "m_Mass": 2,
+   "m_Friction": 0.4,
+   "m_Elasticity": 0.01,
+   "m_LinearSpeedDamping": 0.5,
+   "m_RotSpeedDamping": 1.5,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.15,
+    -1,
+    0.15
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 0,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_03_Wall07"
+  }
+ ],
+ "P_Modul_08": [
+  {
+   "m_Mass": 10,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.4,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_08_Schaukel"
+  },
+  {
+   "Force": 1.1,
+   "SwitchTime": 0.5,
+   "DelayTime": 0.5,
+   "part": "P_Modul_08"
+  }
+ ],
+ "P_Modul_17": [
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 3,
+   "m_RotSpeedDamping": 0.005,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "Modul17_Dreharme"
+  }
+ ],
+ "P_Modul_18": [
+  {
+   "P_Modul_18_Force": 0.1,
+   "part": "P_Modul_18"
+  }
+ ],
+ "P_Modul_19": [
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 0.05,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    -1,
+    1,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_19_Flaps"
+  }
+ ],
+ "P_Modul_25": [
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 1,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 15,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_25_Bridge_Stopper_Left"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 1,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 15,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_25_Bridge_Stopper_Right"
+  },
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 1,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 1,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 7,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_25_Hinge_Col_Left"
+  },
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 1,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 1,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 7,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_25_Hinge_Col_Right"
+  },
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.7,
+   "m_Elasticity": 1,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 0.05,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    2,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_25_Bridge"
+  }
+ ],
+ "P_Modul_26": [
+  {
+   "Force": 0.25,
+   "SwitchTime": 1.4,
+   "part": "P_Modul_26"
+  },
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_26_Rope"
+  },
+  {
+   "m_Mass": 10,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_26_Sack"
+  }
+ ],
+ "P_Modul_29": [
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte08"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte01"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte09"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte05"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte03"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte06"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte07"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte04"
+  },
+  {
+   "m_Mass": 0.5,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.3,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_29_Platte02"
+  }
+ ],
+ "P_Modul_30": [
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0.5,
+    5,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 5,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_30_Wippe"
+  }
+ ],
+ "P_Modul_34": [
+  {
+   "m_Mass": 1.6,
+   "m_Friction": 0.5,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_34_Schiebestein"
+  },
+  {
+   "m_Mass": 1.4,
+   "m_Friction": 0.6,
+   "m_Elasticity": 0.3,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    0,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_34_Kiste"
+  }
+ ],
+ "P_Modul_37": [
+  {
+   "m_Mass": 3,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.5,
+   "m_LinearSpeedDamping": 1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 1,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    5,
+    0.5,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_37_Bridge"
+  }
+ ],
+ "P_Modul_41": [
+  {
+   "m_Mass": 1,
+   "m_Friction": 0.7,
+   "m_Elasticity": 0.4,
+   "m_LinearSpeedDamping": 0.1,
+   "m_RotSpeedDamping": 0.1,
+   "m_BallRadius": 1,
+   "m_UseBall": 0,
+   "m_StartFrozen": 0,
+   "m_Fixed": 0,
+   "m_ShiftMassCenter": [
+    0,
+    -1,
+    0
+   ],
+   "m_AutoMassCenter": 0,
+   "m_EnableConstantForce": 1,
+   "m_Layer": 3,
+   "m_EnableGravity": 1,
+   "part": "P_Modul_41_Box"
+  }
+ ]
+}

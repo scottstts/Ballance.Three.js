@@ -1,24 +1,178 @@
 /**
- * Modul behavior registry: maps level group names to behavior classes.
+ * Modul behavior registry: maps level group names to behavior classes
+ * implementing the original elements' mechanics.
  */
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import { FORCE_SCALE, type BallKind } from '../constants.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
 import type { ModulFactory } from './manager.ts';
 import type { PrefabInstance } from './prefabs.ts';
-import type { BallKind } from '../constants.ts';
+import { MODUL18_FORCE, MODUL29_TRIGGER_PLATE, MODUL_PHYS, type ModulPhys } from './physTable.ts';
 
-/** Simple proximity trigger helper (cylinder around the instance root). */
-function nearBall(ctx: ModulContext, root: THREE.Object3D, radius: number, height: number): boolean {
-  const b = ctx.ball.position;
-  const p = root.position;
-  const dx = b.x - p.x;
-  const dz = b.z - p.z;
-  const dy = b.y - p.y;
+/** Simple proximity trigger helper (cylinder around a world point). */
+function nearPoint(ballPos: THREE.Vector3, p: THREE.Vector3, radius: number, height: number): boolean {
+  const dx = ballPos.x - p.x;
+  const dz = ballPos.z - p.z;
+  const dy = ballPos.y - p.y;
   return dx * dx + dz * dz <= radius * radius && dy > -height * 0.5 && dy < height;
 }
 
-/** Ball transformer: touching it morphs the ball type (with cooldown). */
+/** prefab-local Virtools vector -> world (RH) direction for an instance */
+function localDirToWorld(instance: PrefabInstance, v: [number, number, number]): THREE.Vector3 {
+  const dir = new THREE.Vector3(v[0], v[1], -v[2]);
+  dir.applyQuaternion(instance.root.quaternion);
+  return dir.normalize();
+}
+
+/**
+ * Table-driven physics modul: builds fixed/dynamic parts, hinges, sliders
+ * and optional alternating constant force from the original parameters.
+ */
+class PhysicsModul extends Modul {
+  private altForceState = 0;
+  private altTimer = 0;
+  private altTarget: ReturnType<Modul['findDynamic']>;
+  private phys: ModulPhys;
+
+  constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, phys: ModulPhys) {
+    super(name, sector, instance, ctx);
+    this.phys = phys;
+
+    for (const partPhys of phys.parts) {
+      const obj = this.part(partPhys.suffix);
+      if (!(obj instanceof THREE.Mesh)) continue;
+      if (partPhys.fixed) this.makeFixedPart(obj, partPhys);
+      else this.makeDynamicPart(obj, partPhys);
+    }
+    for (const hinge of phys.hinges ?? []) {
+      const part = this.findDynamic(hinge.part);
+      const pin = this.partWorldPosition(hinge.pin);
+      if (!part || !pin) continue;
+      const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
+      this.makeHinge(part, pin, localDirToWorld(instance, hinge.axis), other, hinge.spherical);
+    }
+    for (const pris of phys.prismatics ?? []) {
+      const part = this.findDynamic(pris.part);
+      if (!part) continue;
+      this.makePrismatic(part, localDirToWorld(instance, pris.axis), pris.limits, pris.spring);
+    }
+    this.altTarget = phys.altForce ? this.findDynamic(phys.altForce.part) : undefined;
+    // spawn disabled until the sector activates
+    for (const p of this.dynamicParts) p.body.setEnabled(false);
+  }
+
+  override activate(): void {
+    super.activate();
+    this.altForceState = 0;
+    this.altTimer = 0;
+  }
+
+  override update(dt: number): void {
+    super.update(dt);
+    const alt = this.phys.altForce;
+    if (alt && this.altTarget && this.active) {
+      this.altTimer += dt;
+      if (this.altTimer >= alt.switchTime) {
+        this.altTimer -= alt.switchTime;
+        this.altForceState = (this.altForceState + 1) % (alt.delayTime !== undefined ? 4 : 2);
+      }
+      const dir = localDirToWorld(this.instance, alt.axis);
+      // with delay: 4-state cycle idle, +F, idle, -F; without: +F / -F
+      const scale =
+        alt.delayTime !== undefined
+          ? this.altForceState === 1
+            ? 1
+            : this.altForceState === 3
+              ? -1
+              : 0
+          : this.altForceState === 0
+            ? 1
+            : -1;
+      const f = alt.force * FORCE_SCALE * scale;
+      this.altTarget.body.resetForces(true);
+      if (f !== 0) this.altTarget.body.addForce({ x: dir.x * f, y: dir.y * f, z: dir.z * f }, true);
+    }
+  }
+
+  override reset(): void {
+    super.reset();
+    this.altForceState = 0;
+    this.altTimer = 0;
+  }
+}
+
+/** Breakable plank bridge: a stone ball touching the middle plank snaps the chain. */
+class BridgeModul extends PhysicsModul {
+  private broken = false;
+
+  override update(dt: number): void {
+    super.update(dt);
+    if (!this.active || this.broken) return;
+    if (this.ctx.ball.kind !== 'stone') return;
+    const plate = this.findDynamic(MODUL29_TRIGGER_PLATE);
+    if (!plate) return;
+    const p = plate.body.translation();
+    if (nearPoint(this.ctx.ball.position, new THREE.Vector3(p.x, p.y, p.z), 3.2, 5)) {
+      this.broken = true;
+      // snap the middle link: remove the joint attached to the trigger plate
+      const joint = this.joints[4]; // HF05 joint chains Platte04 -> Platte05
+      if (joint) this.removeJoint(joint);
+      for (const dp of this.dynamicParts) dp.body.wakeUp();
+      this.ctx.emit({ kind: 'sound', name: 'Misc_RopeTears.wav', position: this.ctx.ball.position });
+    }
+  }
+
+  override reset(): void {
+    // note: original re-links only on level restart; sector reset keeps it broken
+    super.reset();
+  }
+}
+
+/** Fan: applies the original updraft to the ball while inside the wind volume. */
+class FanModul extends Modul {
+  private windBox: THREE.Box3 | null = null;
+  private rotor: THREE.Object3D | undefined;
+
+  constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext) {
+    super(name, sector, instance, ctx);
+    for (const [partName, obj] of instance.parts) {
+      if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
+        obj.updateWorldMatrix(true, false);
+        this.windBox = new THREE.Box3().setFromObject(obj);
+        obj.visible = false;
+      }
+      if (partName.includes('Rotor')) this.rotor = obj;
+      // the grid/housing collides
+      if ((partName.includes('Gitter') || partName.includes('Boden')) && obj instanceof THREE.Mesh) {
+        this.makeFixedPart(obj, { suffix: partName, fixed: true, friction: 0.7, elasticity: 0.4, surface: 'metal' });
+      }
+    }
+    if (!this.windBox) {
+      const p = instance.root.position;
+      this.windBox = new THREE.Box3(
+        new THREE.Vector3(p.x - 4, p.y - 1, p.z - 4),
+        new THREE.Vector3(p.x + 4, p.y + 25, p.z + 4),
+      );
+    }
+  }
+
+  override update(dt: number): void {
+    if (this.rotor) {
+      this.rotor.rotation.y += dt * Math.PI * 2;
+      this.rotor.updateMatrix();
+    }
+    if (!this.active || !this.windBox) return;
+    if (this.windBox.containsPoint(this.ctx.ball.position)) {
+      const up = localDirToWorld(this.instance, [0, 1, 0]);
+      const f = MODUL18_FORCE * FORCE_SCALE;
+      this.ctx.ball.body.addForce({ x: up.x * f, y: up.y * f, z: up.z * f }, true);
+    }
+  }
+
+  override reset(): void {}
+}
+
+/** Ball transformer: touching it morphs the ball type (with re-arm on leave). */
 class TrafoModul extends Modul {
   private target: BallKind;
   private triggered = false;
@@ -29,14 +183,15 @@ class TrafoModul extends Modul {
   }
 
   override update(): void {
+    const root = this.instance.root.position;
     if (this.triggered) {
-      if (!nearBall(this.ctx, this.instance.root, 6, 6)) this.triggered = false;
+      if (!nearPoint(this.ctx.ball.position, root, 7, 7)) this.triggered = false;
       return;
     }
-    if (this.ctx.ball.kind !== this.target && nearBall(this.ctx, this.instance.root, 4.5, 5)) {
+    if (this.ctx.ball.kind !== this.target && nearPoint(this.ctx.ball.position, root, 4.5, 5)) {
       this.triggered = true;
       this.ctx.emit({ kind: 'trafo', ball: this.target });
-      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: this.instance.root.position });
+      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: root.clone() });
     }
   }
 
@@ -45,93 +200,34 @@ class TrafoModul extends Modul {
   }
 }
 
-/** Dynamic physics prop (wooden crate / stone dome cover). */
-class DynamicPropModul extends Modul {
-  private body: RAPIER.RigidBody | null = null;
-  private visual: THREE.Mesh | null = null;
-  private home = new THREE.Matrix4();
-
-  constructor(
-    name: string,
-    sector: number,
-    instance: PrefabInstance,
-    ctx: ModulContext,
-    partSuffix: string,
-    opts: { mass: number; friction: number; restitution: number },
-  ) {
-    super(name, sector, instance, ctx);
-    const part = this.part(partSuffix);
-    if (part instanceof THREE.Mesh) {
-      this.visual = part;
-      this.home = this.partWorldMatrix(part);
-      const { body } = this.makeDynamicPart(part, opts);
-      this.body = body;
-      // inactive sectors: body frozen until activated
-      this.body.setEnabled(false);
-    }
-  }
-
-  override activate(): void {
-    super.activate();
-    this.body?.setEnabled(true);
-  }
-
-  override deactivate(): void {
-    super.deactivate();
-    this.body?.setEnabled(false);
-  }
-
-  override update(): void {
-    if (this.body && this.visual) this.syncPart(this.visual, this.body);
-  }
-
-  override reset(): void {
-    if (!this.body || !this.visual) return;
-    const pos = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    this.home.decompose(pos, quat, scale);
-    this.body.setTranslation({ x: pos.x, y: pos.y, z: pos.z }, true);
-    this.body.setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w }, true);
-    this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
-    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-    this.syncPart(this.visual, this.body);
-  }
-}
-
-/** Placeholder for moduls whose behavior is not yet implemented: static visual. */
-class StaticModul extends Modul {
-  override reset(): void {}
-}
-
 const make =
   (
     groupName: string,
     ctor: (name: string, sector: number, instance: PrefabInstance, ctx: ModulContext) => Modul,
   ): ModulFactory => ({ groupName, create: ctor });
 
+const physFactory = (groupName: string): ModulFactory =>
+  make(groupName, (n, s, i, c) => new PhysicsModul(n, s, i, c, MODUL_PHYS[groupName]));
+
 export const modulFactories: ModulFactory[] = [
   make('P_Trafo_Paper', (n, s, i, c) => new TrafoModul(n, s, i, c, 'paper')),
   make('P_Trafo_Wood', (n, s, i, c) => new TrafoModul(n, s, i, c, 'wood')),
   make('P_Trafo_Stone', (n, s, i, c) => new TrafoModul(n, s, i, c, 'stone')),
-  make('P_Box', (n, s, i, c) => new DynamicPropModul(n, s, i, c, '_MF', { mass: 1.2, friction: 0.6, restitution: 0.2 })),
-  make(
-    'P_Dome',
-    (n, s, i, c) => new DynamicPropModul(n, s, i, c, 'Dome_MF', { mass: 4, friction: 0.4, restitution: 0.2 }),
-  ),
-  make('P_Modul_01', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_03', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_08', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_17', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_18', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_19', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_25', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_26', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_29', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_30', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_34', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_37', (n, s, i, c) => new StaticModul(n, s, i, c)),
-  make('P_Modul_41', (n, s, i, c) => new StaticModul(n, s, i, c)),
+  make('P_Modul_18', (n, s, i, c) => new FanModul(n, s, i, c)),
+  make('P_Modul_29', (n, s, i, c) => new BridgeModul(n, s, i, c, MODUL_PHYS.P_Modul_29)),
+  physFactory('P_Box'),
+  physFactory('P_Dome'),
+  physFactory('P_Modul_01'),
+  physFactory('P_Modul_03'),
+  physFactory('P_Modul_08'),
+  physFactory('P_Modul_17'),
+  physFactory('P_Modul_19'),
+  physFactory('P_Modul_25'),
+  physFactory('P_Modul_26'),
+  physFactory('P_Modul_30'),
+  physFactory('P_Modul_34'),
+  physFactory('P_Modul_37'),
+  physFactory('P_Modul_41'),
 ];
 
 export type { ModulEvent };
