@@ -142,3 +142,31 @@ Append-only scratchpad of things learned during the port. Read this first when r
   differ from GamePhysBallData.json (mass 1.9 f0.8 e0.2 d0.9) — we use the JSON values.
 - Hidden-tab automation: sweeps run at full speed via stepSeconds; real-time play needs a
   visible tab (rAF). Music/SFX can only be heard in a visible tab (autoplay gate).
+
+## Reference-image fidelity pass (ref_images/, July 17)
+
+- Ref set: box art (start plaza + flames + stone ball), checkpoint w/ trafo lightning +
+  HUD 1857, checkpoint pair, L4 bridge + wood ball, extra-point orbits on pedestals,
+  L6 maze, L1 maze + extra-life bubble + HUD 2164, L8 towers + stone ball.
+- HUD (original): score bottom-LEFT in metallic rounded wire frame, beige serif digits;
+  lives bottom-RIGHT as silver balls in a curved wire cradle; NO sector/level text.
+  Implemented as SVG frames + CSS in src/ui/Hud.tsx.
+- **CRITICAL D3D material lessons** (fixed in convert.ts):
+  1. specularPower==0 means specular DISABLED (mapping it to shininess~1 with gray
+     specular washes everything white).
+  2. D3D fixed-function MODULATES emissive by the texture; three.js ADDS raw emissive.
+     Fix: set emissiveMap = map. This single fix cured the washed-out balls/crates.
+- Balls.nmo references texture names with no disk file (BallWood.bmp vs Ball_Wood.bmp):
+  the pixels are EMBEDDED in the NMO; loader must fall back file->embedded->raw.
+- Light rig for D3D-era energy: ambient 0.32 warm + sun 0.95 + fill 0.18 (materials add
+  their own emissive lift; keep total near 1 or textures wash out).
+- Effects built from original assets: Particle_Flames.bmp sprites (pink flames, big one
+  on armed checkpoints, extinguish on crossing), Ball_LightningSphere1-3.bmp additive
+  sphere during trafo (2.3s, then ball swap), Ball_<Kind>_pieceNN meshes for death
+  shatter with piecesMin/MaxForce impulses, oil-texture bubble + silver ball for Extra
+  Life, orbiting silver balls + additive rings for Extra Point, SkyLayer cloud sea at
+  y~-180 with slow UV scroll, sky-horizon-sampled fog color per level.
+- Remaining known deltas vs original (acceptable/documented): extra-point balls do not
+  fly to the HUD on collect (flash+hide instead); L12 UFO ending approximated by the
+  balloon rise (no UFO model exists in the original asset files); menu is DOM-based
+  rather than the 3D menu tower; trafo ring animation is the lightning sphere only.
