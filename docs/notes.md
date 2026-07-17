@@ -107,3 +107,38 @@ Append-only scratchpad of things learned during the port. Read this first when r
   compared against original screenshots (rebuild constants: normal Y=30 Z=17 look-at ball).
 - Shadow group planes + DepthTestCubes: original uses them for decal shadows and kill
   volumes — kill volumes still to be wired into death logic (currently plain min-Y).
+
+## Verification status (all 12 levels, scripted browser sweep)
+
+- Sweep procedure: boot `?level=N`, `setPaused(true)`, `setLives(99)`, teleport onto each
+  `PC_TwoFlames` in order asserting sector advance, then onto the balloon asserting
+  `finished`. All 12 levels pass (sector counts 4/5/5/5/5/5/5/5/5/5/6/8, modul instance
+  counts 15/35/34/23/35/36/48/67/72/84/72/69).
+- vitest layers: parser tests (5) + level-integrity tests (12) — `npm test`.
+- CRITICAL Rapier lesson: joints attached to `setEnabled(false)` bodies PANIC the wasm
+  solver mid-step and poison the world ("recursive use of an object..." on every later
+  call, sim ticks stay 0). Inactive moduls must SLEEP instead (also matches IVP frozen
+  semantics). Debug flags: `?nomoduls`, `?nocolliders`, `?moduls=P_Modul_17` bisect boot.
+- StrictMode removed in main.tsx: double-boot raced wasm teardown and doubled asset loads.
+- Sky seams fixed: LH->RH mirrors every skybox face -> mirror textures horizontally AND
+  swap Left/Right images; Down face rotation.z must be 0 (no extra flip).
+
+## Remaining fidelity backlog (post-core polish)
+
+- Balloon finale: physical fly-off (PE_Balloon multi-body: platform 4kg + balloons 0.2kg
+  buoyancy 0.1/PSI + plank chain; forces 0.37/0.31 staged shutdown) — currently the level
+  ends on touch without the animation. Spec in the modul physics extraction + agent notes.
+- Level 12 ends with UFO (endWithUFO) — PE_UFO prefab + Misc_UFO sounds, not implemented.
+- Flames (PS/PC), Extra Point orbit + fly-to-HUD animation, Extra Life bob/spin, trafo
+  ring animation (2.3s, colors wood #ff9300 stone #00ff1d paper #0091ff), death Pieces_*
+  shatter effects, fan particles: cosmetic systems still to build.
+- Rails render flat white: need spherical env-map (Rail_Environment.bmp) material path.
+- Ball trafo swap is instant; original swaps after the 2.3s trafo animation.
+- Modul_29 stays broken on sector reset (original re-links only on level restart) — OK,
+  but verify against original edge case.
+- Feel pass vs original: ball accel/top speed close (14 u/s after 3s push) but rail-feel,
+  camera angle (Y30/Z17 lookAt-ball vs original framing) and fog color/distances need
+  side-by-side comparison. Rebuild alt ball constants (P_Ball_Wood mass 2 f0.6 e0.2 d0.6)
+  differ from GamePhysBallData.json (mass 1.9 f0.8 e0.2 d0.9) — we use the JSON values.
+- Hidden-tab automation: sweeps run at full speed via stepSeconds; real-time play needs a
+  visible tab (rAF). Music/SFX can only be heard in a visible tab (autoplay gate).
