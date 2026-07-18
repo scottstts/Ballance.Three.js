@@ -51,7 +51,7 @@ export interface ModulPhys {
   hinges?: HingeDef[];
   prismatics?: PrismaticDef[];
   /** alternating constant force (swing/sack style) */
-  altForce?: { part: string; force: number; switchTime: number; delayTime?: number; axis: [number, number, number] };
+  altForce?: { part: string; force: number; switchTime: number; delayTime?: number; axis: [number, number, number]; startState?: number };
 }
 
 const wood = { friction: 0.7, elasticity: 0.4 } as const;
@@ -128,7 +128,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
       { suffix: '_Fix', fixed: true, ...wood, surface: 'wood' },
     ],
     hinges: [{ part: '_Schaukel', pin: '_HingeFrame', axis: [0, 0, 1] }],
-    altForce: { part: '_Schaukel', force: 1.1, switchTime: 0.5, delayTime: 0.5, axis: [1, 0, 0] },
+    altForce: { part: '_Schaukel', force: 1.1, switchTime: 0.5, delayTime: 0.5, axis: [1, 0, 0], startState: 1 },
   },
   P_Modul_17: {
     parts: [
@@ -192,7 +192,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
       { part: '_Rope', pin: '_Balljoint_oben', axis: [0, 0, 1], spherical: true },
       { part: '_Sack', pin: '_Balljoint_unten', axis: [0, 0, 1], other: '_Rope', spherical: true },
     ],
-    altForce: { part: '_Sack', force: 0.25, switchTime: 1.4, axis: [0, 0, 1] },
+    altForce: { part: '_Sack', force: 0.25, switchTime: 1.4, axis: [0, 0, 1], startState: 1 },
   },
   P_Modul_29: {
     parts: ['01', '02', '03', '04', '05', '06', '07', '08', '09'].map(

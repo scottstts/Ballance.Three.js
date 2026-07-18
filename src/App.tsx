@@ -20,6 +20,7 @@ export default function App() {
   const phase = useGameStore((s) => s.phase);
   const level = useGameStore((s) => s.level);
   const whiteFade = useGameStore((s) => s.whiteFade);
+  const winScreen = useGameStore((s) => s.winScreen);
   const set = useGameStore((s) => s.set);
 
   // dev shortcut: ?level=N boots straight into a level
@@ -53,7 +54,7 @@ export default function App() {
       {phase === 'options' && <OptionsScreen />}
       {phase === 'credits' && <CreditsScreen />}
       {phase === 'paused' && <PauseOverlay />}
-      {phase === 'finished' && <FinishedOverlay />}
+      {phase === 'finished' && winScreen && <FinishedOverlay />}
       {phase === 'gameover' && <GameOverOverlay />}
       {inGame && <div className={`white-fade${whiteFade ? ' white-fade-on' : ''}`} />}
     </>

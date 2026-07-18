@@ -26,7 +26,7 @@ export interface ModulContext {
 export type ModulEvent =
   | { kind: 'extraPoint'; amount: number }
   | { kind: 'extraLife' }
-  | { kind: 'trafo'; ball: 'paper' | 'wood' | 'stone' }
+  | { kind: 'trafo'; ball: 'paper' | 'wood' | 'stone'; position: THREE.Vector3 }
   | { kind: 'sound'; name: string; position: THREE.Vector3; volume?: number };
 
 export interface DynamicPart {

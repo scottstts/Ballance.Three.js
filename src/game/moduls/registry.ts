@@ -2,6 +2,7 @@
  * Modul behavior registry: maps level group names to behavior classes
  * implementing the original elements' mechanics.
  */
+import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
@@ -32,7 +33,7 @@ class PhysicsModul extends Modul {
   private altForceState = 0;
   private altTimer = 0;
   private altTarget: ReturnType<Modul['findDynamic']>;
-  private phys: ModulPhys;
+  protected phys: ModulPhys;
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, phys: ModulPhys) {
     super(name, sector, instance, ctx);
@@ -63,7 +64,7 @@ class PhysicsModul extends Modul {
 
   override activate(): void {
     super.activate();
-    this.altForceState = 0;
+    this.altForceState = this.phys.altForce?.startState ?? 0;
     this.altTimer = 0;
   }
 
@@ -96,7 +97,7 @@ class PhysicsModul extends Modul {
 
   override reset(): void {
     super.reset();
-    this.altForceState = 0;
+    this.altForceState = this.phys.altForce?.startState ?? 0;
     this.altTimer = 0;
   }
 }
@@ -104,6 +105,13 @@ class PhysicsModul extends Modul {
 /** Breakable plank bridge: a stone ball touching the middle plank snaps the chain. */
 class BridgeModul extends PhysicsModul {
   private broken = false;
+  /** the Platte04 -> Platte05 link that snaps (5th authored hinge) */
+  private middleJoint: RAPIER.ImpulseJoint | null;
+
+  constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, phys: ModulPhys) {
+    super(name, sector, instance, ctx, phys);
+    this.middleJoint = this.joints[4] ?? null;
+  }
 
   override update(dt: number): void {
     super.update(dt);
@@ -114,17 +122,28 @@ class BridgeModul extends PhysicsModul {
     const p = plate.body.translation();
     if (nearPoint(this.ctx.ball.position, new THREE.Vector3(p.x, p.y, p.z), 3.2, 5)) {
       this.broken = true;
-      // snap the middle link: remove the joint attached to the trigger plate
-      const joint = this.joints[4]; // HF05 joint chains Platte04 -> Platte05
-      if (joint) this.removeJoint(joint);
+      if (this.middleJoint) this.removeJoint(this.middleJoint);
+      this.middleJoint = null;
       for (const dp of this.dynamicParts) dp.body.wakeUp();
       this.ctx.emit({ kind: 'sound', name: 'Misc_RopeTears.wav', position: this.ctx.ball.position });
     }
   }
 
   override reset(): void {
-    // note: original re-links only on level restart; sector reset keeps it broken
+    // the original repairs the bridge on every sector restart
     super.reset();
+    if (this.broken) {
+      this.broken = false;
+      const hinge = this.phys.hinges?.[4];
+      if (hinge) {
+        const part = this.findDynamic(hinge.part);
+        const pin = this.partWorldPosition(hinge.pin);
+        const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
+        if (part && pin) {
+          this.middleJoint = this.makeHinge(part, pin, localDirToWorld(this.instance, hinge.axis), other, hinge.spherical);
+        }
+      }
+    }
   }
 }
 
@@ -207,7 +226,7 @@ class TrafoModul extends Modul {
     }
     if (this.ctx.ball.kind !== this.target && nearPoint(this.ctx.ball.position, root, 4.5, 5)) {
       this.triggered = true;
-      this.ctx.emit({ kind: 'trafo', ball: this.target });
+      this.ctx.emit({ kind: 'trafo', ball: this.target, position: root.clone() });
       this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: root.clone() });
     }
   }

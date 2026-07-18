@@ -87,13 +87,19 @@ export const FLOOR_GROUPS: Record<string, FloorDef> = {
   Phys_FloorStopper: { friction: 0.7, elasticity: 0.5, surface: 'wood', hitSound: 'Hit_WoodenFlap.wav' },
 };
 
-/** Camera rig (original follow values). */
+/**
+ * Camera rig — values from the original's serialized camera host (these
+ * override the code defaults in the reference implementation).
+ */
 export const CAM_NORMAL_Y = 30;
 export const CAM_NORMAL_Z = 17;
 export const CAM_SPACE_Y = 55;
-export const CAM_SPACE_Z = 8;
-export const CAM_ROTATE_TIME = 0.3; // seconds per 90° step
-export const CAM_LIFT_UP_TIME = 0.8; // original overview raise
-export const CAM_LIFT_DOWN_TIME = 1.3; // original overview drop
-export const CAM_FOLLOW_SPEED = 0.05;
+export const CAM_SPACE_Z = 14;
+export const CAM_ROTATE_TIME = 0.55; // seconds per 90° step
+export const CAM_LIFT_UP_TIME = 0.45; // overview raise
+export const CAM_LIFT_DOWN_TIME = 1.66; // overview drop
+/** per-axis SmoothDamp times: ball-follow target, camera position, look target */
+export const CAM_TARGET_SMOOTH: [number, number, number] = [0.2, 0.6, 0.2];
+export const CAM_POS_SMOOTH: [number, number, number] = [0.2, 0.3, 0.2];
+export const CAM_LOOK_SMOOTH: [number, number, number] = [0.16, 0.16, 0.16];
 export const CAM_FOV = 60;

@@ -34,6 +34,9 @@ const PIECES: Record<string, PieceDef> = {
   buttonMedium: { atlas: 'deselect', x: 60, y: 191, w: 164, h: 63, hover: true },
   optionRow: { atlas: 'deselect', x: 3, y: 64, w: 159, h: 29, hover: true },
   slider: { atlas: 'deselect', x: 2, y: 102, w: 252, h: 28, hover: true },
+  // the slider bar minus its center handle, split for clean list rows
+  sliderL: { atlas: 'deselect', x: 2, y: 102, w: 112, h: 28 },
+  sliderR: { atlas: 'deselect', x: 142, y: 102, w: 112, h: 28 },
   roundA: { atlas: 'deselect', x: 226, y: 198, w: 22, h: 23, hover: true },
   roundB: { atlas: 'deselect', x: 226, y: 226, w: 22, h: 23, hover: true },
   // in-game HUD (special atlas): score plate + its under-swoosh, both with

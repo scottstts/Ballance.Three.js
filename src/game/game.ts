@@ -153,10 +153,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   rig.resetTo(ball.position, spawn.yaw);
 
   const audio = new AudioManager(rig.camera);
+  let skyLayerRef: THREE.Object3D | null = null;
   const applyVolumes = () => {
     const s = gameStore.getState().settings;
     audio.musicVolume = s.musicVolume;
     audio.sfxVolume = s.sfxVolume;
+    if (skyLayerRef) skyLayerRef.visible = s.clouds;
   };
   applyVolumes();
   const unsubscribeSettings = gameStore.subscribe((s, prev) => {
@@ -185,9 +187,14 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             s.set({ lives: gameStore.getState().lives + 1 });
             break;
           case 'trafo':
-            // original: the ring cage spins 2.3s, then the old ball bursts
+            // original: the ball snaps above the transformer, control locks,
+            // the ring cage spins 2.3s, then the old ball bursts
             trafoAnim.start();
-            pendingTrafo = { ball: ev.ball, timer: TRAFO_TIME };
+            pendingTrafo = {
+              ball: ev.ball,
+              timer: TRAFO_TIME,
+              hold: ev.position.clone().add(new THREE.Vector3(0, 2, 0)),
+            };
             break;
           case 'sound':
             audio.play(ev.name, ev.position, ev.volume ?? 1, scene);
@@ -234,7 +241,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let pointTimer = 0;
   let birthTimer = 0;
   let flapCooldown = 0;
-  let pendingTrafo: { ball: BallKind; timer: number } | null = null;
+  let pendingTrafo: { ball: BallKind; timer: number; hold: THREE.Vector3 } | null = null;
   let finishRise = 0;
   const balloonVisual = balloonInstance ?? groupEntities(built, 'PE_Levelende')[0]?.object ?? null;
   // simple sim-time one-shot timer queue
@@ -254,7 +261,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // the original's slowly drifting cloud layer plane
   const skyLayer = built.entities.get('SkyLayer')?.object ?? null;
   if (skyLayer instanceof THREE.Mesh) {
-    skyLayer.visible = true;
+    skyLayerRef = skyLayer;
+    skyLayer.visible = gameStore.getState().settings.clouds;
     const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
     for (const m of mats) {
       const pm = m as THREE.MeshPhongMaterial;
@@ -268,14 +276,18 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       pm.transparent = true;
       pm.depthWrite = false;
     }
-    // widen the layer so its edge can never peek inside the sky walls; scale
-    // the UV repeat with it so the cloud density stays as authored
-    const grow = 6;
-    skyLayer.scale.multiplyScalar(grow);
-    skyLayer.updateMatrix();
-    for (const m of mats) {
-      const map = (m as THREE.MeshPhongMaterial).map;
-      if (map) map.repeat.multiplyScalar(grow);
+  }
+  // the layer follows the camera horizontally (UV-compensated) so its edge
+  // can never come into view, keeping the authored cloud density
+  const skyLayerSize = new THREE.Vector2(1, 1);
+  if (skyLayer instanceof THREE.Mesh) {
+    skyLayer.geometry.computeBoundingBox();
+    const bb = skyLayer.geometry.boundingBox;
+    if (bb) {
+      skyLayerSize.set(
+        Math.max(1, (bb.max.x - bb.min.x) * skyLayer.scale.x),
+        Math.max(1, (bb.max.z - bb.min.z) * skyLayer.scale.z),
+      );
     }
   }
 
@@ -304,7 +316,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const lives = s.lives - 1;
     if (lives <= 0) {
       s.set({ lives: 0 });
+      // original: camera stops following after 1.5s and just watches the fall
       after(1.5, () => {
+        rig.mode = 'lookOnly';
+      });
+      after(2.5, () => {
         audio.stopMusic();
         gameStore.getState().set({ phase: 'gameover' });
       });
@@ -313,7 +329,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     } else {
       s.set({ lives, phase: 'dead' });
       deathTimer = DEATH_DELAY;
-      after(1.0, () => gameStore.getState().set({ whiteFade: true }));
+      // original: camera freezes after ~1s while the sector resets
+      after(1.0, () => {
+        rig.mode = 'frozen';
+        gameStore.getState().set({ whiteFade: true });
+      });
     }
   };
 
@@ -333,21 +353,29 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       if (deathTimer <= 0) respawn();
       return;
     }
-    if (s.phase === 'finished' && balloonVisual && finishRise < 12) {
-      // balloon fly-off: the end balloon rises away with a light sway
+    if (s.phase === 'finished' && balloonVisual && finishRise < 45) {
+      // balloon fly-off: buoyant rise that gently decays (original forces
+      // taper 0.15 -> 0.10 -> 0 over ~43s), carrying the ball along
       finishRise += SIM_DT;
-      balloonVisual.position.y += SIM_DT * (2.5 + finishRise * 0.6);
-      balloonVisual.position.x += Math.sin(finishRise * 1.3) * 0.02;
-      balloonVisual.rotation.y += SIM_DT * 0.15;
+      const rate = Math.max(0.35, 3.1 * Math.exp(-finishRise / 16));
+      const dy = SIM_DT * rate;
+      balloonVisual.position.y += dy;
+      balloonVisual.position.x += Math.sin(finishRise * 1.3) * 0.015;
+      balloonVisual.rotation.y += SIM_DT * 0.1;
       balloonVisual.updateMatrix();
+      const bt = ball.body.translation();
+      ball.body.setTranslation({ x: bt.x, y: bt.y + dy, z: bt.z }, false);
       return;
     }
     if (s.phase !== 'playing') return; // paused/gameover freeze the sim
 
-    // pending ball transformation: ring cage spins, then the old ball
-    // bursts into its pieces as the new ball takes over
+    // pending ball transformation: the ball is held centered above the
+    // transformer while the ring cage spins, then the old ball bursts
     if (pendingTrafo) {
       pendingTrafo.timer -= SIM_DT;
+      ball.body.setTranslation({ x: pendingTrafo.hold.x, y: pendingTrafo.hold.y, z: pendingTrafo.hold.z }, true);
+      ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       if (pendingTrafo.timer <= 0) {
         const oldKind = ball.kind;
         shatter.burst(oldKind, ball.position);
@@ -359,10 +387,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       }
     }
 
-    // birth lightning: control and the countdown start once it finishes
-    if (birthTimer > 0) {
-      birthTimer -= SIM_DT;
-      if (birthTimer <= 0) lightning.stop();
+    // birth lightning / trafo hold: no player control meanwhile
+    if (birthTimer > 0 || pendingTrafo) {
+      if (birthTimer > 0) {
+        birthTimer -= SIM_DT;
+        if (birthTimer <= 0) lightning.stop();
+      }
       pushDir.set(0, 0, 0);
     } else {
       rig.pushDirection(input.state, pushDir);
@@ -434,11 +464,15 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           break;
         }
         case 'finish': {
-          s.set({ phase: 'finished' });
+          s.set({ phase: 'finished', winScreen: false });
           const finalScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
           s.completeLevel(level, finalScore);
           balloonAmbient?.setActive(false);
           audio.stopMusic();
+          // camera: follow briefly, then hold position and watch the ascent
+          after(0.6, () => {
+            rig.mode = 'lookOnly';
+          });
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             audio.play('Misc_UFO.wav', pos, 1, scene);
@@ -448,6 +482,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           } else {
             audio.play('Music_Final.wav', pos, 0.9, scene);
           }
+          // original: the win tally appears 6s after the pass
+          after(6, () => gameStore.getState().set({ winScreen: true }));
           break;
         }
         case 'extraPoint': {
@@ -505,13 +541,19 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       ballShadow.update(hit ? bp.y - hit.timeOfImpact : null, bp);
     }
     if (skyLayer instanceof THREE.Mesh) {
+      const dx = rig.camera.position.x - skyLayer.position.x;
+      const dz = rig.camera.position.z - skyLayer.position.z;
+      skyLayer.position.x += dx;
+      skyLayer.position.z += dz;
+      skyLayer.updateMatrix();
       const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
       for (const m of mats) {
         const map = (m as THREE.MeshPhongMaterial).map;
         if (map) {
-          // original cloud drift: 0.008/s on both axes
-          map.offset.x = (map.offset.x + frameDt * 0.008) % 1;
-          map.offset.y = (map.offset.y + frameDt * 0.008) % 1;
+          // keep the clouds world-anchored while the plane tracks the camera,
+          // plus the original 0.008/s drift on both axes
+          map.offset.x = (map.offset.x + (dx / skyLayerSize.x) * map.repeat.x + frameDt * 0.008) % 1;
+          map.offset.y = (map.offset.y + (dz / skyLayerSize.y) * map.repeat.y + frameDt * 0.008) % 1;
         }
       }
     }
