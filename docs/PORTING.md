@@ -173,7 +173,9 @@ ballance-web/
    checkpoint (`PC_TwoFlames`) completes the sector: its source `TT Scaleable Proximity`
    checks a strict 6.5-unit all-axis sphere around the big flame, whose prefab-local centre is
    `(0,1.49484575,0)`. The previous sector's moduls deactivate and the next sector's
-   activate/reset. Death resets the active sector's moduls. End = enter the strict 1-unit
+   activate/reset. Source `TT Scaleable Proximity` gates wake initially frozen moving
+   assemblies before contact; these use each prefab's authored target, XZ distance, adaptive
+   frame cadence, and strict boundary. Death resets the active sector's moduls. End = enter the strict 1-unit
    all-axis sphere around `PE_Balloon_Platform` → source multi-body fly-off,
    fixed-position/look-target camera,
    three-second `SkyLayer` prelit fade, then the source `Wait` graph. Levels 1–11 send

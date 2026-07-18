@@ -75,6 +75,10 @@ export class ModulManager {
     }
   }
 
+  debugState(): Record<string, unknown>[] {
+    return this.moduls.map((modul) => modul.debugState());
+  }
+
   dispose(): void {
     for (const m of this.moduls) m.dispose();
   }

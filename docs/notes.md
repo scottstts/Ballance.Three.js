@@ -1025,3 +1025,31 @@ options subscreens are simplified (volume only).
   errors; only Rapier's known deprecated-init warning appeared. The browser and
   dev server were closed afterward. The full gate passes with 99 tests plus
   lint, typecheck, and production build (the usual chunk-size warning only).
+
+## 2026-07-18 source-exact dynamic-module wake and bridge gates
+
+- A read-only global census (`tools/audit-proximity.ts`) now enumerates every
+  `TT Scaleable Proximity` and `TT Extra` block across the original NMO tree,
+  including parent graph, target, threshold, exactness interval, frame delays,
+  axis mask, squared flag, and serialized initial countdown. This is the
+  repeatable coverage path for eliminating remaining guessed proximity logic.
+- Seven physics prefabs serialize one-shot gates before `Physics WakeUp`:
+  P_Modul_01 targets its Pusher at 50 units; P_Modul_03 targets its MF at 35;
+  P_Modul_19/25/30/37 target their MF at 50; P_Modul_34 targets Schiebestein at
+  50. All use XZ squared distance, initial delay 2, and 10..60 adaptive checks;
+  the common exactness interval is 55..100 except Modul_03's 35..50. These
+  gates now wake the source-frozen assemblies instead of relying on collision
+  side effects.
+- P_Modul_29 previously used an invented 3.2-radius/5-height cylinder around
+  Platte05 and destroyed joint index 4. Its source graph instead has an outer
+  80/85/100 XZ squared wake gate (10..60 frames, initial 2), followed by a
+  strict 4-unit XYZ squared stone test around moving Platte06 (exactness 8..20,
+  2..30 frames, initial 2). `10 Hinges.input2` destroys HingeFrame07 between
+  Platte06 and Platte07, joint index 6. All three details now match the graph.
+- Deterministic Level 2 validation held a stone ball on each boundary: 80.0
+  kept all nine planks sleeping, 79.9 woke them; 4.0 kept all ten joints, 3.9
+  removed exactly the source joint. A forced fall restored all ten joints and
+  rearmed the outer gate. There were zero browser errors (only Rapier's known
+  init warning), and the tab/server were closed. The full gate passes with 127
+  tests plus lint, typecheck, and production build; only Vite's established
+  chunk-size warning remains.

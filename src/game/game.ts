@@ -67,6 +67,7 @@ export interface GameDebug {
   /** teleport the ball (testing) */
   teleport(x: number, y: number, z: number): void;
   setVelocity(x: number, y: number, z: number): void;
+  setBallKind(kind: BallKind): void;
   setLives(n: number): void;
   state(): { phase: string; lives: number; points: number; sector: number; ballKind: string; winScreen: boolean };
   level: LevelLogic;
@@ -821,6 +822,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       },
       teleport: (x, y, z) => ball.teleport(new THREE.Vector3(x, y, z)),
       setVelocity: (x, y, z) => ball.body.setLinvel({ x, y, z }, true),
+      setBallKind: (kind) => {
+        ball.setKind(kind);
+        gameStore.getState().set({ ballKind: kind });
+      },
       setLives: (n) => gameStore.getState().set({ lives: n }),
       state: () => {
         const s = gameStore.getState();
@@ -843,6 +848,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       effects: () => ({
         flames: flames.debugState(),
         pickups: pickups.debugState(),
+        moduls: moduls.debugState(),
         balloonAwake: balloonPhysics?.isAwake() ?? false,
         balloonWakeProximityActive,
       }),

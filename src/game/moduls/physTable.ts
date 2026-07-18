@@ -4,6 +4,7 @@
  * tools/extract-source-physics.ts is the repeatable inspection path.
  * Vectors are in prefab-local Virtools space; z is negated on use (LH->RH).
  */
+import type { ScaleableProximitySpec } from '../proximity.ts';
 
 export interface PartPhys {
   /** part name suffix within the prefab */
@@ -68,6 +69,8 @@ export interface ModulPhys {
   hinges?: HingeDef[];
   prismatics?: PrismaticDef[];
   springs?: SpringDef[];
+  /** One-shot source gate that wakes the initially frozen physics assembly. */
+  wakeProximity?: { target: string; spec: ScaleableProximitySpec };
   /** alternating constant force (swing/sack style) */
   altForce?: {
     part: string;
@@ -82,8 +85,28 @@ export interface ModulPhys {
 
 const wood = { friction: 0.7, elasticity: 0.4 } as const;
 
+const wakeProximity = (
+  target: string,
+  distance = 50,
+  exactnessMinDistance = 55,
+  exactnessMaxDistance = 100,
+): NonNullable<ModulPhys['wakeProximity']> => ({
+  target,
+  spec: {
+    distance,
+    exactnessMinDistance,
+    exactnessMaxDistance,
+    minimumFrameDelay: 10,
+    maximumFrameDelay: 60,
+    initialFrameDelay: 2,
+    axes: 5,
+    squaredDistance: true,
+  },
+});
+
 export const MODUL_PHYS: Record<string, ModulPhys> = {
   P_Modul_01: {
+    wakeProximity: wakeProximity('_Pusher'),
     parts: [
       {
         suffix: '_Rinne',
@@ -120,6 +143,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     ],
   },
   P_Modul_03: {
+    wakeProximity: wakeProximity('_MF', 35, 35, 50),
     parts: [
       {
         suffix: '_Floor',
@@ -234,6 +258,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     ],
   },
   P_Modul_19: {
+    wakeProximity: wakeProximity('_MF'),
     parts: [
       {
         suffix: '_Flaps',
@@ -255,6 +280,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     hinges: [{ part: '_Flaps', pin: '_HingeFrame' }],
   },
   P_Modul_25: {
+    wakeProximity: wakeProximity('_MF'),
     parts: [
       {
         suffix: '_Bridge',
@@ -333,6 +359,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     ],
   },
   P_Modul_30: {
+    wakeProximity: wakeProximity('_MF'),
     parts: [
       {
         suffix: '_Wippe',
@@ -349,6 +376,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     hinges: [{ part: '_Wippe', pin: '_HingeFrame' }],
   },
   P_Modul_34: {
+    wakeProximity: wakeProximity('_Schiebestein'),
     parts: [
       {
         suffix: '_Schiebestein',
@@ -376,6 +404,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     prismatics: [{ part: '_Schiebestein', points: ['_Slider_Frame01', '_Slider_Frame02'] }],
   },
   P_Modul_37: {
+    wakeProximity: wakeProximity('_MF'),
     parts: [
       {
         suffix: '_Bridge',
@@ -461,5 +490,29 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
 
 /** fan updraft: per-PSI force applied to the ball while inside the wind volume */
 export const MODUL18_FORCE = 0.1;
-/** stone-only break trigger of the plank bridge */
-export const MODUL29_TRIGGER_PLATE = '_Platte05';
+/** P_Modul_29's source-authored outer wake and stone-only break gates. */
+export const MODUL29_WAKE_PROXIMITY = {
+  distance: 80,
+  exactnessMinDistance: 85,
+  exactnessMaxDistance: 100,
+  minimumFrameDelay: 10,
+  maximumFrameDelay: 60,
+  initialFrameDelay: 2,
+  axes: 5,
+  squaredDistance: true,
+} as const;
+
+export const MODUL29_BREAK_PROXIMITY = {
+  distance: 4,
+  exactnessMinDistance: 8,
+  exactnessMaxDistance: 20,
+  minimumFrameDelay: 2,
+  maximumFrameDelay: 30,
+  initialFrameDelay: 2,
+  axes: 7,
+  squaredDistance: true,
+} as const;
+
+export const MODUL29_TRIGGER_PLATE = '_Platte06';
+/** HingeFrame07 joins Platte06 to Platte07. */
+export const MODUL29_BREAK_JOINT_INDEX = 6;

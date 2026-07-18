@@ -6,18 +6,19 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
 import { TRAFO_SOURCE } from '../effects.ts';
+import { ScaleableProximity } from '../proximity.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
 import type { ModulFactory } from './manager.ts';
 import type { PrefabInstance } from './prefabs.ts';
-import { MODUL18_FORCE, MODUL29_TRIGGER_PLATE, MODUL_PHYS, type ModulPhys } from './physTable.ts';
-
-/** Simple proximity trigger helper (cylinder around a world point). */
-function nearPoint(ballPos: THREE.Vector3, p: THREE.Vector3, radius: number, height: number): boolean {
-  const dx = ballPos.x - p.x;
-  const dz = ballPos.z - p.z;
-  const dy = ballPos.y - p.y;
-  return dx * dx + dz * dz <= radius * radius && dy > -height * 0.5 && dy < height;
-}
+import {
+  MODUL18_FORCE,
+  MODUL29_BREAK_JOINT_INDEX,
+  MODUL29_BREAK_PROXIMITY,
+  MODUL29_TRIGGER_PLATE,
+  MODUL29_WAKE_PROXIMITY,
+  MODUL_PHYS,
+  type ModulPhys,
+} from './physTable.ts';
 
 /** prefab-local Virtools vector -> world (RH) direction for an instance */
 function localDirToWorld(instance: PrefabInstance, v: [number, number, number]): THREE.Vector3 {
@@ -34,11 +35,14 @@ class PhysicsModul extends Modul {
   private altForceState = 0;
   private altTimer = 0;
   private altTarget: ReturnType<Modul['findDynamic']>;
+  private wakeProximity: ScaleableProximity | null;
+  private wakeGateActive = false;
   protected phys: ModulPhys;
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, phys: ModulPhys) {
     super(name, sector, instance, ctx);
     this.phys = phys;
+    this.wakeProximity = phys.wakeProximity ? new ScaleableProximity(phys.wakeProximity.spec) : null;
 
     for (const partPhys of phys.parts) {
       const obj = this.part(partPhys.suffix);
@@ -76,12 +80,22 @@ class PhysicsModul extends Modul {
 
   override activate(): void {
     super.activate();
+    this.wakeGateActive = this.wakeProximity !== null;
+    this.wakeProximity?.reset();
     this.altForceState = this.phys.altForce?.startState ?? 0;
     this.altTimer = 0;
   }
 
   override update(dt: number): void {
     super.update(dt);
+    const wake = this.phys.wakeProximity;
+    if (this.active && this.wakeGateActive && this.wakeProximity && wake) {
+      const target = this.partWorldPosition(wake.target);
+      if (target && this.wakeProximity.updatePositions(this.ctx.ball.position, target) === 'enterRange') {
+        this.wakeGateActive = false;
+        for (const part of this.dynamicParts) part.body.wakeUp();
+      }
+    }
     const alt = this.phys.altForce;
     if (alt && this.altTarget && this.active) {
       this.altTimer += dt;
@@ -111,31 +125,62 @@ class PhysicsModul extends Modul {
 
   override reset(): void {
     super.reset();
+    this.wakeGateActive = this.wakeProximity !== null;
+    this.wakeProximity?.reset();
     this.altForceState = this.phys.altForce?.startState ?? 0;
     this.altTimer = 0;
+  }
+
+  override debugState(): Record<string, unknown> {
+    return { ...super.debugState(), wakeGateActive: this.wakeGateActive };
   }
 }
 
 /** Breakable plank bridge: a stone ball touching the middle plank snaps the chain. */
 class BridgeModul extends PhysicsModul {
   private broken = false;
-  /** the Platte04 -> Platte05 link that snaps (5th authored hinge) */
+  private bridgeWakeGateActive = true;
+  private bridgeBreakGateActive = false;
+  private wakeSampler = new ScaleableProximity(MODUL29_WAKE_PROXIMITY);
+  private breakSampler = new ScaleableProximity(MODUL29_BREAK_PROXIMITY);
+  /** HingeFrame07: the source link between Platte06 and Platte07. */
   private middleJoint: RAPIER.ImpulseJoint | null;
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, phys: ModulPhys) {
     super(name, sector, instance, ctx, phys);
-    this.middleJoint = this.joints[4] ?? null;
+    this.middleJoint = this.joints[MODUL29_BREAK_JOINT_INDEX] ?? null;
+  }
+
+  override activate(): void {
+    super.activate();
+    this.bridgeWakeGateActive = true;
+    this.bridgeBreakGateActive = false;
+    this.wakeSampler.reset();
+    this.breakSampler.reset();
   }
 
   override update(dt: number): void {
     super.update(dt);
     if (!this.active || this.broken) return;
-    if (this.ctx.ball.kind !== 'stone') return;
+
+    if (this.bridgeWakeGateActive) {
+      const root = this.instance.root.getWorldPosition(new THREE.Vector3());
+      if (this.wakeSampler.updatePositions(this.ctx.ball.position, root) === 'enterRange') {
+        this.bridgeWakeGateActive = false;
+        this.bridgeBreakGateActive = true;
+        this.breakSampler.reset();
+        for (const part of this.dynamicParts) part.body.wakeUp();
+      }
+    }
+    if (!this.bridgeBreakGateActive) return;
+
     const plate = this.findDynamic(MODUL29_TRIGGER_PLATE);
     if (!plate) return;
     const p = plate.body.translation();
-    if (nearPoint(this.ctx.ball.position, new THREE.Vector3(p.x, p.y, p.z), 3.2, 5)) {
+    const output = this.breakSampler.updatePositions(this.ctx.ball.position, p);
+    if (output === 'enterRange' && this.ctx.ball.kind === 'stone') {
       this.broken = true;
+      this.bridgeBreakGateActive = false;
       if (this.middleJoint) this.removeJoint(this.middleJoint);
       this.middleJoint = null;
       for (const dp of this.dynamicParts) dp.body.wakeUp();
@@ -146,9 +191,13 @@ class BridgeModul extends PhysicsModul {
   override reset(): void {
     // the original repairs the bridge on every sector restart
     super.reset();
+    this.bridgeWakeGateActive = true;
+    this.bridgeBreakGateActive = false;
+    this.wakeSampler.reset();
+    this.breakSampler.reset();
     if (this.broken) {
       this.broken = false;
-      const hinge = this.phys.hinges?.[4];
+      const hinge = this.phys.hinges?.[MODUL29_BREAK_JOINT_INDEX];
       if (hinge) {
         const part = this.findDynamic(hinge.part);
         const pin = this.partWorldPosition(hinge.pin);
@@ -159,6 +208,16 @@ class BridgeModul extends PhysicsModul {
         }
       }
     }
+  }
+
+  override debugState(): Record<string, unknown> {
+    return {
+      ...super.debugState(),
+      broken: this.broken,
+      wakeGateActive: this.bridgeWakeGateActive,
+      breakGateActive: this.bridgeBreakGateActive,
+      breakJointPresent: this.middleJoint !== null,
+    };
   }
 }
 

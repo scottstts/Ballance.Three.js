@@ -137,6 +137,21 @@ export abstract class Modul {
     for (const p of this.dynamicParts) this.syncPart(p);
   }
 
+  debugState(): Record<string, unknown> {
+    return {
+      name: this.name,
+      sector: this.sector,
+      active: this.active,
+      joints: this.joints.length,
+      parts: Object.fromEntries(
+        this.dynamicParts.map((part) => {
+          const position = part.body.translation();
+          return [part.name, { position: [position.x, position.y, position.z], sleeping: part.body.isSleeping() }];
+        }),
+      ),
+    };
+  }
+
   dispose(): void {
     for (const p of this.dynamicParts) this.ctx.physics.world.removeRigidBody(p.body);
     this.dynamicParts = [];
