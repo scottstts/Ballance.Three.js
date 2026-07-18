@@ -329,48 +329,191 @@ export class FlameSystem {
   }
 }
 
-/** The ball's round drop shadow (HardShadow.bmp), projected onto the floor. */
-export class BallShadow {
-  readonly mesh: THREE.Mesh;
+/** Values serialized by Balls.nmo's TT Simple Shadow behavior. */
+export const BALL_SHADOW_SOURCE = {
+  texture: 'Textures/HardShadow.bmp',
+  sizeScale: 1.2999999523162842,
+  maxHeight: 20,
+} as const;
 
-  constructor() {
+/** Exact projected width used by TT Simple Shadow. */
+export function ballShadowFootprintWidth(localBallWidth: number, worldScale = 1): number {
+  return localBallWidth * worldScale * BALL_SHADOW_SOURCE.sizeScale;
+}
+
+interface ShadowSample {
+  collider: number;
+  point: THREE.Vector3;
+}
+
+const SHADOW_GRID = 13;
+const SHADOW_VERTEX_CAPACITY = (SHADOW_GRID - 1) * (SHADOW_GRID - 1) * 6;
+
+/**
+ * The original TT Simple Shadow does not create a flat billboard. It adds
+ * HardShadow as a vertically projected material channel to every intersecting
+ * floor mesh. Sampling the browser collision meshes recreates that conforming
+ * projection on ramps, domes, and moving moduls without modifying their source
+ * materials.
+ */
+export class BallShadow {
+  readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  private readonly positions = new Float32Array(SHADOW_VERTEX_CAPACITY * 3);
+  private readonly uvs = new Float32Array(SHADOW_VERTEX_CAPACITY * 2);
+  private readonly samples: ShadowSample[] = Array.from({ length: SHADOW_GRID * SHADOW_GRID }, () => ({
+    collider: -1,
+    point: new THREE.Vector3(),
+  }));
+  private readonly widthByVisual = new WeakMap<THREE.Object3D, number>();
+  private readonly world: RAPIER.World;
+
+  constructor(physics: PhysicsWorld) {
+    this.world = physics.world;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(this.uvs, 2).setUsage(THREE.DynamicDrawUsage));
+    geometry.setDrawRange(0, 0);
     this.mesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.6, 4.6),
+      geometry,
       new THREE.MeshBasicMaterial({
         transparent: true,
-        opacity: 0.55,
+        opacity: 1,
         depthWrite: false,
         polygonOffset: true,
-        polygonOffsetFactor: -2,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
         color: 0x000000,
+        side: THREE.DoubleSide,
       }),
     );
-    this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.name = 'TT Simple Shadow';
     this.mesh.renderOrder = 2;
+    this.mesh.frustumCulled = false;
     this.mesh.visible = false;
   }
 
   async init(): Promise<void> {
-    const tex = await spriteTexture('Textures/HardShadow.bmp', 'shadow');
+    const tex = await spriteTexture(BALL_SHADOW_SOURCE.texture, 'shadow');
     if (tex) {
-      const mat = this.mesh.material as THREE.MeshBasicMaterial;
-      mat.map = tex;
-      mat.needsUpdate = true;
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      this.mesh.material.map = tex;
+      this.mesh.material.needsUpdate = true;
     }
   }
 
-  /** place under the ball using a downward ray hit */
-  update(hitY: number | null, ballPos: THREE.Vector3): void {
-    if (hitY === null) {
-      this.mesh.visible = false;
-      return;
+  update(
+    ballPos: THREE.Vector3,
+    ballVisual: THREE.Object3D,
+    excludeCollider: RAPIER.Collider,
+    excludeBody: RAPIER.RigidBody,
+  ): void {
+    ballVisual.updateWorldMatrix(true, false);
+    let localWidth = this.widthByVisual.get(ballVisual);
+    if (localWidth === undefined) {
+      localWidth = localObjectWidth(ballVisual);
+      this.widthByVisual.set(ballVisual, localWidth);
     }
-    const height = ballPos.y - hitY;
-    this.mesh.visible = height < 30;
-    this.mesh.position.set(ballPos.x, hitY + 0.08, ballPos.z);
-    const mat = this.mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = 0.55 * THREE.MathUtils.clamp(1 - height / 30, 0.15, 1);
+    const scale = new THREE.Vector3().setFromMatrixScale(ballVisual.matrixWorld).x;
+    const width = ballShadowFootprintWidth(localWidth, scale);
+    const half = width * 0.5;
+    const step = width / (SHADOW_GRID - 1);
+
+    for (let z = 0; z < SHADOW_GRID; z++) {
+      for (let x = 0; x < SHADOW_GRID; x++) {
+        const sample = this.samples[z * SHADOW_GRID + x];
+        const ray = new RAPIER.Ray(
+          { x: ballPos.x - half + x * step, y: ballPos.y, z: ballPos.z - half + z * step },
+          { x: 0, y: -1, z: 0 },
+        );
+        const hit = this.world.castRayAndGetNormal(
+          ray,
+          BALL_SHADOW_SOURCE.maxHeight,
+          true,
+          undefined,
+          undefined,
+          excludeCollider,
+          excludeBody,
+        );
+        if (!hit) {
+          sample.collider = -1;
+          continue;
+        }
+        sample.collider = hit.collider.handle;
+        // TT applies the texture in the floor's own material pass. A tiny
+        // normal offset gives the equivalent depth result for our overlay.
+        sample.point.set(ray.origin.x, ballPos.y - hit.timeOfImpact, ray.origin.z);
+        sample.point.x += hit.normal.x * 0.01;
+        sample.point.y += hit.normal.y * 0.01;
+        sample.point.z += hit.normal.z * 0.01;
+      }
+    }
+
+    let vertexCount = 0;
+    const addTriangle = (a: number, b: number, c: number): void => {
+      const first = this.samples[a];
+      if (first.collider < 0 || first.collider !== this.samples[b].collider || first.collider !== this.samples[c].collider) {
+        return;
+      }
+      for (const index of [a, b, c]) {
+        const sample = this.samples[index];
+        const p = vertexCount * 3;
+        this.positions[p] = sample.point.x;
+        this.positions[p + 1] = sample.point.y;
+        this.positions[p + 2] = sample.point.z;
+        const u = vertexCount * 2;
+        const gridX = index % SHADOW_GRID;
+        const gridZ = Math.floor(index / SHADOW_GRID);
+        this.uvs[u] = gridX / (SHADOW_GRID - 1);
+        this.uvs[u + 1] = gridZ / (SHADOW_GRID - 1);
+        vertexCount++;
+      }
+    };
+    for (let z = 0; z < SHADOW_GRID - 1; z++) {
+      for (let x = 0; x < SHADOW_GRID - 1; x++) {
+        const a = z * SHADOW_GRID + x;
+        const b = a + 1;
+        const c = a + SHADOW_GRID;
+        const d = c + 1;
+        addTriangle(a, c, b);
+        addTriangle(b, c, d);
+      }
+    }
+
+    const position = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const uv = this.mesh.geometry.getAttribute('uv') as THREE.BufferAttribute;
+    position.needsUpdate = true;
+    uv.needsUpdate = true;
+    this.mesh.geometry.setDrawRange(0, vertexCount);
+    this.mesh.visible = vertexCount > 0;
   }
+
+  dispose(): void {
+    this.mesh.material.map?.dispose();
+    this.mesh.material.dispose();
+    this.mesh.geometry.dispose();
+  }
+}
+
+function localObjectWidth(object: THREE.Object3D): number {
+  const rootInverse = object.matrixWorld.clone().invert();
+  const relative = new THREE.Matrix4();
+  const box = new THREE.Box3();
+  const point = new THREE.Vector3();
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.computeBoundingBox();
+    const childBox = child.geometry.boundingBox;
+    if (!childBox) return;
+    relative.multiplyMatrices(rootInverse, child.matrixWorld);
+    for (const x of [childBox.min.x, childBox.max.x]) {
+      for (const y of [childBox.min.y, childBox.max.y]) {
+        for (const z of [childBox.min.z, childBox.max.z]) {
+          box.expandByPoint(point.set(x, y, z).applyMatrix4(relative));
+        }
+      }
+    }
+  });
+  return box.isEmpty() ? 4 : box.max.x - box.min.x;
 }
 
 function resolveEffectParameter(file: NmoFile, parameter: ParameterRec): ParameterRec {

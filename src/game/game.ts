@@ -150,7 +150,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   await shatter.init();
   const pickups = new PickupSystem();
   await pickups.init(built, scene);
-  const ballShadow = new BallShadow();
+  const ballShadow = new BallShadow(physics);
   await ballShadow.init();
   scene.add(ballShadow.mesh);
 
@@ -629,12 +629,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     lightning.update(frameDt, ball.position, flameScale);
     trafoAnim.update(frameDt);
     shatter.update();
-    {
-      const bp = ball.position;
-      const ray = new RAPIER.Ray({ x: bp.x, y: bp.y, z: bp.z }, { x: 0, y: -1, z: 0 });
-      const hit = physics.world.castRay(ray, 60, true, undefined, undefined, ball.collider, ball.body);
-      ballShadow.update(hit ? bp.y - hit.timeOfImpact : null, bp);
-    }
+    ballShadow.update(ball.position, ball.visual, ball.collider, ball.body);
     if (skyLayer instanceof THREE.Mesh) {
       const dx = rig.camera.position.x - skyLayer.position.x;
       const dz = rig.camera.position.z - skyLayer.position.z;
@@ -735,6 +730,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       unsubscribeSettings();
       audio.dispose();
       shatter.clear();
+      ballShadow.dispose();
       balloonPhysics?.dispose();
       moduls.dispose();
       tutorial?.dispose();

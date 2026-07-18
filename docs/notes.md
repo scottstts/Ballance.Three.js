@@ -183,6 +183,18 @@ Append-only scratchpad of things learned during the port. Read this first when r
   (exclude ball collider/body). Shadow decal textures are dark-on-white: derive alpha as
   255-luminance and force black ink ("shadow" mode of spriteTexture); glow sprites use
   alpha=luminance ("glow" mode). Using such a texture as map+alphaMap gives a black SQUARE.
+
+### Ball shadow correction (original DLL recovered)
+
+- The old single `4.6`-unit plane, `0.55` opacity, `30`-unit visibility, and invented
+  height fade were not source behavior. `Balls.nmo` runs `TT Simple Shadow` from
+  `TT_Gravity_RT.dll` with `HardShadow`, `Size Scale=1.2999999523162842`, and
+  `Maximum Height=20`.
+- The DLL projects the texture vertically into material channels on every intersecting
+  floor mesh. It derives footprint width from the target ball's local X bounding box,
+  transformed scale, and Size Scale; it does not fade with height. The browser port now
+  samples its collision surfaces over that exact footprint and builds a conforming
+  overlay, so ramps, domes, and moving moduls receive the projected texture.
 - Checkpoint flames now follow original states: big flame only on the ARMED (next)
   checkpoint, two small flames on future ones, none once crossed. flames.arm() at boot for
   PC_TwoFlames_01 and after each crossing for the next.

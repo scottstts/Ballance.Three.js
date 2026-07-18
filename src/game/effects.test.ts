@@ -5,7 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import { decodeCk2dCurve } from './curve.ts';
-import { FLAME_BIG, FLAME_SMALL, LIGHTNING_SOURCE, TRAFO_SOURCE, type FlameSpec } from './effects.ts';
+import {
+  BALL_SHADOW_SOURCE,
+  FLAME_BIG,
+  FLAME_SMALL,
+  LIGHTNING_SOURCE,
+  TRAFO_SOURCE,
+  ballShadowFootprintWidth,
+  type FlameSpec,
+} from './effects.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -208,6 +216,43 @@ describe.skipIf(!existsSync(ballsPath))('source-backed ball birth effect', () =>
     expect(frame?.kind).toBe('entity');
     if (frame?.kind === 'entity') expect(smoke.radius).toBeCloseTo(frame.worldMatrix[0], 6);
     expect(LIGHTNING_SOURCE.smokeDelay).toBe(2.5);
+  });
+});
+
+describe.skipIf(!existsSync(ballsPath))('source-backed ball shadow', () => {
+  const file = existsSync(ballsPath) ? parseNmo(readFileSync(ballsPath)) : null;
+
+  it('uses the TT Simple Shadow texture, footprint scale, and hard height limit', () => {
+    if (!file) return;
+    const source = parameters(file, behavior(file, 'TT Simple Shadow'));
+    expect(BALL_SHADOW_SOURCE.sizeScale).toBe(floatValue(source.get('Size Scale')));
+    expect(BALL_SHADOW_SOURCE.maxHeight).toBe(floatValue(source.get('Maximum Height')));
+    const texture = file.objects[source.get('Texture')?.valueObjectIndex ?? -1];
+    expect(texture?.kind).toBe('texture');
+    expect(texture?.name).toBe('HardShadow');
+    if (texture?.kind === 'texture') {
+      expect(texture.fileNames).toContain('HardShadow.bmp');
+      expect(BALL_SHADOW_SOURCE.texture.endsWith(texture.fileNames[0])).toBe(true);
+    }
+  });
+
+  it('derives the projected width from each original ball mesh bounding box', () => {
+    if (!file) return;
+    for (const name of ['Ball_Wood', 'Ball_Stone', 'Ball_Paper']) {
+      const entity = file.byName.get(name)?.find((record) => record.kind === 'entity');
+      expect(entity?.kind).toBe('entity');
+      if (entity?.kind !== 'entity') continue;
+      const mesh = file.objects[entity.meshIndex];
+      expect(mesh?.kind).toBe('mesh');
+      if (mesh?.kind !== 'mesh') continue;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (let i = 0; i < mesh.vertexCount; i++) {
+        minX = Math.min(minX, mesh.positions[i * 3]);
+        maxX = Math.max(maxX, mesh.positions[i * 3]);
+      }
+      expect(ballShadowFootprintWidth(maxX - minX)).toBeCloseTo((maxX - minX) * 1.2999999523162842, 7);
+    }
   });
 });
 
