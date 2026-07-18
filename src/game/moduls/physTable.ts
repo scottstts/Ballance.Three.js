@@ -20,6 +20,8 @@ export interface PartPhys {
   startFrozen?: boolean;
   /** use trimesh collider (hollow/hooked shapes); default convex hull */
   trimesh?: boolean;
+  /** sphere collider of this radius (loose balls) */
+  sphereRadius?: number;
   /** sound surface when the ball hits this part */
   surface?: 'wood' | 'stone' | 'metal';
 }
@@ -292,6 +294,49 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
   },
   P_Box: {
     parts: [{ suffix: 'Box_MF', mass: 1, friction: 0.7, elasticity: 0.3, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' }],
+  },
+  // loose pushable balls placed on the course
+  P_Ball_Paper: {
+    parts: [
+      {
+        suffix: 'Paper_MF',
+        mass: 0.2,
+        friction: 0.5,
+        elasticity: 0.4,
+        linearDamp: 1.5,
+        rotDamp: 0.1,
+        sphereRadius: 2,
+        surface: 'wood',
+      },
+    ],
+  },
+  P_Ball_Wood: {
+    parts: [
+      {
+        suffix: 'Wood_MF',
+        mass: 2,
+        friction: 0.6,
+        elasticity: 0.2,
+        linearDamp: 0.6,
+        rotDamp: 0.1,
+        sphereRadius: 2,
+        surface: 'wood',
+      },
+    ],
+  },
+  P_Ball_Stone: {
+    parts: [
+      {
+        suffix: 'Stone_MF',
+        mass: 10,
+        friction: 0.8,
+        elasticity: 0.1,
+        linearDamp: 0.2,
+        rotDamp: 0.1,
+        sphereRadius: 2,
+        surface: 'stone',
+      },
+    ],
   },
   P_Dome: {
     parts: [{ suffix: 'Dome_MF', fixed: true, friction: 0.2, elasticity: 0.8, trimesh: true, surface: 'stone' }],

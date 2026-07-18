@@ -170,3 +170,23 @@ Append-only scratchpad of things learned during the port. Read this first when r
   fly to the HUD on collect (flash+hide instead); L12 UFO ending approximated by the
   balloon rise (no UFO model exists in the original asset files); menu is DOM-based
   rather than the 3D menu tower; trafo ring animation is the lightning sphere only.
+
+## Continuation batch (loose balls, shadows, flame states)
+
+- **P_Ball_Paper/Wood/Stone are real gameplay props**: loose pushable balls placed on the
+  course (19 in L1 alone; the stone balls before the L1 gates). Implemented as sphere-collider
+  physics moduls (radius 2; constants from the prefab extraction). The trafo-target theory
+  was wrong.
+- Ball drop shadow: HardShadow.bmp as a floor decal under the ball via downward Rapier ray
+  (exclude ball collider/body). Shadow decal textures are dark-on-white: derive alpha as
+  255-luminance and force black ink ("shadow" mode of spriteTexture); glow sprites use
+  alpha=luminance ("glow" mode). Using such a texture as map+alphaMap gives a black SQUARE.
+- Checkpoint flames now follow original states: big flame only on the ARMED (next)
+  checkpoint, two small flames on future ones, none once crossed. flames.arm() at boot for
+  PC_TwoFlames_01 and after each crossing for the next.
+- Fan modul loops Misc_Ventilator.wav via AudioManager.createLoop (positional, bound to the
+  instance root; active only with the sector). ModulContext.attachLoop is the hook.
+- Extra Point collect: spheres rise ~0.35s then chase the camera and shrink (original
+  fly-to-HUD approximation), then hide.
+- BOOT ORDER MATTERS: AudioManager must be constructed BEFORE ModulManager.create (fan
+  moduls call ctx.attachLoop in their constructors).

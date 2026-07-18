@@ -11,7 +11,8 @@ import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
-import { FlameSystem, LightningSphere, ShatterSystem } from './effects.ts';
+import RAPIER from '@dimforge/rapier3d-compat';
+import { BallShadow, FlameSystem, LightningSphere, ShatterSystem } from './effects.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
@@ -118,6 +119,24 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   await shatter.init();
   const pickups = new PickupSystem();
   await pickups.init(built, scene);
+  const ballShadow = new BallShadow();
+  await ballShadow.init();
+  scene.add(ballShadow.mesh);
+
+  const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
+  rig.resetTo(ball.position, spawn.yaw);
+
+  const audio = new AudioManager(rig.camera);
+  const applyVolumes = () => {
+    const s = gameStore.getState().settings;
+    audio.musicVolume = s.musicVolume;
+    audio.sfxVolume = s.sfxVolume;
+  };
+  applyVolumes();
+  const unsubscribeSettings = gameStore.subscribe((s, prev) => {
+    if (s.settings !== prev.settings) applyVolumes();
+  });
+  audio.startMusic(level);
 
   bootStage('moduls');
   const onlyModuls = bootFlags.get('moduls')?.split(',');
@@ -129,6 +148,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       scene,
       ball,
       registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
+      attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
       emit: (ev) => {
         const s = gameStore.getState();
         switch (ev.kind) {
@@ -153,22 +173,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     sectorLookup(built),
   );
   moduls.setSector(1);
+  flames.arm('PC_TwoFlames_01');
   bootStage('done');
-
-  const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
-  rig.resetTo(ball.position, spawn.yaw);
-
-  const audio = new AudioManager(rig.camera);
-  const applyVolumes = () => {
-    const s = gameStore.getState().settings;
-    audio.musicVolume = s.musicVolume;
-    audio.sfxVolume = s.sfxVolume;
-  };
-  applyVolumes();
-  const unsubscribeSettings = gameStore.subscribe((s, prev) => {
-    if (s.settings !== prev.settings) applyVolumes();
-  });
-  audio.startMusic(level);
 
   const input = new Input();
   input.attach(window);
@@ -320,6 +326,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
           flames.extinguish(`PC_TwoFlames_${String(ev.sector - 1).padStart(2, '0')}`);
+          flames.arm(`PC_TwoFlames_${String(ev.sector).padStart(2, '0')}`);
           audio.play('Music_EndCheckpoint.wav', pos, 0.8, scene);
           break;
         case 'finish':
@@ -357,9 +364,15 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const speed = Math.hypot(v.x, v.y, v.z);
     audio.updateRoll(ball.kind, contactSurface(), speed, ball.position, scene, frameDt);
     flames.update(frameDt);
-    pickups.update(frameDt);
+    pickups.update(frameDt, rig.camera.position);
     lightning.update(frameDt, ball.position);
     shatter.update();
+    {
+      const bp = ball.position;
+      const ray = new RAPIER.Ray({ x: bp.x, y: bp.y, z: bp.z }, { x: 0, y: -1, z: 0 });
+      const hit = physics.world.castRay(ray, 60, true, undefined, undefined, ball.collider, ball.body);
+      ballShadow.update(hit ? bp.y - hit.timeOfImpact : null, bp);
+    }
     if (skyLayer instanceof THREE.Mesh) {
       const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
       for (const m of mats) {

@@ -132,9 +132,11 @@ class BridgeModul extends PhysicsModul {
 class FanModul extends Modul {
   private windBox: THREE.Box3 | null = null;
   private rotor: THREE.Object3D | undefined;
+  private loop: { setActive(on: boolean): void; dispose(): void };
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext) {
     super(name, sector, instance, ctx);
+    this.loop = ctx.attachLoop('Misc_Ventilator.wav', instance.root, 0.7);
     for (const [partName, obj] of instance.parts) {
       if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
         obj.updateWorldMatrix(true, false);
@@ -156,6 +158,16 @@ class FanModul extends Modul {
     }
   }
 
+  override activate(): void {
+    super.activate();
+    this.loop.setActive(true);
+  }
+
+  override deactivate(): void {
+    super.deactivate();
+    this.loop.setActive(false);
+  }
+
   override update(dt: number): void {
     if (this.rotor) {
       this.rotor.rotation.y += dt * Math.PI * 2;
@@ -170,6 +182,11 @@ class FanModul extends Modul {
   }
 
   override reset(): void {}
+
+  override dispose(): void {
+    super.dispose();
+    this.loop.dispose();
+  }
 }
 
 /** Ball transformer: touching it morphs the ball type (with re-arm on leave). */
@@ -217,6 +234,9 @@ export const modulFactories: ModulFactory[] = [
   make('P_Modul_29', (n, s, i, c) => new BridgeModul(n, s, i, c, MODUL_PHYS.P_Modul_29)),
   physFactory('P_Box'),
   physFactory('P_Dome'),
+  physFactory('P_Ball_Paper'),
+  physFactory('P_Ball_Wood'),
+  physFactory('P_Ball_Stone'),
   physFactory('P_Modul_01'),
   physFactory('P_Modul_03'),
   physFactory('P_Modul_08'),

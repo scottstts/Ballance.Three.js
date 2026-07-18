@@ -11,15 +11,19 @@ import { localVertices } from './moduls/base.ts';
 import { BALL_DEFS, type BallKind } from './constants.ts';
 import type { PhysicsWorld } from './physics.ts';
 
-async function spriteTexture(path: string, colorKey = true): Promise<THREE.Texture | null> {
+async function spriteTexture(path: string, mode: 'glow' | 'shadow' = 'glow'): Promise<THREE.Texture | null> {
   try {
     const img = await decodeImageFile(path);
-    if (colorKey) {
-      // flame/glow sprites use black as the transparent key (additive blending)
-      const d = img.rgba;
-      for (let i = 0; i < d.length; i += 4) {
-        const lum = Math.max(d[i], d[i + 1], d[i + 2]);
+    const d = img.rgba;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = Math.max(d[i], d[i + 1], d[i + 2]);
+      if (mode === 'glow') {
+        // glow sprites: black background is the transparent key
         d[i + 3] = lum;
+      } else {
+        // shadow decals: dark blob on white — alpha from darkness, black ink
+        d[i + 3] = 255 - lum;
+        d[i] = d[i + 1] = d[i + 2] = 0;
       }
     }
     const tex = new THREE.DataTexture(new Uint8Array(img.rgba.buffer), img.width, img.height, THREE.RGBAFormat);
@@ -80,10 +84,14 @@ export class Flame {
   }
 }
 
-/** Flame decorations for PS_FourFlames / PC_TwoFlames placements. */
+/**
+ * Flame decorations. Original states: the start pad burns four flames; the
+ * *armed* (next) checkpoint burns its big center flame, later checkpoints
+ * show two small flames, crossed checkpoints none.
+ */
 export class FlameSystem {
   private flames: Flame[] = [];
-  private byCheckpoint = new Map<string, Flame[]>();
+  private byCheckpoint = new Map<string, { big: Flame; smalls: Flame[] }>();
   private texture: THREE.Texture | null = null;
 
   async init(built: BuiltScene, scene: THREE.Scene): Promise<void> {
@@ -99,10 +107,12 @@ export class FlameSystem {
       ];
       for (const [x, y, z] of offsets) this.addFlame(scene, start.object, new THREE.Vector3(x, y, -z), false);
     }
-    // checkpoints: one big center flame while armed
     for (const cp of groupEntities(built, 'PC_Checkpoints')) {
-      const flame = this.addFlame(scene, cp.object, new THREE.Vector3(0, 1.5, 0), true);
-      this.byCheckpoint.set(cp.rec.name, [flame]);
+      const big = this.addFlame(scene, cp.object, new THREE.Vector3(0, 1.5, 0), true);
+      const smallA = this.addFlame(scene, cp.object, new THREE.Vector3(0, 2.1, 6.9), false);
+      const smallB = this.addFlame(scene, cp.object, new THREE.Vector3(0, 2.1, -7.1), false);
+      big.group.visible = false;
+      this.byCheckpoint.set(cp.rec.name, { big, smalls: [smallA, smallB] });
     }
   }
 
@@ -115,15 +125,70 @@ export class FlameSystem {
     return flame;
   }
 
-  /** checkpoint crossed: extinguish its flame */
+  /** the checkpoint the player must reach next: big flame on, smalls off */
+  arm(checkpointName: string): void {
+    const f = this.byCheckpoint.get(checkpointName);
+    if (!f) return;
+    f.big.group.visible = true;
+    for (const s of f.smalls) s.group.visible = false;
+  }
+
+  /** checkpoint crossed: all its flames out */
   extinguish(checkpointName: string): void {
-    for (const f of this.byCheckpoint.get(checkpointName) ?? []) f.group.visible = false;
+    const f = this.byCheckpoint.get(checkpointName);
+    if (!f) return;
+    f.big.group.visible = false;
+    for (const s of f.smalls) s.group.visible = false;
   }
 
   update(dt: number): void {
     for (const f of this.flames) {
       if (f.group.visible) f.update(dt);
     }
+  }
+}
+
+/** The ball's round drop shadow (HardShadow.bmp), projected onto the floor. */
+export class BallShadow {
+  readonly mesh: THREE.Mesh;
+
+  constructor() {
+    this.mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.6, 4.6),
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        color: 0x000000,
+      }),
+    );
+    this.mesh.rotation.x = -Math.PI / 2;
+    this.mesh.renderOrder = 2;
+    this.mesh.visible = false;
+  }
+
+  async init(): Promise<void> {
+    const tex = await spriteTexture('Textures/HardShadow.bmp', 'shadow');
+    if (tex) {
+      const mat = this.mesh.material as THREE.MeshBasicMaterial;
+      mat.map = tex;
+      mat.needsUpdate = true;
+    }
+  }
+
+  /** place under the ball using a downward ray hit */
+  update(hitY: number | null, ballPos: THREE.Vector3): void {
+    if (hitY === null) {
+      this.mesh.visible = false;
+      return;
+    }
+    const height = ballPos.y - hitY;
+    this.mesh.visible = height < 30;
+    this.mesh.position.set(ballPos.x, hitY + 0.08, ballPos.z);
+    const mat = this.mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.55 * THREE.MathUtils.clamp(1 - height / 30, 0.15, 1);
   }
 }
 

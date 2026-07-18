@@ -95,13 +95,20 @@ export class PickupSystem {
     }
   }
 
-  /** collect animation: hide (the fly-to-HUD burst is approximated by a flash) */
+  private flying = new Map<string, number>();
+
+  /** collect: point clusters fly toward the camera/HUD before vanishing */
   collect(name: string): void {
     const group = this.byName.get(name);
-    if (group) group.visible = false;
+    if (!group) return;
+    if (this.points.some((p) => p.name === name)) {
+      this.flying.set(name, 0);
+    } else {
+      group.visible = false;
+    }
   }
 
-  update(dt: number): void {
+  update(dt: number, cameraPos?: THREE.Vector3): void {
     for (const v of this.lifes) {
       if (!v.group.visible) continue;
       v.t += dt;
@@ -114,6 +121,22 @@ export class PickupSystem {
     for (const v of this.points) {
       if (!v.group.visible) continue;
       v.t += dt;
+      const flyT = this.flying.get(v.name);
+      if (flyT !== undefined && cameraPos) {
+        // original: the spheres rise then chase the camera before scoring
+        const t = flyT + dt;
+        this.flying.set(v.name, t);
+        if (t < 0.35) {
+          v.group.position.y += dt * 9;
+        } else {
+          v.group.position.lerp(cameraPos, Math.min(1, dt * 5.5));
+          v.group.scale.multiplyScalar(Math.max(0.0001, 1 - dt * 2.2));
+        }
+        if (t > 1.3 || (cameraPos && v.group.position.distanceTo(cameraPos) < 3)) {
+          v.group.visible = false;
+          this.flying.delete(v.name);
+        }
+      }
       for (let i = 0; i < v.orbiters.length; i++) {
         v.orbiters[i].rotation.y += dt * rot * (i % 2 === 0 ? 1 : -1) * 0.5;
       }

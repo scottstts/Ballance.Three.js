@@ -62,6 +62,34 @@ export class AudioManager {
     return p;
   }
 
+  /** looping positional effect bound to an object (fans etc.) */
+  createLoop(name: string, target: THREE.Object3D, volume = 1): { setActive(on: boolean): void; dispose(): void } {
+    let audio: THREE.PositionalAudio | null = null;
+    let wanted = false;
+    void this.load(name).then((buffer) => {
+      if (!buffer || this.disposed) return;
+      audio = new THREE.PositionalAudio(this.listener);
+      audio.setBuffer(buffer);
+      audio.setLoop(true);
+      audio.setRefDistance(25);
+      audio.setVolume(volume * this.sfxVolume);
+      target.add(audio);
+      if (wanted) audio.play();
+    });
+    return {
+      setActive: (on: boolean) => {
+        wanted = on;
+        if (!audio) return;
+        if (on && !audio.isPlaying) audio.play();
+        else if (!on && audio.isPlaying) audio.stop();
+      },
+      dispose: () => {
+        if (audio?.isPlaying) audio.stop();
+        audio?.removeFromParent();
+      },
+    };
+  }
+
   /** one-shot positional effect */
   play(name: string, position: THREE.Vector3, volume = 1, parent?: THREE.Object3D): void {
     void this.load(name).then((buffer) => {

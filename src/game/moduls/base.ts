@@ -17,6 +17,8 @@ export interface ModulContext {
   ball: Ball;
   /** register a modul collider's sound surface */
   registerSurface: (colliderHandle: number, surface: Surface) => void;
+  /** looping positional sound bound to an object */
+  attachLoop: (name: string, target: THREE.Object3D, volume?: number) => { setActive(on: boolean): void; dispose(): void };
   /** fires gameplay events upward (pickups, trafo, checkpoints...) */
   emit: (event: ModulEvent) => void;
 }
@@ -140,7 +142,9 @@ export abstract class Modul {
 
     const verts = localVertices(obj, scale);
     let desc: RAPIER.ColliderDesc | null = null;
-    if (phys.trimesh) {
+    if (phys.sphereRadius) {
+      desc = RAPIER.ColliderDesc.ball(phys.sphereRadius);
+    } else if (phys.trimesh) {
       const index = obj.geometry.getIndex();
       if (index) desc = RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(index.array));
     }
