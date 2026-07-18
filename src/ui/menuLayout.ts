@@ -1,4 +1,6 @@
 /** Menu.nmo's normalized 4:3 UI rectangles and atlas regions. */
+import type { NmoFile } from '../formats/ck2/types.ts';
+
 export type MenuRect = readonly [left: number, top: number, right: number, bottom: number];
 
 export const MENU_SOURCE_ASPECT = 4 / 3;
@@ -305,7 +307,72 @@ export const OPTIONS_RECTS = {
 export const CREDITS_RECTS = {
   text: [0.3400000035762787, 0.30000001192092896, 0.6599999666213989, 0.7000000476837158] as MenuRect,
   back: OPTIONS_BACK_RECT,
+  logo1: [
+    0.40000003576278687,
+    0.4000004827976227,
+    0.6000000834465027,
+    0.5100006461143494,
+  ] as MenuRect,
+  logo2: [
+    0.3500002920627594,
+    0.4000004827976227,
+    0.6500002145767212,
+    0.500000536441803,
+  ] as MenuRect,
 } as const;
+
+export const CREDITS_LOGO_UV = {
+  logo1: [0, 0, 0.5849999785423279, 0.5] as MenuRect,
+  logo2: [0, 0.5, 1, 1] as MenuRect,
+} as const;
+
+/** Scale inputs of Menu.nmo's two `2D Text` credit layers. */
+export const CREDITS_FONT_SOURCE = {
+  sourcePixelHeight: 32,
+  titleScale: [0.6000000238418579, 0.6499999761581421] as const,
+  copyScale: [0.4000000059604645, 0.44999998807907104] as const,
+  shadowAlpha: 0.501960813999176,
+  shadowAngle: 2.094395160675049,
+  shadowDistance: 4,
+} as const;
+
+/** Direct inputs of Menu.nmo/Text Fader and its two logo composites. */
+export const CREDITS_TIMING = {
+  textFadeIn: 500,
+  textFadeOut: 500,
+  textMillisecondsPerCharacter: 50,
+  textBaseWait: 1500,
+  firstPageReduction: 2000,
+  logo1FadeIn: 500,
+  logo1Wait: 4000,
+  logo1FadeOut: 500,
+  logo2FadeIn: 2000,
+  logo2Wait: 4000,
+  logo2FadeOut: 500,
+  repeatWait: 1000,
+} as const;
+
+export interface CreditBlock {
+  title: string;
+  copy: string;
+}
+
+/** Preserve every source newline and space; they position the two centered text layers. */
+export function decodeCreditBlocks(file: NmoFile): CreditBlock[] {
+  const table = file.byName.get('Menu_Credits_Strings')?.find((record) => record.kind === 'dataArray');
+  if (!table || table.kind !== 'dataArray') return [];
+  return table.rows.map((row) => ({ title: String(row[0] ?? ''), copy: String(row[1] ?? '') }));
+}
+
+/** `String length -> Calculator a*50+1500 -> 1st shorter` in Text Fader. */
+export function creditTextWait(block: CreditBlock, index: number): number {
+  return Math.max(
+    0,
+    block.copy.length * CREDITS_TIMING.textMillisecondsPerCharacter +
+      CREDITS_TIMING.textBaseWait -
+      (index === 0 ? CREDITS_TIMING.firstPageReduction : 0),
+  );
+}
 
 export const SCORE_RECTS = {
   field: [0.30000004172325134, 0.27000007033348083, 0.7000000476837158, 0.5700000524520874] as MenuRect,

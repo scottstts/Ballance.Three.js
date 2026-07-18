@@ -11,6 +11,8 @@ import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
 import {
   CONFIRM_RECTS,
+  CREDITS_FONT_SOURCE,
+  CREDITS_TIMING,
   CREDITS_RECTS,
   HIGHSCORE_ENTRY_RECTS,
   HIGHSCORE_RECTS,
@@ -19,7 +21,9 @@ import {
   MENU_BACK_RECT,
   OPTIONS_RECTS,
   SCORE_RECTS,
+  creditTextWait,
   menuBandRectStyle,
+  type CreditBlock,
   type MenuRect,
 } from './menuLayout.ts';
 import { useOgui } from './useOgui.ts';
@@ -437,91 +441,124 @@ function ConfirmScreen({
   );
 }
 
-/** Menu_Credits_Strings from the original Menu.nmo. */
-const CREDIT_BLOCKS = [
-  ['Ballance', 'A Cyparade production\n\nAll rights reserved.\n Berlin 2004.'],
-  ['for\nLISA MARIE', ''],
-  ['Monamur Musikproduktion', 'Sound Design and Music'],
-  ['Klaus Riech', 'Game Design\nProject Management\nArt Direction'],
-  ['Mirco Nierenz', 'Lead Scripting\nSoftware Development'],
-  ['Stephan Bludau', 'Technical Direction\nSoftware Development'],
-  ['Britta Fahrenbruch', 'Lead Level Design\nGraphic Design'],
-  ['Michael Herm', 'Sky Design\nGraphic Design'],
-  ['Constantin Rahn', 'Interface Design'],
-  ['Ulrich Weinberg', 'Producing'],
-  ['Ruth Meiners', 'Lead Testing'],
-  ['Level Design', 'Matthias Bauer\nBritta Fahrenbruch\nStanislav Funda\nMichael Herm\nJürgen Kisch\nJan Liebetrau\n Klaus Riech'],
-  ['Testing', 'Dorothea Busche, Paul Cultus, Oliver Franzke, Robert Hoffman, Lars Krüger, Ruth Lemmen, Max "phAsEr" Ulbricht, Manni, Philipp, Beate Schulz and Mariano Spiegelberg.'],
-  ['Translation', 'Annette Weinberg, Laura and Adrian Villalba-Weinberg, Giuseppe Littera, Virginie Delrieu-Meyer, Fabienne Chisloup, Klaus Riech, Tamara Lindner.'],
-  ['Thanks to', 'Ralf Löwenhaupt (go Ralfi, go Ralfi)\nAndre Menzel\nLars Krüger\nConstantin Rahn\nVirtools support team\n\nspecial thanks to Panda!'],
-  ['ATARI Europe', 'Jean Marcel Nicolaï\nHead of Operations'],
-  ['Republishing Team', 'Rebecka Pernered\nRepublishing Director\n\nSébastien Chaudat\nRepublishing Team Leader\n\nDiane Delaye\nRepublishing Producer\n\nLudovic Bony\nLocalisation team Leader'],
-  ['', 'Diane Delaye\nLocalisation Project Manager\n\nCaroline Fauchille\nPrinted Materials Team Leader\n\nSandrine Dubois\nPrinted Materials Project Manager\n\nVincent Hattenberger\nCopy Writer\n\nJenny Clark\nMAM Project Manager'],
-  ['Quality Assurance Team', 'Lewis Glover\nQuality Director\n\nCarine Mawart\nQuality Control Project Manager\n\nLisa Charman\nCertification Project Manager'],
-  ['', 'Pierre Marc Bissay\nProduct Planning Project Manager\n\nPhilippe Louvet\nEngineering Services Manager\n\nStéphane Entéric\nEngineering Services Expert\n\nEmeric Polin\nEngineering Services Expert'],
-  ['Marketing', 'Martin Spiess\nEuropean Marketing Senior VP\n\nCyril Voiron\nEuropean Group Marketing Manager\n\nSarah Brind\nEuropean Product Manager'],
-  ['Local Marketing', 'Spain\nDe La Pedraja Rodrigo\n\nGermany\nJens Hofmann\n\nUK\nBen Walker\n\nFrance\nLionel Arnaud\n\nBenelux\nSimone Goudsmit\n\nItaly\nGiorgia Jannelli'],
-  ['Special Thanks', 'RelQ\nPrashanth "TheWizard" Kannan\nRohit "NTT" Agarwal\nGaurav "Mofo" Kudva\nGautam "Vieri" Kudva\nBabel/Absolute Quality\nJulien Amougou\nTake Off/Ace\nKBP\nSynthesis'],
-] as const;
+type CreditVisual =
+  | { kind: 'text'; index: number; stage: 'in' | 'hold' | 'out' }
+  | { kind: 'logo1' | 'logo2'; stage: 'in' | 'hold' | 'out' }
+  | { kind: 'wait' };
 
-function wrapCredit(text: string, limit = 45): string[] {
-  const output: string[] = [];
-  for (const sourceLine of text.split('\n')) {
-    if (sourceLine === '') {
-      output.push('');
-      continue;
+function CreditTextLayer({ ogui, text, title }: { ogui: Ogui; text: string; title: boolean }) {
+  const [scaleX, scaleY] = title ? CREDITS_FONT_SOURCE.titleScale : CREDITS_FONT_SOURCE.copyScale;
+  return (
+    <div className={`og-source-credit-layer ${title ? 'og-source-credit-title-layer' : 'og-source-credit-copy-layer'}`}>
+      {text.split('\n').map((line, index) => (
+        <div className="og-source-credit-line" key={index}>
+          {line !== '' && (
+            <img
+              src={
+                ogui.text(line, CREDITS_FONT_SOURCE.sourcePixelHeight, '#ffffff', '#000000', {
+                  scaleX,
+                  scaleY,
+                }).url
+              }
+              alt=""
+              draggable={false}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function creditTransition(visual: CreditVisual, credits: readonly CreditBlock[]): { delay: number; next: CreditVisual } {
+  if (visual.kind === 'text') {
+    if (visual.stage === 'in') {
+      return { delay: CREDITS_TIMING.textFadeIn, next: { ...visual, stage: 'hold' } };
     }
-    let line = '';
-    for (const word of sourceLine.split(' ')) {
-      if (line !== '' && line.length + word.length + 1 > limit) {
-        output.push(line);
-        line = word;
-      } else {
-        line += `${line === '' ? '' : ' '}${word}`;
-      }
+    if (visual.stage === 'hold') {
+      return { delay: creditTextWait(credits[visual.index], visual.index), next: { ...visual, stage: 'out' } };
     }
-    output.push(line);
+    if (visual.index + 1 < credits.length) {
+      return {
+        delay: CREDITS_TIMING.textFadeOut,
+        next: { kind: 'text', index: visual.index + 1, stage: 'in' },
+      };
+    }
+    return { delay: CREDITS_TIMING.textFadeOut, next: { kind: 'logo1', stage: 'in' } };
   }
-  return output;
+  if (visual.kind === 'logo1') {
+    if (visual.stage === 'in') return { delay: CREDITS_TIMING.logo1FadeIn, next: { ...visual, stage: 'hold' } };
+    if (visual.stage === 'hold') return { delay: CREDITS_TIMING.logo1Wait, next: { ...visual, stage: 'out' } };
+    return { delay: CREDITS_TIMING.logo1FadeOut, next: { kind: 'logo2', stage: 'in' } };
+  }
+  if (visual.kind === 'logo2') {
+    if (visual.stage === 'in') return { delay: CREDITS_TIMING.logo2FadeIn, next: { ...visual, stage: 'hold' } };
+    if (visual.stage === 'hold') return { delay: CREDITS_TIMING.logo2Wait, next: { ...visual, stage: 'out' } };
+    return { delay: CREDITS_TIMING.logo2FadeOut, next: { kind: 'wait' } };
+  }
+  return { delay: CREDITS_TIMING.repeatWait, next: { kind: 'text', index: 0, stage: 'in' } };
 }
 
 export function CreditsScreen() {
   const set = useGameStore((s) => s.set);
   const ogui = useOgui();
-  const [creditIndex, setCreditIndex] = useState(0);
+  const [visual, setVisual] = useState<CreditVisual>({ kind: 'text', index: 0, stage: 'in' });
   useEffect(() => {
-    const [title, copy] = CREDIT_BLOCKS[creditIndex];
-    const timer = window.setTimeout(
-      () => setCreditIndex((current) => (current + 1) % CREDIT_BLOCKS.length),
-      1500 + (title.length + copy.length) * 50,
-    );
+    if (!ogui || ogui.credits.length === 0) return;
+    const transition = creditTransition(visual, ogui.credits);
+    const timer = window.setTimeout(() => setVisual(transition.next), transition.delay);
     return () => window.clearTimeout(timer);
-  }, [creditIndex]);
+  }, [ogui, visual]);
   if (!ogui) return null;
-  const [title, copy] = CREDIT_BLOCKS[creditIndex];
-  const creditDuration = 1500 + (title.length + copy.length) * 50;
+  const fadeDuration =
+    visual.kind === 'text'
+      ? visual.stage === 'in'
+        ? CREDITS_TIMING.textFadeIn
+        : CREDITS_TIMING.textFadeOut
+      : visual.kind === 'logo1'
+        ? visual.stage === 'in'
+          ? CREDITS_TIMING.logo1FadeIn
+          : CREDITS_TIMING.logo1FadeOut
+        : visual.kind === 'logo2'
+          ? visual.stage === 'in'
+            ? CREDITS_TIMING.logo2FadeIn
+            : CREDITS_TIMING.logo2FadeOut
+          : 0;
+  const textVisual = visual.kind === 'text' ? visual : null;
+  const block = textVisual ? ogui.credits[textVisual.index] : null;
+  const fadeClass =
+    visual.kind === 'wait'
+      ? ''
+      : visual.stage === 'in'
+        ? ' og-source-credit-fade-in'
+        : visual.stage === 'out'
+          ? ' og-source-credit-fade-out'
+          : '';
   return (
     <MenuBand ogui={ogui}>
-      <div
-        key={creditIndex}
-        className="og-source-credit"
-        style={{ ...menuBandRectStyle(CREDITS_RECTS.text), animationDuration: `${creditDuration}ms` }}
-      >
-        {wrapCredit(title).map((line, lineIndex) =>
-          line === '' ? (
-            <div className="og-credit-gap" key={`title-${lineIndex}`} />
-          ) : (
-            <img className="og-credit-title" key={`title-${lineIndex}`} src={ogui.text(line, 20).url} alt={line} draggable={false} />
-          ),
-        )}
-        {wrapCredit(copy).map((line, lineIndex) =>
-          line === '' ? (
-            <div className="og-credit-gap" key={`copy-${lineIndex}`} />
-          ) : (
-            <img className="og-credit-copy" key={`copy-${lineIndex}`} src={ogui.text(line, 14).url} alt={line} draggable={false} />
-          ),
-        )}
-      </div>
+      {block && (
+        <div
+          key={`text-${textVisual?.index}-${textVisual?.stage}`}
+          className={`og-source-credit${fadeClass}`}
+          style={{ ...menuBandRectStyle(CREDITS_RECTS.text), animationDuration: `${fadeDuration}ms` }}
+        >
+          <CreditTextLayer ogui={ogui} text={block.title} title />
+          <CreditTextLayer ogui={ogui} text={block.copy} title={false} />
+        </div>
+      )}
+      {(visual.kind === 'logo1' || visual.kind === 'logo2') && (
+        <img
+          key={`${visual.kind}-${visual.stage}`}
+          className={`og-source-credit-logo${fadeClass}`}
+          style={{
+            ...menuBandRectStyle(CREDITS_RECTS[visual.kind]),
+            animationDuration: `${fadeDuration}ms`,
+          }}
+          src={ogui.piece[visual.kind === 'logo1' ? 'creditLogo1' : 'creditLogo2']}
+          alt=""
+          draggable={false}
+        />
+      )}
       <SourceButton rect={CREDITS_RECTS.back} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );

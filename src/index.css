@@ -642,21 +642,61 @@ body,
 }
 
 .og-source-credit {
+  overflow: hidden;
+}
+
+.og-source-credit-layer {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  animation-name: og-credit-fader;
+}
+
+.og-source-credit-line {
+  flex: 0 0 6%;
+  height: 6%;
+  white-space: pre;
+}
+
+.og-source-credit-title-layer .og-source-credit-line {
+  flex-basis: 8.6666667%;
+  height: 8.6666667%;
+}
+
+.og-source-credit-line img {
+  display: block;
+  height: 100%;
+  max-width: none;
+  filter: drop-shadow(0.25cqw 0.57735cqh 0 rgba(0, 0, 0, 0.5019608));
+}
+
+.og-source-credit-logo {
+  object-fit: fill;
+}
+
+.og-source-credit-fade-in {
+  animation-name: og-source-credit-fade-in;
   animation-timing-function: linear;
   animation-fill-mode: both;
 }
 
-@keyframes og-credit-fader {
-  0% { opacity: 0; }
-  8% { opacity: 1; }
-  92% { opacity: 1; }
-  100% { opacity: 0; }
+.og-source-credit-fade-out {
+  animation-name: og-source-credit-fade-out;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@keyframes og-source-credit-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes og-source-credit-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .og-level-grid {

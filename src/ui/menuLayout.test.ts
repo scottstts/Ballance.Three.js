@@ -6,7 +6,10 @@ import type { Entity2dRec, NmoFile } from '../formats/ck2/types.ts';
 import { atlasCropFromUv } from './hudLayout.ts';
 import {
   CONFIRM_RECTS,
+  CREDITS_FONT_SOURCE,
+  CREDITS_LOGO_UV,
   CREDITS_RECTS,
+  CREDITS_TIMING,
   HIGHSCORE_ENTRY_RECTS,
   HIGHSCORE_RECTS,
   LARGE_MENU_BUTTON_RECTS,
@@ -16,6 +19,8 @@ import {
   MENU_BAND_RECT,
   OPTIONS_RECTS,
   SCORE_RECTS,
+  creditTextWait,
+  decodeCreditBlocks,
 } from './menuLayout.ts';
 
 const menuPath = fileURLToPath(
@@ -96,6 +101,33 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     expect(OPTIONS_RECTS.sound.field).toEqual(entity2d(menu, 'M_Opt_Sound_VolField').rect);
     expect(CREDITS_RECTS.text).toEqual(entity2d(menu, 'M_Credits_Text').rect);
     expect(CREDITS_RECTS.back).toEqual(entity2d(menu, 'M_Credits_But_Back').rect);
+    expect(CREDITS_RECTS.logo1).toEqual(entity2d(menu, 'M_Credits_Logo1').rect);
+    expect(CREDITS_RECTS.logo2).toEqual(entity2d(menu, 'M_Credits_Logo2').rect);
+    expect(CREDITS_LOGO_UV.logo1).toEqual(entity2d(menu, 'M_Credits_Logo1').relativeRect);
+    expect(CREDITS_LOGO_UV.logo2).toEqual(entity2d(menu, 'M_Credits_Logo2').relativeRect);
+  });
+
+  it('reads all credit pages verbatim and follows the Text Fader wait expression', () => {
+    const credits = decodeCreditBlocks(menu);
+    expect(credits).toHaveLength(23);
+    expect(credits[0]).toEqual({
+      title: '\nBallance',
+      copy: '\n\n\n\nA Cyparade production\n\nAll rights reserved.\n Berlin 2004.',
+    });
+    expect(credits[13].copy).toContain('Annette Weinberg, \nLaura and Adrian');
+    expect(creditTextWait(credits[0], 0)).toBe(
+      credits[0].copy.length * CREDITS_TIMING.textMillisecondsPerCharacter - 500,
+    );
+    expect(creditTextWait(credits[1], 1)).toBe(
+      credits[1].copy.length * CREDITS_TIMING.textMillisecondsPerCharacter + 1500,
+    );
+    expect(CREDITS_TIMING.logo1FadeIn + CREDITS_TIMING.logo1Wait + CREDITS_TIMING.logo1FadeOut).toBe(5000);
+    expect(CREDITS_TIMING.logo2FadeIn + CREDITS_TIMING.logo2Wait + CREDITS_TIMING.logo2FadeOut).toBe(6500);
+    expect(CREDITS_FONT_SOURCE.titleScale).toEqual([0.6000000238418579, 0.6499999761581421]);
+    expect(CREDITS_FONT_SOURCE.copyScale).toEqual([0.4000000059604645, 0.44999998807907104]);
+    expect(CREDITS_FONT_SOURCE.shadowAlpha).toBe(0.501960813999176);
+    expect(CREDITS_FONT_SOURCE.shadowAngle).toBe(2.094395160675049);
+    expect(CREDITS_FONT_SOURCE.shadowDistance).toBe(4);
   });
 
   it('crops every shared menu sprite from the serialized UV rectangles', () => {

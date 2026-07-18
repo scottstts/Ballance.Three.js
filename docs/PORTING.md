@@ -227,7 +227,10 @@ ballance-web/
    advance. Fixed 512x512-atlas cell sizing is therefore not source-equivalent. Menu screens
    likewise use `Menu.nmo`'s exact 4:3 rectangles and material-specific atlas UVs: a 40%-wide
    center band, one-column 12-level selector, fixed highscore/options fields, inactive-state
-   special-atlas sprites, and sequential credit pages. End Level follows the serialized
+   special-atlas sprites, and the exact 23-row credit fader. Credit newlines/spaces remain
+   verbatim, fade-in/out are fixed at 500 ms, page wait is `copy.length*50+1500 ms` (with
+   the first row reduced by 2000 ms), and the authored two-logo 5 s/6.5 s epilogue precedes
+   the 1 s repeat delay. End Level follows the serialized
    Score → optional name entry → context-Next highscore → End menu chain. Score timing and
    reserve conversion are behavior-driven, including the 200 ms fades, 1/5/25 accumulated
    counter steps, 610 ms life subtraction cadence, and three authored skip keys.

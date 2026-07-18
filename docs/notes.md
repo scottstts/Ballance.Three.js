@@ -475,10 +475,11 @@ options subscreens are simplified (volume only).
   survived hierarchy reconstruction. The `finish` and `nowinscreen` switches
   are development-only deterministic visual-audit helpers. The in-app browser
   tab and Vite server were closed immediately after validation.
-- `M_FontData_01` from Menu.nmo now supplies glyph source positions and advance
-  metrics directly. The 23 original `Menu_Credits_Strings` records render and
-  scroll correctly in the browser (including the original dedication and
-  publisher/team blocks); no synthetic credits remain.
+- `M_FontData_01` from Menu.nmo supplies glyph source positions and advance
+  metrics directly. The earlier credit UI still duplicated the 23 strings in
+  TS, stripped positioning whitespace, inserted synthetic wrapping, and omitted
+  the two-logo epilogue; the source-authored menu-flow correction below
+  supersedes that implementation.
 
 ## 2026-07-18 source-backed level-1 tutorial
 
@@ -1292,6 +1293,23 @@ options subscreens are simplified (volume only).
 - A same-level restart previously retained `GameCanvas` because its React key was
   only the level number. The store now increments a run id for each Load/Reset/
   Next Level action so every authored load message creates a fresh engine.
+
+## 2026-07-18 source-authored credits fader and logo epilogue
+
+- Credits now read all 23 rows directly from `Menu.nmo/Menu_Credits_Strings` at
+  runtime. Every leading newline, embedded newline, and space is preserved; the
+  title and copy are independent centered text layers, matching the two source
+  `2D Text` nodes instead of a synthetic sequential/wrapped web column.
+- `Text Fader` calculates its hold from the copy string only as
+  `length*50+1500 ms`. Its `1st shorter` graph tests row index Equal 0 and
+  subtracts 2000 ms only for that first page. Both text fonts use fixed 500 ms
+  linear fade-in/out around the hold, with the serialized `.6/.65` title and
+  `.4/.45` copy scales, white-to-black gradient, and half-alpha black shadow.
+- Counter completion does not immediately repeat the text pages. It fades the
+  `M_Credits_Logo1` source crop in/hold/out for 500/4000/500 ms, then Logo2 for
+  2000/4000/500 ms, waits 1000 ms, and restarts the counter. Both logo rectangles
+  and their UV halves are locked to the original NMO; `Logo.bmp` remains part of
+  the repository-owned runtime asset set.
 
 ## 2026-07-18 independent impact/roll surface recovery
 

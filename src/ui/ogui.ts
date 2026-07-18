@@ -6,7 +6,7 @@
 import { decodeImageFile, decodeTga } from '../engine/textures.ts';
 import { fetchGameBuffer, loadNmo } from '../engine/assets.ts';
 import { atlasCropFromUv, POINTS_HUD_SOURCE } from './hudLayout.ts';
-import { MENU_ATLAS_UV_SOURCE } from './menuLayout.ts';
+import { CREDITS_LOGO_UV, decodeCreditBlocks, MENU_ATLAS_UV_SOURCE, type CreditBlock } from './menuLayout.ts';
 
 interface Decoded {
   rgba: Uint8ClampedArray;
@@ -105,6 +105,7 @@ export interface Ogui {
   /** data-URLs for atlas pieces, keyed `${piece}` and `${piece}Hover` */
   piece: Record<string, string>;
   cursor: string;
+  credits: readonly CreditBlock[];
   /** render text in the original bitmap font at a given pixel height */
   text(text: string, px: number, color?: string, endColor?: string, options?: TextRenderOptions): TextImage;
 }
@@ -126,6 +127,16 @@ function crop(src: HTMLCanvasElement, r: Rect): string {
   c.height = r.h;
   c.getContext('2d')?.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
   return c.toDataURL('image/png');
+}
+
+function cropUv(src: HTMLCanvasElement, uv: readonly [number, number, number, number]): string {
+  const lastX = src.width - 1;
+  const lastY = src.height - 1;
+  const left = Math.round(uv[0] * lastX);
+  const top = Math.round(uv[1] * lastY);
+  const right = Math.round(uv[2] * lastX);
+  const bottom = Math.round(uv[3] * lastY);
+  return crop(src, { x: left, y: top, w: right - left + 1, h: bottom - top + 1 });
 }
 
 const CELL = 32;
@@ -247,11 +258,12 @@ let oguiPromise: Promise<Ogui> | null = null;
 
 export function loadOgui(): Promise<Ogui> {
   oguiPromise ??= (async () => {
-    const [deselect, select, special, font, cursorImg, menu] = await Promise.all([
+    const [deselect, select, special, font, logo, cursorImg, menu] = await Promise.all([
       decodeImageFile('Textures/Button01_deselect.tga'),
       decodeImageFile('Textures/Button01_select.tga'),
       decodeImageFile('Textures/Button01_special.tga'),
       decodeImageFile('Textures/Font_1.tga'),
+      decodeImageFile('Textures/Logo.bmp'),
       fetchGameBuffer('Textures/Cursor.tga').then((b) => decodeTga(new Uint8Array(b))),
       loadNmo('3D Entities/Menu.nmo'),
     ]);
@@ -265,6 +277,9 @@ export function loadOgui(): Promise<Ogui> {
       piece[name] = crop(atlases[def.atlas], def);
       if (def.hover) piece[`${name}Hover`] = crop(atlases.select, def);
     }
+    const logoCanvas = toCanvas(logo);
+    piece.creditLogo1 = cropUv(logoCanvas, CREDITS_LOGO_UV.logo1);
+    piece.creditLogo2 = cropUv(logoCanvas, CREDITS_LOGO_UV.logo2);
     const fontData = menu.byName.get('M_FontData_01')?.[0];
     const metrics = fontData?.kind === 'dataArray' ? fontData.rows.map((row) => row.map(Number)) : [];
     const fontRenderer = new FontRenderer(font, metrics);
@@ -272,6 +287,7 @@ export function loadOgui(): Promise<Ogui> {
     return {
       piece,
       cursor: cursorCanvas.toDataURL('image/png'),
+      credits: decodeCreditBlocks(menu),
       text: (t, px, color, endColor, options) => fontRenderer.text(t, px, color, endColor, options),
     };
   })();
