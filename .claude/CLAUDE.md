@@ -9,6 +9,7 @@ This is a project attempt to port a Ballance game binary to react ts + three.js
 - typical hygine: lint, typecheck, build, unit tests, regression tests
 - you may periodcally commit to main to keep meaningful progress
 - after compaction, you MUST re-read this project rules in full before proceeding to task
+- You (Fable) may spawn as many subagents (must be latest Opus model) as needed for read-only research tasks between the orignal bin and the codebase, to find all existing discrepancies. And you the main agent will solely act upon the research results provided by the subagent, make decisions, edit code. This process is to ensure 100% replication
 
 ## Notes
 
