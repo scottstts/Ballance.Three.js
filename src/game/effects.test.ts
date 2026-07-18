@@ -10,6 +10,7 @@ import {
   FLAME_BIG,
   FLAME_SMALL,
   LIGHTNING_SOURCE,
+  SHATTER_SOURCE,
   TRAFO_SOURCE,
   ballShadowFootprintWidth,
   type FlameSpec,
@@ -69,6 +70,10 @@ function vectorValue(parameter: ParameterRec | undefined): [number, number, numb
   if (!parameter || parameter.valueBytes.length < 12) return [Number.NaN, Number.NaN, Number.NaN];
   const view = new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset);
   return [view.getFloat32(0, true), view.getFloat32(4, true), view.getFloat32(8, true)];
+}
+
+function objectName(file: NmoFile, parameter: ParameterRec | undefined): string | undefined {
+  return file.objects[parameter?.valueObjectIndex ?? -1]?.name;
 }
 
 function particleNode(file: NmoFile, scriptName: string): BehaviorRec {
@@ -317,5 +322,129 @@ describe.skipIf(!existsSync(animTrafoPath) || !existsSync(gameplayPath))('source
     expect(TRAFO_SOURCE.newBallTime).toBeCloseTo(TRAFO_SOURCE.explosionTime + managerDelays[0], 8);
     const proximity = parameters(gameplay, childBehaviors(gameplay, 'Trafo Manager', 'Test')[0]);
     expect(TRAFO_SOURCE.triggerDistance).toBe(floatValue(proximity.get('B')));
+  });
+});
+
+describe.skipIf(!existsSync(ballsPath) || !existsSync(gameplayPath))('source-backed ball shatter', () => {
+  const balls = existsSync(ballsPath) ? parseNmo(readFileSync(ballsPath)) : null;
+  const gameplay = existsSync(gameplayPath) ? parseNmo(readFileSync(gameplayPath)) : null;
+
+  it('retains every authored piece in source group order and its initial transform', () => {
+    if (!balls) return;
+    for (const [kind, title] of [
+      ['wood', 'Wood'],
+      ['stone', 'Stone'],
+      ['paper', 'Paper'],
+    ] as const) {
+      const group = balls.groups.find((entry) => entry.name === `Ball_${title}_Pieces`);
+      expect(group?.memberIndices).toHaveLength(SHATTER_SOURCE.kinds[kind].count);
+      for (const index of group?.memberIndices ?? []) {
+        const piece = balls.objects[index];
+        expect(piece?.kind).toBe('entity');
+        if (piece?.kind === 'entity') {
+          expect(piece.name).toMatch(new RegExp(`^Ball_${title}_piece\\d\\d$`));
+          expect(Array.from(piece.worldMatrix)).not.toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+        }
+      }
+    }
+  });
+
+  it('uses the exact per-kind Physicalize and local Physics Impulse parameters', () => {
+    if (!balls) return;
+    for (const [kind, graph] of [
+      ['wood', 'Wood Explosion'],
+      ['stone', 'Stone Explosion'],
+      ['paper', 'Paper Explosion'],
+    ] as const) {
+      const source = SHATTER_SOURCE.kinds[kind];
+      const physicalize = parameters(balls, childBehaviors(balls, graph, 'Physicalize')[0]);
+      expect(floatValue(physicalize.get('Elasticity'))).toBe(source.restitution);
+      expect(floatValue(physicalize.get('Linear Speed Dampening'))).toBe(source.linearDamping);
+      expect(floatValue(physicalize.get('Rot Speed Dampening'))).toBe(source.angularDamping);
+      expect(intValue(physicalize.get('Automatic Calculate Mass Center'))).toBe(0);
+      expect(vectorValue(physicalize.get('Shift Mass Center'))).toEqual([0, 0, 0]);
+
+      const impulse = parameters(balls, childBehaviors(balls, graph, 'Physics Impulse')[0]);
+      expect(vectorValue(impulse.get('Position'))).toEqual(source.impulsePoint);
+      expect(vectorValue(impulse.get('Direction'))).toEqual(source.impulseDirection);
+      expect(intValue(impulse.get('2 pos instead of dir ?'))).toBe(0);
+      expect(intValue(impulse.get('Constant Force ?'))).toBe(0);
+    }
+
+    const wood = parameters(balls, childBehaviors(balls, 'Wood Explosion', 'Physicalize')[0]);
+    expect(floatValue(wood.get('Friction'))).toBe(SHATTER_SOURCE.kinds.wood.friction[0]);
+    expect(floatValue(wood.get('Mass'))).toBe(SHATTER_SOURCE.kinds.wood.mass[0]);
+    const stone = parameters(balls, childBehaviors(balls, 'Stone Explosion', 'Physicalize')[0]);
+    expect(floatValue(stone.get('Friction'))).toBe(SHATTER_SOURCE.kinds.stone.friction[0]);
+    expect(floatValue(stone.get('Mass'))).toBe(SHATTER_SOURCE.kinds.stone.mass[0]);
+  });
+
+  it('recovers every original random range rather than the unrelated game-ball constants', () => {
+    if (!balls) return;
+    const ranges = (graph: string) =>
+      childBehaviors(balls, graph, 'Random')
+        .map((node) => {
+          const values = parameters(balls, node);
+          return [floatValue(values.get('Min')), floatValue(values.get('Max'))] as [number, number];
+        })
+        .sort((a, b) => a[0] - b[0]);
+    expect(ranges('Wood Explosion')).toEqual([SHATTER_SOURCE.kinds.wood.impulse]);
+    expect(ranges('Stone Explosion')).toEqual([SHATTER_SOURCE.kinds.stone.impulse]);
+    expect(ranges('Paper Explosion')).toEqual([
+      SHATTER_SOURCE.kinds.paper.mass,
+      SHATTER_SOURCE.kinds.paper.impulse,
+      SHATTER_SOURCE.kinds.paper.friction,
+    ]);
+  });
+
+  it('runs paper wind until the 20-second reset, then the exact two-second fade', () => {
+    if (!balls || !gameplay) return;
+    const timers = childBehaviors(gameplay, 'Fadeout Manager', 'Timer');
+    expect(timers).toHaveLength(3);
+    for (const timer of timers) {
+      expect(floatValue(parameters(gameplay, timer).get('Duration')) / 1000).toBe(SHATTER_SOURCE.resetDelay);
+    }
+    for (const title of ['Wood', 'Stone', 'Paper']) {
+      const fade = parameters(balls, childBehaviors(balls, `Fade ${title} Pieces`, 'Bezier Progression')[0]);
+      expect(floatValue(fade.get('Duration')) / 1000).toBe(SHATTER_SOURCE.fadeDuration);
+      expect(decodeCk2dCurve(fade.get('Progression Curve')?.valueBytes ?? new Uint8Array())).toHaveLength(2);
+    }
+
+    const wind = childBehaviors(balls, 'Wind', 'SetPhysicsForce');
+    expect(wind).toHaveLength(SHATTER_SOURCE.kinds.paper.count);
+    for (const force of wind) {
+      const values = parameters(balls, force);
+      expect(vectorValue(values.get('Direction'))).toEqual(SHATTER_SOURCE.paperWindDirection);
+      expect(floatValue(values.get('Force Value'))).toBe(SHATTER_SOURCE.paperWindForce);
+    }
+  });
+
+  it('matches the three-second monitored-piece collision sound scripts', () => {
+    if (!balls) return;
+    for (const [kind, title] of [
+      ['wood', 'Wood'],
+      ['stone', 'Stone'],
+    ] as const) {
+      const graph = `${title}-Collision Sound`;
+      const delay = parameters(balls, childBehaviors(balls, graph, 'Delayer')[0]);
+      expect(floatValue(delay.get('Time to Wait')) / 1000).toBe(SHATTER_SOURCE.collisionSoundDuration);
+      const detectors = childBehaviors(balls, graph, 'PhysicsCollDetection');
+      const monitored = behavior(balls, graph).referenceLists
+        .flat()
+        .map((index) => balls.objects[index])
+        .filter((record): record is ParameterRec => record?.kind === 'parameter' && record.name === 'Target (3D Entity)')
+        .map((parameter) => objectName(balls, resolve(balls, parameter)))
+        .map((name) => Number(name?.slice(-2)));
+      expect(monitored.sort((a, b) => a - b)).toEqual(
+        [...SHATTER_SOURCE.kinds[kind].monitoredPieces].sort((a, b) => a - b),
+      );
+      for (const detector of detectors) {
+        const values = parameters(balls, detector);
+        expect(floatValue(values.get('Min Speed m/s'))).toBe(SHATTER_SOURCE.collisionMinSpeed);
+        expect(floatValue(values.get('Max Speed m/s'))).toBe(SHATTER_SOURCE.collisionMaxSpeed);
+        expect(floatValue(values.get('Sleep afterwards'))).toBe(SHATTER_SOURCE.collisionCooldown);
+      }
+    }
+    expect(childBehaviors(balls, 'Ball_CollSound_Pieces', 'Wave Player')).toHaveLength(1);
   });
 });

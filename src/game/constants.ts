@@ -22,8 +22,6 @@ export interface BallDef {
   linearDamp: number;
   rotDamp: number;
   radius: number;
-  piecesMinForce: number;
-  piecesMaxForce: number;
 }
 
 export const BALL_DEFS: Record<BallKind, BallDef> = {
@@ -37,8 +35,6 @@ export const BALL_DEFS: Record<BallKind, BallDef> = {
     linearDamp: 0.9,
     rotDamp: 0.1,
     radius: 2,
-    piecesMinForce: 1.5,
-    piecesMaxForce: 3,
   },
   stone: {
     kind: 'stone',
@@ -50,8 +46,6 @@ export const BALL_DEFS: Record<BallKind, BallDef> = {
     linearDamp: 0.3,
     rotDamp: 0.1,
     radius: 2,
-    piecesMinForce: 8,
-    piecesMaxForce: 16,
   },
   paper: {
     kind: 'paper',
@@ -63,8 +57,6 @@ export const BALL_DEFS: Record<BallKind, BallDef> = {
     linearDamp: 1.3,
     rotDamp: 0.1,
     radius: 2,
-    piecesMinForce: 0.3,
-    piecesMaxForce: 1.3,
   },
 };
 

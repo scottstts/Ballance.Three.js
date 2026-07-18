@@ -159,6 +159,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
+  shatter.setSoundPlayer((name, volume) => audio.playFlat(name, volume));
   let skyLayerRef: THREE.Object3D | null = null;
   const applyVolumes = () => {
     const s = gameStore.getState().settings;
@@ -404,6 +405,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       }
     }
     if (s.phase === 'dead') {
+      shatter.advance(SIM_DT);
       physics.step(); // the ball keeps falling into the void
       deathTimer -= SIM_DT;
       if (deathTimer <= 0) respawn();
@@ -411,6 +413,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     if (s.phase === 'finished') {
       balloonPhysics?.update();
+      shatter.advance(SIM_DT);
       let carryPosition: THREE.Vector3 | null = null;
       if (ufoFinale?.active) {
         const ufo = ufoFinale.update(SIM_DT, ball.position);
@@ -461,8 +464,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
       if (!pendingTrafo.exploded && pendingTrafo.elapsed >= TRAFO_SOURCE.explosionTime) {
         const oldKind = ball.kind;
-        shatter.burst(oldKind, ball.position);
-        audio.play(`Pieces_${oldKind[0].toUpperCase()}${oldKind.slice(1)}.wav`, ball.position, 1, scene);
+        // Fadeout Manager's 20 s timer started when the trafo was entered,
+        // 2350 ms before this explosion graph is activated.
+        shatter.burst(oldKind, ball.position, pendingTrafo.elapsed);
         ball.visual.visible = false;
         pendingTrafo.exploded = true;
       }
@@ -489,6 +493,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     ball.applyPush(pushDir);
     balloonPhysics?.update();
     moduls.update(SIM_DT);
+    shatter.advance(SIM_DT);
     const preVel = ball.body.linvel();
     physics.step();
     simTicks++;
@@ -497,6 +502,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     // approach speed (original: min 5, max 30, per-surface 0.6s sleep)
     physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
+      shatter.handleCollision(h1, h2);
       const ballHandle = ball.collider.handle;
       if (h1 !== ballHandle && h2 !== ballHandle) return;
       const other = h1 === ballHandle ? h2 : h1;

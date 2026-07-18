@@ -10,7 +10,7 @@ import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuild
 import { decodeImageFile } from '../engine/textures.ts';
 import type { BehaviorRec, LightRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import { localVertices } from './moduls/base.ts';
-import { BALL_DEFS, type BallKind } from './constants.ts';
+import { FORCE_SCALE, type BallKind } from './constants.ts';
 import { decodeCk2dCurve, evalCurve, type CurveKey } from './curve.ts';
 import type { PhysicsWorld } from './physics.ts';
 
@@ -601,6 +601,56 @@ export const TRAFO_SOURCE = {
   triggerDistance: 4.300000190734863,
 } as const;
 
+/** Values authored by Balls.nmo's explosion/reset/collision behavior graphs. */
+export const SHATTER_SOURCE = {
+  resetDelay: 20,
+  fadeDuration: 2,
+  collisionSoundDuration: 3,
+  collisionMinSpeed: 2,
+  collisionMaxSpeed: 25,
+  collisionCooldown: 0.5,
+  paperWindDirection: [-1, 0, 1] as const,
+  paperWindForce: 0.029999999329447746,
+  kinds: {
+    wood: {
+      count: 16,
+      friction: [2, 2] as const,
+      restitution: 1,
+      mass: [0.20000000298023224, 0.20000000298023224] as const,
+      linearDamping: 0.30000001192092896,
+      angularDamping: 0.20000000298023224,
+      impulse: [1.5, 3] as const,
+      impulsePoint: [0, 1, 0] as const,
+      impulseDirection: [0, 1, 0] as const,
+      monitoredPieces: [1, 4, 7, 11, 14, 16] as const,
+    },
+    stone: {
+      count: 17,
+      friction: [2, 2] as const,
+      restitution: 1,
+      mass: [0.800000011920929, 0.800000011920929] as const,
+      linearDamping: 0.30000001192092896,
+      angularDamping: 0.20000000298023224,
+      impulse: [4, 9] as const,
+      impulsePoint: [-0.05000000074505806, 1, 0.05000000074505806] as const,
+      impulseDirection: [0, 1, 0] as const,
+      monitoredPieces: [1, 4, 7, 11, 14, 17] as const,
+    },
+    paper: {
+      count: 18,
+      friction: [1, 5] as const,
+      restitution: 1,
+      mass: [0.019999999552965164, 0.09000000357627869] as const,
+      linearDamping: 6,
+      angularDamping: 0.5,
+      impulse: [0.5, 1.2999999523162842] as const,
+      impulsePoint: [-0.029999999329447746, 1, 0.019999999552965164] as const,
+      impulseDirection: [0, 1, 0] as const,
+      monitoredPieces: [] as const,
+    },
+  },
+} as const;
+
 class BirthSmoke {
   readonly points: THREE.Points;
   private positions = new Float32Array(MAX_SMOKE_PARTICLES * 3);
@@ -1125,89 +1175,321 @@ export class TrafoAnim {
   }
 }
 
+interface PieceTemplate {
+  mesh: THREE.Mesh;
+  local: THREE.Matrix4;
+  number: number;
+}
+
 interface Piece {
+  kind: BallKind;
+  number: number;
   mesh: THREE.Mesh;
   body: RAPIER.RigidBody;
+  collider: RAPIER.Collider;
+  soundCooldown: number;
+  preLinvel: THREE.Vector3;
+  preAngvel: THREE.Vector3;
+}
+
+interface ShatterState {
+  kind: BallKind;
+  /** time since Ball_Explosion_<Kind> started */
+  age: number;
+  /** time since Trafo Manager set this kind's Piecesflag */
+  resetAge: number;
+  collisionEventsActive: boolean;
+  pieces: Piece[];
+  materials: Set<THREE.Material>;
 }
 
 /** Original ball shatter: the Ball_<Kind>_pieceNN meshes fly apart. */
 export class ShatterSystem {
-  private templates = new Map<BallKind, { mesh: THREE.Mesh; local: THREE.Matrix4 }[]>();
-  private live: Piece[] = [];
+  private templates = new Map<BallKind, PieceTemplate[]>();
+  private fadeCurves = new Map<BallKind, CurveKey[]>();
+  private states = new Map<BallKind, ShatterState>();
+  private colliderPieces = new Map<number, Piece>();
   private physics: PhysicsWorld;
   private scene: THREE.Scene;
+  private playSound: ((name: string, volume: number) => void) | null = null;
 
   constructor(physics: PhysicsWorld, scene: THREE.Scene) {
     this.physics = physics;
     this.scene = scene;
   }
 
+  setSoundPlayer(playSound: (name: string, volume: number) => void): void {
+    this.playSound = playSound;
+  }
+
   async init(): Promise<void> {
     const file = await loadNmo('3D Entities/Balls.nmo');
     const built = await buildScene(file);
     for (const kind of ['paper', 'wood', 'stone'] as BallKind[]) {
-      const prefix = `Ball_${kind[0].toUpperCase() + kind.slice(1)}_piece`;
-      const list: { mesh: THREE.Mesh; local: THREE.Matrix4 }[] = [];
-      for (const [name, e] of built.entities) {
-        if (name.startsWith(prefix) && e.object instanceof THREE.Mesh) {
-          list.push({ mesh: e.object, local: e.object.matrix.clone() });
-        }
-      }
+      const title = kind[0].toUpperCase() + kind.slice(1);
+      const list = groupEntities(built, `Ball_${title}_Pieces`)
+        .filter((entry): entry is typeof entry & { object: THREE.Mesh } => entry.object instanceof THREE.Mesh)
+        .map((entry, index) => ({ mesh: entry.object, local: entry.object.matrix.clone(), number: index + 1 }));
       this.templates.set(kind, list);
+      const fade = behaviorChildren(file, `Fade ${title} Pieces`, 'Bezier Progression')[0];
+      const curve = fade
+        ? decodeCk2dCurve(behaviorParameters(file, fade).get('Progression Curve')?.valueBytes ?? new Uint8Array())
+        : [];
+      this.fadeCurves.set(
+        kind,
+        curve.length >= 2
+          ? curve
+          : [
+              [0, 0, 0],
+              [1, 1, 0],
+            ],
+      );
     }
   }
 
-  burst(kind: BallKind, center: THREE.Vector3): void {
-    this.clear();
-    const def = BALL_DEFS[kind];
+  burst(kind: BallKind, center: THREE.Vector3, resetAge = 0): void {
+    // The source owns one persistent group per kind. A repeat throw restores
+    // that group's initial conditions without removing the other two kinds.
+    this.removeKind(kind);
+    const source = SHATTER_SOURCE.kinds[kind];
     const templates = this.templates.get(kind) ?? [];
+    const pieces: Piece[] = [];
+    const copiedMaterials = new Map<THREE.Material, THREE.Material>();
+    const stateMaterials = new Set<THREE.Material>();
     for (const t of templates) {
-      const mesh = new THREE.Mesh(t.mesh.geometry, t.mesh.material);
+      const copyMaterial = (material: THREE.Material): THREE.Material => {
+        let copy = copiedMaterials.get(material);
+        if (!copy) {
+          copy = material.clone();
+          copy.transparent = true;
+          copy.opacity = 1;
+          copy.needsUpdate = true;
+          copiedMaterials.set(material, copy);
+          stateMaterials.add(copy);
+        }
+        return copy;
+      };
+      const material = Array.isArray(t.mesh.material)
+        ? t.mesh.material.map(copyMaterial)
+        : copyMaterial(t.mesh.material);
+      const mesh = new THREE.Mesh(t.mesh.geometry, material);
       mesh.name = `shatter_piece:${t.mesh.name}`;
-      const offset = new THREE.Vector3().setFromMatrixPosition(t.local);
+      mesh.matrixAutoUpdate = false;
+      const offset = new THREE.Vector3();
+      const rotation = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      t.local.decompose(offset, rotation, scale);
       const pos = center.clone().add(offset);
       mesh.position.copy(pos);
+      mesh.quaternion.copy(rotation);
+      mesh.scale.copy(scale);
+      mesh.updateMatrix();
       this.scene.add(mesh);
 
       const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(pos.x, pos.y, pos.z)
-        .setLinearDamping(kind === 'paper' ? 6 : 0.3)
-        .setAngularDamping(kind === 'paper' ? 0.5 : 0.2);
+        .setRotation(rotation)
+        .setLinearDamping(source.linearDamping)
+        .setAngularDamping(source.angularDamping);
       const body = this.physics.world.createRigidBody(bodyDesc);
-      const scale = new THREE.Vector3(1, 1, 1);
       const desc =
         RAPIER.ColliderDesc.convexHull(localVertices(mesh, scale)) ?? RAPIER.ColliderDesc.ball(0.4);
+      const friction = randomRange(source.friction);
+      const mass = randomRange(source.mass);
+      const monitorsCollision = source.monitoredPieces.some((number) => number === t.number);
       desc
-        .setFriction(kind === 'wood' ? 2 : 0.8)
-        .setRestitution(1)
-        .setMass(kind === 'stone' ? 0.8 : 0.2)
+        .setFriction(friction)
+        .setRestitution(source.restitution)
+        .setMass(mass)
         .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
-        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply);
-      this.physics.world.createCollider(desc, body);
+        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+        .setActiveEvents(monitorsCollision ? RAPIER.ActiveEvents.COLLISION_EVENTS : RAPIER.ActiveEvents.NONE);
+      const collider = this.physics.world.createCollider(desc, body);
+      // Every source Physicalize has Automatic Calculate Mass Center=false
+      // and Shift Mass Center=(0,0,0). Retain Rapier's shape inertia while
+      // placing the rigid body's mass center at the authored entity origin.
+      collider.setMassProperties(
+        mass,
+        { x: 0, y: 0, z: 0 },
+        body.principalInertia(),
+        body.principalInertiaLocalFrame(),
+      );
 
-      // explosion impulse within the original piece force range
-      const f = def.piecesMinForce + Math.random() * (def.piecesMaxForce - def.piecesMinForce);
-      const dir = offset.clone().add(new THREE.Vector3(0, 0.6, 0)).normalize();
-      body.applyImpulse({ x: dir.x * f, y: dir.y * f, z: dir.z * f }, true);
-      body.setAngvel({ x: (Math.random() - 0.5) * 8, y: (Math.random() - 0.5) * 8, z: (Math.random() - 0.5) * 8 }, true);
-      this.live.push({ mesh, body });
+      // Physics Impulse uses the piece itself as both referentials. Applying
+      // it at the authored local point also recovers the paper/stone torque;
+      // wood's collinear point/direction intentionally starts with no spin.
+      const impulse = vxVector(source.impulseDirection)
+        .applyQuaternion(rotation)
+        .multiplyScalar(randomRange(source.impulse));
+      const point = vxVector(source.impulsePoint).applyQuaternion(rotation).add(pos);
+      body.applyImpulseAtPoint(impulse, point, true);
+      const piece: Piece = {
+        kind,
+        number: t.number,
+        mesh,
+        body,
+        collider,
+        soundCooldown: 0,
+        preLinvel: new THREE.Vector3(),
+        preAngvel: new THREE.Vector3(),
+      };
+      pieces.push(piece);
+      this.colliderPieces.set(collider.handle, piece);
+    }
+    this.states.set(kind, {
+      kind,
+      age: 0,
+      resetAge,
+      collisionEventsActive: source.monitoredPieces.length > 0,
+      pieces,
+      materials: stateMaterials,
+    });
+    if (kind === 'paper') this.playSound?.('Pieces_Paper.wav', 1);
+  }
+
+  /** Advance source timers/forces once per 66 Hz gameplay step. */
+  advance(dt: number): void {
+    for (const state of [...this.states.values()]) {
+      state.age += dt;
+      state.resetAge += dt;
+      for (const piece of state.pieces) {
+        const v = piece.body.linvel();
+        const w = piece.body.angvel();
+        piece.preLinvel.set(v.x, v.y, v.z);
+        piece.preAngvel.set(w.x, w.y, w.z);
+        piece.soundCooldown = Math.max(0, piece.soundCooldown - dt);
+      }
+      if (state.collisionEventsActive && state.age >= SHATTER_SOURCE.collisionSoundDuration) {
+        for (const piece of state.pieces) piece.collider.setActiveEvents(RAPIER.ActiveEvents.NONE);
+        state.collisionEventsActive = false;
+      }
+
+      // Ball_PaperWind is activated by the explosion and explicitly stopped
+      // as Ball_ResetPieces_Paper starts, before its fade progression.
+      if (state.kind === 'paper' && state.resetAge < SHATTER_SOURCE.resetDelay) {
+        const force = vxVector(SHATTER_SOURCE.paperWindDirection).multiplyScalar(
+          SHATTER_SOURCE.paperWindForce * FORCE_SCALE,
+        );
+        for (const piece of state.pieces) {
+          piece.body.resetForces(false);
+          piece.body.addForce(force, true);
+        }
+      } else if (state.kind === 'paper') {
+        // Deactivating SetPhysicsForce clears its persistent force before the
+        // fade continues under inertia/gravity alone.
+        for (const piece of state.pieces) piece.body.resetForces(false);
+      }
+
+      if (state.resetAge >= SHATTER_SOURCE.resetDelay) {
+        const time = (state.resetAge - SHATTER_SOURCE.resetDelay) / SHATTER_SOURCE.fadeDuration;
+        const curve = this.fadeCurves.get(state.kind) ?? [
+          [0, 0, 0],
+          [1, 1, 0],
+        ];
+        const alpha = 1 - evalCurve(curve, THREE.MathUtils.clamp(time, 0, 1));
+        for (const material of state.materials) material.opacity = alpha;
+      }
+      if (state.resetAge >= SHATTER_SOURCE.resetDelay + SHATTER_SOURCE.fadeDuration) {
+        this.removeKind(state.kind);
+      }
     }
   }
 
+  /** Consume a Rapier collision-start event for source piece sounds. */
+  handleCollision(handle1: number, handle2: number): void {
+    const first = this.colliderPieces.get(handle1);
+    const second = this.colliderPieces.get(handle2);
+    if (first) this.playCollision(first, handle2);
+    if (second) this.playCollision(second, handle1);
+  }
+
   update(): void {
-    for (const p of this.live) {
-      const t = p.body.translation();
-      const r = p.body.rotation();
-      p.mesh.position.set(t.x, t.y, t.z);
-      p.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+    for (const state of this.states.values()) {
+      for (const piece of state.pieces) {
+        const t = piece.body.translation();
+        const r = piece.body.rotation();
+        piece.mesh.position.set(t.x, t.y, t.z);
+        piece.mesh.quaternion.set(r.x, r.y, r.z, r.w);
+        piece.mesh.updateMatrix();
+      }
     }
   }
 
   clear(): void {
-    for (const p of this.live) {
-      this.scene.remove(p.mesh);
-      this.physics.world.removeRigidBody(p.body);
-    }
-    this.live = [];
+    for (const kind of [...this.states.keys()]) this.removeKind(kind);
   }
+
+  private playCollision(piece: Piece, otherHandle: number): void {
+    const state = this.states.get(piece.kind);
+    const source = SHATTER_SOURCE.kinds[piece.kind];
+    if (
+      !state ||
+      state.age > SHATTER_SOURCE.collisionSoundDuration ||
+      piece.soundCooldown > 0 ||
+      !source.monitoredPieces.some((number) => number === piece.number)
+    ) {
+      return;
+    }
+    const otherCollider = this.physics.world.getCollider(otherHandle);
+    if (!otherCollider) return;
+    let speed = 0;
+    this.physics.world.contactPair(piece.collider, otherCollider, (manifold) => {
+      const normal = manifold.normal();
+      const count = Math.max(1, manifold.numSolverContacts());
+      for (let index = 0; index < count; index++) {
+        const contact = manifold.numSolverContacts() > 0
+          ? manifold.solverContactPoint(index)
+          : piece.body.translation();
+        const ownVelocity = preStepPointVelocity(piece, contact);
+        const otherPiece = this.colliderPieces.get(otherHandle);
+        const otherVelocity = otherPiece
+          ? preStepPointVelocity(otherPiece, contact)
+          : otherCollider.parent()?.velocityAtPoint(contact) ?? { x: 0, y: 0, z: 0 };
+        speed = Math.max(
+          speed,
+          Math.abs(
+            (ownVelocity.x - otherVelocity.x) * normal.x +
+              (ownVelocity.y - otherVelocity.y) * normal.y +
+              (ownVelocity.z - otherVelocity.z) * normal.z,
+          ),
+        );
+      }
+    });
+    if (speed < SHATTER_SOURCE.collisionMinSpeed) return;
+    const volume = THREE.MathUtils.clamp(
+      (speed - SHATTER_SOURCE.collisionMinSpeed) /
+        (SHATTER_SOURCE.collisionMaxSpeed - SHATTER_SOURCE.collisionMinSpeed),
+      0,
+      1,
+    );
+    piece.soundCooldown = SHATTER_SOURCE.collisionCooldown;
+    this.playSound?.(`Pieces_${piece.kind[0].toUpperCase()}${piece.kind.slice(1)}.wav`, volume);
+  }
+
+  private removeKind(kind: BallKind): void {
+    const state = this.states.get(kind);
+    if (!state) return;
+    for (const piece of state.pieces) {
+      this.colliderPieces.delete(piece.collider.handle);
+      this.scene.remove(piece.mesh);
+      this.physics.world.removeRigidBody(piece.body);
+    }
+    for (const material of state.materials) material.dispose();
+    this.states.delete(kind);
+  }
+}
+
+function randomRange(range: readonly [number, number]): number {
+  return range[0] + Math.random() * (range[1] - range[0]);
+}
+
+/** Virtools left-handed vector -> three/Rapier right-handed vector. */
+function vxVector(vector: readonly [number, number, number]): THREE.Vector3 {
+  return new THREE.Vector3(vector[0], vector[1], -vector[2]);
+}
+
+function preStepPointVelocity(piece: Piece, point: { x: number; y: number; z: number }): THREE.Vector3 {
+  const origin = piece.body.translation();
+  const radius = new THREE.Vector3(point.x - origin.x, point.y - origin.y, point.z - origin.z);
+  return piece.preAngvel.clone().cross(radius).add(piece.preLinvel);
 }

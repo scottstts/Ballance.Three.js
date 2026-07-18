@@ -685,3 +685,46 @@ options subscreens are simplified (volume only).
   phases, convergence to the target, 16 wood pieces, wood-to-stone replacement,
   source mesh restoration, final shadow alpha, texture offset, and zero errors.
   Source-backed trafo regressions bring the suite to 57 tests.
+
+## 2026-07-18 source-exact ball pieces
+
+- `source1` and the statically extracted `source2` installer contain byte-for-byte
+  identical `Balls.nmo`, `Gameplay.nmo`, and `physics_RT.dll` files. Both source
+  captures therefore support the same ball-piece behavior; the original files
+  remain the authority. A complementary Unity port was useful only as a locator:
+  its radial throw, three-second fade, and game-ball force-table reuse contradict
+  the shipped graphs and were deliberately not copied.
+- `Balls.nmo` owns 16 wood, 17 stone, and 18 paper entities. Runtime pieces now
+  preserve every serialized position and orientation. `Physics Impulse` uses the
+  piece itself as both referentials: local direction `(0,1,0)` is applied at
+  wood `(0,1,0)`, stone `(-.05,1,.05)`, or paper `(-.03,1,.02)`. This recovers
+  source torque for stone/paper and removes the former random angular velocity.
+- Explosion physicalization is per graph, not per game-ball table. Wood uses
+  friction 2, mass .2, damping .3/.2, impulse 1.5..3; stone uses friction 2,
+  mass .8, damping .3/.2, impulse 4..9; paper randomizes friction 1..5 and mass
+  .02..09, uses damping 6/.5, and impulse .5..1.3. All use elasticity 1,
+  convex hulls, multiplicative IVP-style coefficients, and the authored entity
+  origin as mass center.
+- Paper activates 18 constant `SetPhysicsForce` nodes with world direction
+  `(-1,0,+1)` and value .03. Rapier forces persist until reset, so the runtime
+  must reset/reapply this value once per 66 Hz step; adding it repeatedly causes
+  a false accelerating gale. Controlled live motion confirmed steady negative
+  Three X/Z drift after the handedness conversion.
+- `Fadeout Manager` starts its 20,000 ms timer when the transformer is entered,
+  not when the old ball bursts 2,350 ms later. Piece state carries that elapsed
+  transformer time; paper wind stops at source time 20 s, all named materials
+  follow their decoded two-second fade, and the bodies are then removed. Sets
+  from different ball kinds coexist instead of every new burst clearing all
+  prior pieces.
+- Wood/stone collision listeners cover only six serialized representative
+  pieces for 3,000 ms. They normalize relative collision speed from 2..25 m/s,
+  sleep each detector for .5 s, and cycle overlapping 2D instances of the
+  corresponding `Pieces_*.wav`. Paper instead plays `Pieces_Paper.wav` once
+  when its collision-sound script is activated.
+- `effects.test.ts` locks piece counts, transforms, physicalization, all random
+  ranges, local impulse points, wind, reset/fade timing, and collision listeners
+  directly to `Balls.nmo`/`Gameplay.nmo`. Controlled Level 2 validation covered
+  16/18/17 live pieces, authored rotations, simultaneous kinds, corrected paper
+  wind, fade at absolute trafo time 20 s, removal at 22 s, and zero browser
+  errors. The full gate passes with 64 tests plus lint, typecheck, and production
+  build; the browser tab and Vite server were closed afterward.
