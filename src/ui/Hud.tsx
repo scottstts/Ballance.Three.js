@@ -15,6 +15,13 @@ import {
   pointShadowOffset,
 } from './hudLayout.ts';
 import { useOgui } from './useOgui.ts';
+import {
+  advanceLifeHudTransition,
+  beginLifeHudTransition,
+  initialLifeHudAnimation,
+  lifeHudVisualState,
+  type LifeHudAnimationState,
+} from './lifeHudAnimation.ts';
 
 function sourceHudSize(): readonly [width: number, height: number] {
   if (typeof window === 'undefined') return [0, 0];
@@ -32,12 +39,41 @@ function useSourceHudSize(): readonly [width: number, height: number] {
   return size;
 }
 
+function useAnimatedLifeHud(lives: number): LifeHudAnimationState {
+  const [animation, setAnimation] = useState(() => initialLifeHudAnimation(lives));
+
+  useEffect(() => {
+    if (animation.phase !== 'idle') return;
+    const frame = requestAnimationFrame(() =>
+      setAnimation((state) => beginLifeHudTransition(state, lives)),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [animation.phase, lives]);
+
+  useEffect(() => {
+    if (animation.phase === 'idle') return;
+    if (animation.phase === 'addPrepare' || animation.phase === 'removePrepare') {
+      const frame = requestAnimationFrame(() => setAnimation((state) => advanceLifeHudTransition(state)));
+      return () => cancelAnimationFrame(frame);
+    }
+    const duration =
+      animation.phase === 'addMove' || animation.phase === 'removeMove'
+        ? LIFE_HUD_SOURCE.hookMoveDurationMs
+        : LIFE_HUD_SOURCE.fadeDurationMs;
+    const timer = window.setTimeout(() => setAnimation((state) => advanceLifeHudTransition(state)), duration);
+    return () => window.clearTimeout(timer);
+  }, [animation.phase]);
+
+  return animation;
+}
+
 export default function Hud() {
   const { lives, points } = useGameStore();
   const ogui = useOgui();
   const previousPoints = useRef(points);
   const [pointGlow, setPointGlow] = useState(0);
   const [hudWidth, hudHeight] = useSourceHudSize();
+  const lifeAnimation = useAnimatedLifeHud(lives);
 
   useEffect(() => {
     if (points > previousPoints.current) setPointGlow((value) => value + 1);
@@ -54,6 +90,7 @@ export default function Hud() {
   });
   const [shadowX, shadowY] = pointShadowOffset();
   const shadowAlpha = POINTS_HUD_SOURCE.font.shadowColor[3] * 100;
+  const lifeVisual = lifeHudVisualState(lifeAnimation);
   return (
     <div className="hud">
       <div className="hud-score">
@@ -89,19 +126,26 @@ export default function Hud() {
         </div>
       </div>
       <div className="hud-lifes">
-        {lifeBallRects(lives).map((rect, index) => (
+        {lifeBallRects(lifeVisual.ballLives).map((rect, index) => {
+          const animation = index === lifeVisual.animatedBallIndex ? lifeVisual.ballAnimation : null;
+          const animationClass = animation ? ` hud-lifeball-${animation}` : '';
+          return (
           <img
             key={index}
-            className="hud-lifeball"
+            className={`hud-lifeball${animationClass}`}
             style={hudRectStyle(rect)}
             src={ogui.piece.lifeBall}
             alt=""
             draggable={false}
           />
-        ))}
+          );
+        })}
         <img
-          className="hud-lives-hook"
-          style={hudRectStyle(lifeHookRect(lives))}
+          className={`hud-lives-hook${lifeVisual.hookMoving ? ' hud-lives-hook-moving' : ''}`}
+          style={{
+            ...hudRectStyle(lifeHookRect(lifeVisual.hookLives)),
+            transitionDuration: `${LIFE_HUD_SOURCE.hookMoveDurationMs}ms`,
+          }}
           src={ogui.piece.livesHook}
           alt=""
           draggable={false}

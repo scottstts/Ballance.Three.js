@@ -58,7 +58,7 @@ export default function App() {
   return (
     <div className="game-frame">
       {inGame && <GameCanvas key={`level-${level}`} level={level} />}
-      {inGame && <Hud />}
+      {inGame && phase !== 'loading' && <Hud />}
       {inGame && <TutorialOverlay />}
       {inMenus && <MenuBackdrop />}
       {phase === 'intro' && <IntroScreen />}

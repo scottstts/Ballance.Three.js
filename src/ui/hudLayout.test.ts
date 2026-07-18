@@ -65,6 +65,27 @@ function childBehavior(file: NmoFile, parent: BehaviorRec, name: string): Behavi
   return record;
 }
 
+function childBehaviors(file: NmoFile, parent: BehaviorRec, name: string): BehaviorRec[] {
+  return parent.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .filter((candidate): candidate is BehaviorRec => candidate?.kind === 'behavior' && candidate.name === name);
+}
+
+function behaviorsLinked(file: NmoFile, parent: BehaviorRec, from: BehaviorRec, to: BehaviorRec): boolean {
+  const fromMembers = new Set(from.referenceLists.flat());
+  const toMembers = new Set(to.referenceLists.flat());
+  return parent.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .some(
+      (candidate) =>
+        candidate?.kind === 'behaviorLink' &&
+        fromMembers.has(candidate.outputIndex) &&
+        toMembers.has(candidate.inputIndex),
+    );
+}
+
 function behaviorParameter(file: NmoFile, owner: BehaviorRec, name: string): ParameterRec {
   const record = owner.referenceLists
     .flat()
@@ -111,6 +132,29 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('source-au
       0.7947999835014343,
     ]);
     expect(lifeHookRect(startLives)[0]).toBeCloseTo(0.7739999890327454, 12);
+  });
+
+  it('uses the serialized fade/move durations and event order', () => {
+    const energy = behavior(gameplay, 'Gameplay_Energy');
+    const add = childBehavior(gameplay, energy, 'add Life');
+    const subtract = childBehavior(gameplay, energy, 'sub Life');
+    const fadeIn = childBehavior(gameplay, energy, 'FadeIn Lifeball');
+    const fadeOut = childBehavior(gameplay, energy, 'FadeOut  Lifeball');
+    const moves = childBehaviors(gameplay, energy, 'Move LifeEnd').sort((a, b) => a.index - b.index);
+
+    expect(moves).toHaveLength(2);
+    expect(LIFE_HUD_SOURCE.fadeDurationMs).toBe(floatValue(behaviorParameter(gameplay, fadeIn, 'Duration')));
+    expect(LIFE_HUD_SOURCE.fadeDurationMs).toBe(floatValue(behaviorParameter(gameplay, fadeOut, 'Duration')));
+    expect(LIFE_HUD_SOURCE.hookMoveDurationMs).toBe(
+      floatValue(behaviorParameter(gameplay, moves[0], 'Duration')),
+    );
+    expect(LIFE_HUD_SOURCE.hookMoveDurationMs).toBe(
+      floatValue(behaviorParameter(gameplay, moves[1], 'Duration')),
+    );
+    expect(behaviorsLinked(gameplay, energy, add, moves[0])).toBe(true);
+    expect(behaviorsLinked(gameplay, energy, moves[0], fadeIn)).toBe(true);
+    expect(behaviorsLinked(gameplay, energy, subtract, fadeOut)).toBe(true);
+    expect(behaviorsLinked(gameplay, energy, fadeOut, moves[1])).toBe(true);
   });
 });
 

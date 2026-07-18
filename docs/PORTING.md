@@ -206,7 +206,11 @@ ballance-web/
    `Camera.nmo`'s exact normalized CK2dEntity rectangles and `Gameplay.nmo`'s reserve-life
    construction: the hidden source template is copied for the current attempt plus every
    reserve, beginning one 0.0387 X step to the left, with the hook following the leftmost
-   copy. `Deactivate Ball` tests
+   copy. Reserve changes also retain `Gameplay_Energy`'s serialized two-stage animation:
+   an added sphere stays hidden while the hook moves left for 300 ms, then fades in for
+   300 ms; a removed sphere fades out for 300 ms before the hook moves right for 300 ms.
+   The HUD is constructed only after level loading, so a restart initializes the four
+   starting spheres immediately instead of replaying pickup animations. `Deactivate Ball` tests
    the reserves before subtracting one, so three initial reserves correctly provide four
    attempts and Game Over occurs only on the next fall from zero. The points display likewise
    uses `Camera.nmo`'s complete background/glow atlas regions and exact screen rectangles;

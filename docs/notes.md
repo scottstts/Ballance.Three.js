@@ -1238,3 +1238,23 @@ options subscreens are simplified (volume only).
   left edges 1166, 1116, 1067, 1017; hook 991; cradle 1140..1256. The rightmost
   ball ends at 1222 instead of protruding past the cradle. Captures remain in
   `screenshots/`/`.playwright-mcp/`; the browser and server were closed.
+
+## 2026-07-18 source-authored life-HUD transitions
+
+- `Gameplay.nmo/Gameplay_Energy` serializes reserve changes as ordered composite
+  behaviors rather than an instantaneous count redraw. `Life_Up` runs `add Life`
+  (the new copy starts hidden), `Move LifeEnd` for 300 ms, then `FadeIn Lifeball`
+  for 300 ms. `Sub Life` runs `sub Life`, `FadeOut  Lifeball` for 300 ms, then
+  the other `Move LifeEnd` for 300 ms. All three progressions are linear.
+- The React HUD now drives those exact stages from a deterministic state machine
+  and serializes multi-reserve changes one source step at a time. Loading unmounts
+  the HUD so a restart recreates `Init Startlifes` immediately instead of visually
+  awarding old reserves one by one. Source-lock tests verify both 300 ms values,
+  the parent-graph edges, and the visible phase ordering.
+- `Gameplay.nmo`, `Camera.nmo`, and `Menu.nmo` are byte-identical between source1
+  and the statically extracted source2 package, so the life geometry/behavior and
+  the next menu audit apply to both original distributions. At 1280x960 the live
+  steady-state bounds remain x=1165.945, 1116.414, 1066.875, and 1017.344 for the
+  four 56-pixel spheres, with the hook at x=990.719 and the right sphere ending at
+  x=1221.945 inside the cradle. No browser errors were present (only Rapier's known
+  deprecated-init warning).

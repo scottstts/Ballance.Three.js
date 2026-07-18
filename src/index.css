@@ -169,9 +169,36 @@ body,
   z-index: 1;
 }
 
+.hud-lifeball-hidden {
+  opacity: 0;
+}
+
+.hud-lifeball-fadeIn {
+  animation: hud-lifeball-fade-in 300ms linear both;
+}
+
+.hud-lifeball-fadeOut {
+  animation: hud-lifeball-fade-out 300ms linear both;
+}
+
+@keyframes hud-lifeball-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes hud-lifeball-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 .hud-lives-hook,
 .hud-lives-curl {
   z-index: 2;
+}
+
+.hud-lives-hook-moving {
+  transition-property: left;
+  transition-timing-function: linear;
 }
 
 .intro-screen {
