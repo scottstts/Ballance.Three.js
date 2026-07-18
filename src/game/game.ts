@@ -49,6 +49,7 @@ export interface GameDebug {
   level: LevelLogic;
   scene: BuiltScene;
   three: THREE.Scene;
+  audio(): Record<string, unknown>;
 }
 
 declare global {
@@ -578,6 +579,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       level: logic,
       scene: built,
       three: scene,
+      audio: () => audio.debugState(),
     };
   }
 

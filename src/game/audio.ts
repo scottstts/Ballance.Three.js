@@ -303,6 +303,17 @@ export class AudioManager {
     this.musicGain = null;
   }
 
+  /** dev/testing: current roll contact states and loop volumes */
+  debugState(): Record<string, unknown> {
+    const contacts: Record<string, unknown> = {};
+    for (const [s, st] of this.rollContacts) {
+      contacts[s] = { touching: st.touching, active: st.active, since: Number(st.since.toFixed(2)) };
+    }
+    const loops: Record<string, number> = {};
+    for (const [k, loop] of this.rollLoops) loops[k] = Number(loop.getVolume().toFixed(3));
+    return { contacts, loops };
+  }
+
   dispose(): void {
     this.disposed = true;
     this.stopMusic();
