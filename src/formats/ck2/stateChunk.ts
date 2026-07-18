@@ -76,6 +76,24 @@ export class StateChunk {
     return this.pos;
   }
 
+  /** Enumerate the chunk's identifier chain without disturbing the read cursor. */
+  identifiers(): { identifier: number; payloadDwords: number; position: number }[] {
+    const out: { identifier: number; payloadDwords: number; position: number }[] = [];
+    if (this.data.length < 2) return out;
+    const seen = new Set<number>();
+    let pos = 0;
+    while (pos + 1 < this.data.length && !seen.has(pos)) {
+      seen.add(pos);
+      const next = this.data[pos + 1];
+      const end = next === 0 ? this.data.length : next;
+      if (end < pos + 2 || end > this.data.length) break;
+      out.push({ identifier: this.data[pos] >>> 0, payloadDwords: end - pos - 2, position: pos });
+      if (next === 0) break;
+      pos = next;
+    }
+    return out;
+  }
+
   skipDwords(n: number): void {
     this.pos += n;
   }

@@ -10,7 +10,10 @@ import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import { MODUL_PHYS } from './moduls/physTable.ts';
 
-const GAME_DIR = fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url));
+const GAME_DIR = [
+  fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
+  fileURLToPath(new URL('../../Ballance_bin/source1/Ballance', import.meta.url)),
+].find(existsSync) ?? '';
 const hasGame = existsSync(GAME_DIR);
 
 /** expected sector counts of the original levels */

@@ -1,7 +1,7 @@
 /**
  * Per-part physics parameters and joint layout of the original moduls
- * (numeric facts of the original game's physics tuning; see
- * docs/modul-physics.json and tools/extract-modul-physics.mjs).
+ * Decoded directly from the original PH/*.nmo Physicalize/joint behaviors;
+ * tools/extract-source-physics.ts is the repeatable inspection path.
  * Vectors are in prefab-local Virtools space; z is negated on use (LH->RH).
  */
 
@@ -20,6 +20,10 @@ export interface PartPhys {
   startFrozen?: boolean;
   /** use trimesh collider (hollow/hooked shapes); default convex hull */
   trimesh?: boolean;
+  /** authored convex collision CKMesh names (compound collider in list order) */
+  collisionMeshes?: string[];
+  /** original Enable Collision input; false still creates a jointable body */
+  collisionEnabled?: boolean;
   /** sphere collider of this radius (loose balls) */
   sphereRadius?: number;
   /** sound surface when the ball hits this part */
@@ -31,27 +35,49 @@ export interface HingeDef {
   part: string;
   /** pin frame entity suffix providing the pivot position */
   pin: string;
-  /** hinge axis in prefab-local space */
-  axis: [number, number, number];
+  /** axis in pin-frame local space; Virtools hinges use the frame's local Z */
+  axis?: [number, number, number];
   /** other part suffix (undefined = world) */
   other?: string;
   /** spherical joint instead of revolute */
   spherical?: boolean;
+  /** radians; absent when the source Limitations input is false */
+  limits?: [number, number];
 }
 
 export interface PrismaticDef {
   part: string;
-  axis: [number, number, number];
-  limits: [number, number];
-  spring?: { stiffness: number; damping: number };
+  /** authored axis reference points; direction is first -> second */
+  points: [string, string];
+  /** absent when the source Limitations input is false */
+  limits?: [number, number];
+}
+
+export interface SpringDef {
+  part: string;
+  other?: string;
+  anchor1: { ref: string; position: [number, number, number] };
+  anchor2: { ref: string; position: [number, number, number] };
+  length: number;
+  stiffness: number;
+  damping: number;
 }
 
 export interface ModulPhys {
   parts: PartPhys[];
   hinges?: HingeDef[];
   prismatics?: PrismaticDef[];
+  springs?: SpringDef[];
   /** alternating constant force (swing/sack style) */
-  altForce?: { part: string; force: number; switchTime: number; delayTime?: number; axis: [number, number, number]; startState?: number };
+  altForce?: {
+    part: string;
+    force: number;
+    switchTime: number;
+    delayTime?: number;
+    axis: [number, number, number];
+    reference?: string;
+    startState?: number;
+  };
 }
 
 const wood = { friction: 0.7, elasticity: 0.4 } as const;
@@ -59,8 +85,26 @@ const wood = { friction: 0.7, elasticity: 0.4 } as const;
 export const MODUL_PHYS: Record<string, ModulPhys> = {
   P_Modul_01: {
     parts: [
-      { suffix: '_Rinne', fixed: true, ...wood, surface: 'wood' },
-      { suffix: '_Filler', fixed: true, ...wood, surface: 'wood' },
+      {
+        suffix: '_Rinne',
+        fixed: true,
+        ...wood,
+        shiftCom: [0, 0, 0],
+        collisionMeshes: [
+          'P_Modul_01_Rinne_01_Mesh',
+          'P_Modul_01_Rinne_02_Mesh',
+          'P_Modul_01_Rinne_03_Mesh',
+        ],
+        surface: 'wood',
+      },
+      {
+        suffix: '_Filler',
+        fixed: true,
+        ...wood,
+        shiftCom: [0, 0, 0],
+        collisionMeshes: ['P_Modul_01_Filler_Mesh'],
+        surface: 'wood',
+      },
       {
         suffix: '_Pusher',
         mass: 3,
@@ -68,8 +112,9 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         elasticity: 0.4,
         linearDamp: 0.1,
         rotDamp: 1,
-        shiftCom: [-0.45, 0, 0],
+        shiftCom: [0, 0, 0],
         startFrozen: true,
+        collisionMeshes: ['P_Modul_01_Col01_Mesh', 'P_Modul_01_Col02_Mesh', 'P_Modul_01_Col03_Mesh'],
         surface: 'wood',
       },
     ],
@@ -78,13 +123,14 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     parts: [
       {
         suffix: '_Floor',
-        mass: 3.2,
+        mass: 3,
         friction: 0.7,
         elasticity: 0,
         linearDamp: 1,
         rotDamp: 3,
-        shiftCom: [0, -2, 0],
+        shiftCom: [0, 0, 0],
         startFrozen: true,
+        collisionMeshes: ['P_Modul_03_Floor_Mesh'],
         surface: 'wood',
       },
       ...['_Wall01', '_Wall02', '_Wall03', '_Wall04', '_Wall05', '_Wall06', '_Wall07'].map(
@@ -95,8 +141,9 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
           elasticity: 0.01,
           linearDamp: 0.5,
           rotDamp: 1.5,
-          shiftCom: [0.15, -1, 0.15],
+          shiftCom: [0, 0, 0],
           startFrozen: true,
+          collisionMeshes: ['P_Modul_03_Wall_Coll_Mesh'],
           surface: 'wood',
         }),
       ),
@@ -107,12 +154,27 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         elasticity: 0,
         linearDamp: 0.5,
         rotDamp: 1,
-        shiftCom: [0.15, -1, 0.15],
+        shiftCom: [0, 0, 0],
         startFrozen: true,
+        collisionMeshes: [
+          'P_Modul_03_Gate_Coll01_Mesh',
+          'P_Modul_03_Gate_Coll02_Mesh',
+          'P_Modul_03_Gate_Coll03_Mesh',
+        ],
         surface: 'wood',
       },
     ],
-    prismatics: [{ part: '_Floor', axis: [0, 1, 0], limits: [-30, 30], spring: { stiffness: 15, damping: 0.1 } }],
+    prismatics: [{ part: '_Floor', points: ['_frame_low', '_frame_high'] }],
+    springs: [
+      {
+        part: '_Floor',
+        anchor1: { ref: '_frame_low', position: [0, 0, 0] },
+        anchor2: { ref: '_frame_high', position: [0, 0, 0] },
+        length: 0,
+        stiffness: 15,
+        damping: 0.1,
+      },
+    ],
   },
   P_Modul_08: {
     parts: [
@@ -122,13 +184,29 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         ...wood,
         linearDamp: 0.4,
         rotDamp: 0.1,
-        trimesh: true,
+        shiftCom: [0, 0, 0],
+        startFrozen: true,
+        collisionMeshes: [
+          'P_Modul_08_Col1_Mesh',
+          'P_Modul_08_Col2_Mesh',
+          'P_Modul_08_Col3_Mesh',
+          'P_Modul_08_Col4_Mesh',
+          'P_Modul_08_Col5_Mesh',
+          'P_Modul_08_Col6_Mesh',
+        ],
         surface: 'wood',
       },
-      { suffix: '_Fix', fixed: true, ...wood, surface: 'wood' },
     ],
-    hinges: [{ part: '_Schaukel', pin: '_HingeFrame', axis: [0, 0, 1] }],
-    altForce: { part: '_Schaukel', force: 1.1, switchTime: 0.5, delayTime: 0.5, axis: [1, 0, 0], startState: 1 },
+    hinges: [{ part: '_Schaukel', pin: '_HingeFrame' }],
+    altForce: {
+      part: '_Schaukel',
+      force: 1.1,
+      switchTime: 0.5,
+      delayTime: 0.5,
+      axis: [0, 0, 1],
+      reference: '_Fix',
+      startState: 1,
+    },
   },
   P_Modul_17: {
     parts: [
@@ -138,35 +216,46 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         ...wood,
         linearDamp: 3,
         rotDamp: 0.005,
-        trimesh: true,
+        shiftCom: [0, 0, 0],
+        collisionMeshes: ['P_Modul_17_Col01_Mesh', 'P_Modul_17_Col02_Mesh', 'P_Modul_17_Col03_Mesh'],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: '_Dreharme', pin: '_HingeFrame', axis: [0, 1, 0] }],
+    hinges: [{ part: '_Dreharme', pin: '_HingeFrame' }],
+    springs: [
+      {
+        part: '_Dreharme',
+        anchor1: { ref: '_HingeFrame', position: [0, 4, 0] },
+        anchor2: { ref: '_Dreharme', position: [0, 0, -4] },
+        length: 0,
+        stiffness: 0.32,
+        damping: 0.1,
+      },
+    ],
   },
   P_Modul_19: {
     parts: [
-      { suffix: '_Axis', fixed: true, ...wood, surface: 'wood' },
       {
         suffix: '_Flaps',
         mass: 3,
         ...wood,
         linearDamp: 1,
         rotDamp: 0.05,
-        shiftCom: [-1, 1, 0],
+        shiftCom: [1, 1, 0],
         startFrozen: true,
+        collisionMeshes: [
+          'P_Modul_19_Col1_Mesh',
+          'P_Modul_19_Col2_Mesh',
+          'P_Modul_19_Col3_Mesh',
+          'P_Modul_19_Col4_Mesh',
+        ],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: '_Flaps', pin: '_HingeFrame', axis: [0, 1, 0] }],
+    hinges: [{ part: '_Flaps', pin: '_HingeFrame' }],
   },
   P_Modul_25: {
     parts: [
-      { suffix: '_Hinge_Col_Left', fixed: true, ...wood, surface: 'wood' },
-      { suffix: '_Hinge_Col_Right', fixed: true, ...wood, surface: 'wood' },
-      { suffix: '_Hinge', fixed: true, ...wood, surface: 'wood' },
-      { suffix: '_Stopper_Left', mass: 0.5, ...wood, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' },
-      { suffix: '_Stopper_Right', mass: 0.5, ...wood, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' },
       {
         suffix: '_Bridge',
         mass: 3,
@@ -174,48 +263,73 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         elasticity: 1,
         linearDamp: 1,
         rotDamp: 0.05,
-        shiftCom: [0, 2, 0],
+        shiftCom: [-2.5, 0.2, 0],
         startFrozen: true,
-        trimesh: true,
+        collisionMeshes: ['P_Modul_25_Col01_Mesh', 'P_Modul_25_Col02_Mesh'],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: '_Bridge', pin: '_HingeFrame', axis: [0, 0, 1] }],
+    hinges: [{ part: '_Bridge', pin: '_HingeFrame' }],
   },
   P_Modul_26: {
     parts: [
-      { suffix: '_Halter', fixed: true, ...wood, surface: 'wood' },
-      { suffix: '_Rope', mass: 1, ...wood, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' },
-      { suffix: '_Sack', mass: 10, ...wood, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' },
+      {
+        suffix: '_Rope',
+        mass: 1,
+        ...wood,
+        linearDamp: 0.1,
+        rotDamp: 0.1,
+        shiftCom: [0, 0, 0],
+        collisionEnabled: false,
+        collisionMeshes: ['P_Modul_26_Rope_Mesh'],
+        surface: 'wood',
+      },
+      {
+        suffix: '_Sack',
+        mass: 10,
+        ...wood,
+        linearDamp: 0.1,
+        rotDamp: 0.1,
+        shiftCom: [0, 0, 0],
+        collisionMeshes: ['P_Modul_26_Sack_Mesh'],
+        surface: 'wood',
+      },
     ],
     hinges: [
-      { part: '_Rope', pin: '_Balljoint_oben', axis: [0, 0, 1], spherical: true },
-      { part: '_Sack', pin: '_Balljoint_unten', axis: [0, 0, 1], other: '_Rope', spherical: true },
+      { part: '_Rope', pin: '_Balljoint_oben', spherical: true },
+      { part: '_Rope', pin: '_Balljoint_unten', other: '_Sack', spherical: true },
     ],
-    altForce: { part: '_Sack', force: 0.25, switchTime: 1.4, axis: [0, 0, 1], startState: 1 },
+    altForce: {
+      part: '_Sack',
+      force: 0.25,
+      switchTime: 1.5,
+      axis: [0, 0, 1],
+      reference: '_Halter',
+      startState: 0,
+    },
   },
   P_Modul_29: {
     parts: ['01', '02', '03', '04', '05', '06', '07', '08', '09'].map(
       (n): PartPhys => ({
         suffix: `_Platte${n}`,
-        mass: 0.5,
+        mass: n === '09' ? 1 : 0.5,
         ...wood,
         linearDamp: 0.1,
         rotDamp: 0.3,
+        shiftCom: [0, 0, 0],
         startFrozen: true,
         surface: 'wood',
       }),
     ),
     // chain: world -HF01- P01 -HF02- P02 ... P09 -HF10- world
     hinges: [
-      { part: '_Platte01', pin: '_HingeFrame01', axis: [0, 0, 1] },
+      { part: '_Platte01', pin: '_HingeFrame01' },
       ...['02', '03', '04', '05', '06', '07', '08', '09'].map((n, i) => ({
         part: `_Platte${n}`,
         pin: `_HingeFrame${n}`,
-        axis: [0, 0, 1] as [number, number, number],
         other: `_Platte${String(i + 1).padStart(2, '0')}`,
       })),
-      { part: '_Platte09', pin: '_HingeFrame10', axis: [0, 0, 1] },
+      { part: '_Platte09', pin: '_HingeFrame10' },
     ],
   },
   P_Modul_30: {
@@ -226,18 +340,16 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         ...wood,
         linearDamp: 1,
         rotDamp: 1,
-        shiftCom: [0.5, 5, 0],
+        shiftCom: [0, 4, 0],
         startFrozen: true,
-        trimesh: true,
+        collisionMeshes: ['P_Modul_30_Col1_Mesh', 'P_Modul_30_Col2_Mesh'],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: '_Wippe', pin: '_HingeFrame', axis: [0, 0, 1] }],
+    hinges: [{ part: '_Wippe', pin: '_HingeFrame' }],
   },
   P_Modul_34: {
     parts: [
-      { suffix: '_Slider_Frame01', fixed: true, friction: 0.5, elasticity: 0.4, surface: 'stone' },
-      { suffix: '_Slider_Frame02', fixed: true, friction: 0.5, elasticity: 0.4, surface: 'stone' },
       {
         suffix: '_Schiebestein',
         mass: 1.6,
@@ -245,38 +357,40 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         elasticity: 0.4,
         linearDamp: 0.1,
         rotDamp: 0.1,
+        shiftCom: [0, 0, 0],
         startFrozen: true,
         surface: 'stone',
       },
       {
         suffix: '_Kiste',
         mass: 1.4,
-        friction: 0.6,
-        elasticity: 0.3,
+        friction: 0.8,
+        elasticity: 0.4,
         linearDamp: 0.1,
         rotDamp: 0.1,
+        shiftCom: [0, 0, 0],
         startFrozen: true,
         surface: 'wood',
       },
     ],
-    prismatics: [{ part: '_Schiebestein', axis: [0, 0, 1], limits: [-1000, 1000] }],
+    prismatics: [{ part: '_Schiebestein', points: ['_Slider_Frame01', '_Slider_Frame02'] }],
   },
   P_Modul_37: {
     parts: [
-      { suffix: '_Hinge', fixed: true, ...wood, surface: 'wood' },
       {
         suffix: '_Bridge',
         mass: 3,
         friction: 0.7,
-        elasticity: 0.5,
+        elasticity: 1,
         linearDamp: 1,
-        rotDamp: 0.1,
-        shiftCom: [5, 0.5, 0],
+        rotDamp: 0.05,
+        shiftCom: [-7.5, 0, 0],
         startFrozen: true,
+        collisionMeshes: ['P_Modul_37_Col1_Mesh', 'P_Modul_37_Col2_Mesh', 'P_Modul_37_Col3_Mesh'],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: '_Bridge', pin: '_HingeFrame', axis: [0, 0, 1] }],
+    hinges: [{ part: '_Bridge', pin: '_HingeFrame' }],
   },
   P_Modul_41: {
     parts: [
@@ -286,11 +400,12 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         ...wood,
         linearDamp: 0.1,
         rotDamp: 0.1,
-        shiftCom: [0, -1, 0],
+        shiftCom: [0, 0, 0],
+        collisionMeshes: ['P_Modul_41_Col1_Mesh', 'P_Modul_41_Col2_Mesh'],
         surface: 'wood',
       },
     ],
-    hinges: [{ part: 'Modul_41', pin: '_HingeFrame', axis: [0, 0, 1] }],
+    hinges: [{ part: 'Modul_41', pin: '_HingeFrame' }],
   },
   P_Box: {
     parts: [{ suffix: 'Box_MF', mass: 1, friction: 0.7, elasticity: 0.3, linearDamp: 0.1, rotDamp: 0.1, surface: 'wood' }],
@@ -329,7 +444,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
       {
         suffix: 'Stone_MF',
         mass: 10,
-        friction: 0.8,
+        friction: 0.7,
         elasticity: 0.1,
         linearDamp: 0.2,
         rotDamp: 0.1,

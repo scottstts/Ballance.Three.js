@@ -4,7 +4,7 @@
  * 16x16 grid of 32px cells, uppercase + small-caps) and Cursor.tga.
  */
 import { decodeImageFile, decodeTga } from '../engine/textures.ts';
-import { fetchGameBuffer } from '../engine/assets.ts';
+import { fetchGameBuffer, loadNmo } from '../engine/assets.ts';
 
 interface Decoded {
   rgba: Uint8ClampedArray;
@@ -61,7 +61,7 @@ export interface Ogui {
   piece: Record<string, string>;
   cursor: string;
   /** render text in the original bitmap font at a given pixel height */
-  text(text: string, px: number, color?: string): TextImage;
+  text(text: string, px: number, color?: string, endColor?: string): TextImage;
 }
 
 function toCanvas(img: Decoded): HTMLCanvasElement {
@@ -87,13 +87,26 @@ const CELL = 32;
 
 class FontRenderer {
   private canvas: HTMLCanvasElement;
-  /** per-code ink bounds [x0, width] within the 32px cell */
-  private metrics: [number, number][] = [];
+  /** Exact M_FontData_01 glyph placement/advance values in texture pixels. */
+  private metrics: { x: number; y: number; width: number; height: number; pre: number; post: number }[] = [];
   private cache = new Map<string, TextImage>();
 
-  constructor(img: Decoded) {
+  constructor(img: Decoded, originalMetrics: number[][]) {
     this.canvas = toCanvas(img);
     for (let code = 0; code < 256; code++) {
+      const authored = originalMetrics[code];
+      if (authored?.length >= 6) {
+        this.metrics[code] = {
+          x: Math.round(authored[0] * img.width),
+          y: Math.round(authored[1] * img.height),
+          width: Math.round(authored[2] * img.width),
+          pre: Math.round(authored[3] * img.width),
+          post: Math.round(authored[4] * img.width),
+          height: Math.round(authored[5] * img.height),
+        };
+        continue;
+      }
+      // Only code 255 is absent from the original 255-row table.
       const cx = (code % 16) * CELL;
       const cy = Math.floor(code / 16) * CELL;
       let x0 = CELL;
@@ -107,22 +120,27 @@ class FontRenderer {
           }
         }
       }
-      this.metrics[code] = x1 < 0 ? [0, 0] : [x0, x1 - x0 + 1];
+      this.metrics[code] = {
+        x: cx + (x1 < 0 ? 0 : x0),
+        y: cy,
+        width: x1 < 0 ? 0 : x1 - x0 + 1,
+        height: CELL,
+        pre: 0,
+        post: 3,
+      };
     }
   }
 
-  text(str: string, px: number, color = '#ffffff'): TextImage {
-    const key = `${str}|${px}|${color}`;
+  text(str: string, px: number, color = '#ffffff', endColor?: string): TextImage {
+    const key = `${str}|${px}|${color}|${endColor ?? ''}`;
     const hit = this.cache.get(key);
     if (hit) return hit;
     const scale = px / CELL;
-    const gap = 3;
-    const space = 10;
     let wCells = 0;
     for (const ch of str) {
       const code = ch.codePointAt(0) ?? 32;
-      const [, w] = this.metrics[code] ?? [0, 0];
-      wCells += (code === 32 || w === 0 ? space : w + gap);
+      const metric = this.metrics[code] ?? this.metrics[32];
+      wCells += metric.pre + metric.width + metric.post;
     }
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.ceil(wCells * scale));
@@ -133,19 +151,33 @@ class FontRenderer {
       let x = 0;
       for (const ch of str) {
         const code = ch.codePointAt(0) ?? 32;
-        const [x0, w] = this.metrics[code] ?? [0, 0];
-        if (code === 32 || w === 0) {
-          x += space * scale;
-          continue;
+        const metric = this.metrics[code] ?? this.metrics[32];
+        x += metric.pre * scale;
+        if (metric.width > 0) {
+          ctx.drawImage(
+            this.canvas,
+            metric.x,
+            metric.y,
+            metric.width,
+            metric.height,
+            x,
+            0,
+            metric.width * scale,
+            metric.height * scale,
+          );
         }
-        const cx = (code % 16) * CELL + x0;
-        const cy = Math.floor(code / 16) * CELL;
-        ctx.drawImage(this.canvas, cx, cy, w, CELL, x, 0, w * scale, px);
-        x += (w + gap) * scale;
+        x += (metric.width + metric.post) * scale;
       }
-      if (color !== '#ffffff') {
+      if (color !== '#ffffff' || endColor) {
         ctx.globalCompositeOperation = 'source-in';
-        ctx.fillStyle = color;
+        if (endColor) {
+          const gradient = ctx.createLinearGradient(0, 0, 0, c.height);
+          gradient.addColorStop(0, color);
+          gradient.addColorStop(1, endColor);
+          ctx.fillStyle = gradient;
+        } else {
+          ctx.fillStyle = color;
+        }
         ctx.fillRect(0, 0, c.width, c.height);
       }
     }
@@ -159,12 +191,13 @@ let oguiPromise: Promise<Ogui> | null = null;
 
 export function loadOgui(): Promise<Ogui> {
   oguiPromise ??= (async () => {
-    const [deselect, select, special, font, cursorImg] = await Promise.all([
+    const [deselect, select, special, font, cursorImg, menu] = await Promise.all([
       decodeImageFile('Textures/Button01_deselect.tga'),
       decodeImageFile('Textures/Button01_select.tga'),
       decodeImageFile('Textures/Button01_special.tga'),
       decodeImageFile('Textures/Font_1.tga'),
       fetchGameBuffer('Textures/Cursor.tga').then((b) => decodeTga(new Uint8Array(b))),
+      loadNmo('3D Entities/Menu.nmo'),
     ]);
     const atlases: Record<Atlas, HTMLCanvasElement> = {
       deselect: toCanvas(deselect),
@@ -176,12 +209,14 @@ export function loadOgui(): Promise<Ogui> {
       piece[name] = crop(atlases[def.atlas], def);
       if (def.hover) piece[`${name}Hover`] = crop(atlases.select, def);
     }
-    const fontRenderer = new FontRenderer(font);
+    const fontData = menu.byName.get('M_FontData_01')?.[0];
+    const metrics = fontData?.kind === 'dataArray' ? fontData.rows.map((row) => row.map(Number)) : [];
+    const fontRenderer = new FontRenderer(font, metrics);
     const cursorCanvas = toCanvas(cursorImg);
     return {
       piece,
       cursor: cursorCanvas.toDataURL('image/png'),
-      text: (t, px, color) => fontRenderer.text(t, px, color),
+      text: (t, px, color, endColor) => fontRenderer.text(t, px, color, endColor),
     };
   })();
   return oguiPromise;

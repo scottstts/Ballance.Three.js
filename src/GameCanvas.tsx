@@ -29,7 +29,7 @@ export default function GameCanvas({ level }: { level: number }) {
 
   return (
     <>
-      <canvas ref={canvasRef} style={{ width: '100vw', height: '100vh', display: 'block' }} />
+      <canvas ref={canvasRef} className="game-canvas" />
       {error && <div className="load-error">{error}</div>}
     </>
   );

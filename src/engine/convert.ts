@@ -167,3 +167,24 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
   }
   return mat;
 }
+
+/** CKSprite3D uses the same CKMaterial state but must remain camera-facing. */
+export function spriteMaterialToThree(rec: MaterialRec | null, opts: MaterialBuildOptions): THREE.SpriteMaterial {
+  const diffuse = rec?.diffuse ?? [1, 1, 1, 1];
+  const transparent = !!rec?.alphaBlend || diffuse[3] < 1 || !!opts.colorKeyed;
+  const mat = new THREE.SpriteMaterial({
+    map: opts.texture,
+    color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
+    opacity: diffuse[3],
+    transparent,
+    depthWrite: rec?.zWrite ?? true,
+    alphaTest: opts.colorKeyed ? 0.5 : rec?.alphaTest ? rec.alphaRef / 255 : 0,
+  });
+  if (rec?.alphaBlend) {
+    mat.blending = THREE.CustomBlending;
+    mat.blendEquation = THREE.AddEquation;
+    mat.blendSrc = BLEND_MAP[rec.sourceBlend] ?? THREE.SrcAlphaFactor;
+    mat.blendDst = BLEND_MAP[rec.destBlend] ?? THREE.OneMinusSrcAlphaFactor;
+  }
+  return mat;
+}

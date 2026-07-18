@@ -15,9 +15,8 @@ export interface ViewerHandle {
 }
 
 /**
- * Original lighting: a single pure-white light (Light_Ingame, a no-falloff
- * point at (-5,15,3.6) relative to the play area — approximated as a
- * directional from that bearing) plus the fixed-function global ambient.
+ * Original lighting: a single pure-white directional light (Light_Ingame)
+ * plus fixed-function ambient. Its source matrix is decoded from Gameplay.nmo.
  * Levels 9 and 12 tint the light (E9E9E9 / 969696) per the original data.
  */
 export const LEVEL_LIGHT_COLORS: Record<number, number> = { 9: 0xe9e9e9, 12: 0x969696 };
@@ -25,9 +24,12 @@ export const LEVEL_LIGHT_COLORS: Record<number, number> = { 9: 0xe9e9e9, 12: 0x9
 export function addLightRig(scene: THREE.Scene, tint = 0xffffff): void {
   const ambient = new THREE.AmbientLight(tint, 0.34);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(tint, 0.95);
-  sun.position.set(-5, 15, 3.6).multiplyScalar(10);
-  scene.add(sun);
+  const source = new THREE.DirectionalLight(tint, 1);
+  source.position.set(-5.1707215, 15.2553339, -3.6059473);
+  // Virtools local +Z is the light direction; convert its world forward row
+  // from left-handed coordinates to Three's right-handed world.
+  source.target.position.copy(source.position).add(new THREE.Vector3(0.30222097, -0.7331351, -0.60921866));
+  scene.add(source, source.target);
 }
 
 export async function startViewer(canvas: HTMLCanvasElement, level: number): Promise<ViewerHandle> {

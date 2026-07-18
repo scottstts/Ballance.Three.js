@@ -10,7 +10,7 @@ import {
   type CKRecord,
   type FileInfo,
   type GroupRec,
-  type Entity3dRec,
+  type Entity3dLikeRec,
   type NmoFile,
 } from './types.ts';
 import { loadObjectRecord } from './objects.ts';
@@ -145,7 +145,9 @@ export function parseNmo(buffer: ArrayBuffer | Uint8Array): NmoFile {
   }
 
   const groups = objects.filter((o): o is GroupRec => o.kind === 'group');
-  const entities = objects.filter((o): o is Entity3dRec => o.kind === 'entity');
+  const entities = objects.filter(
+    (o): o is Entity3dLikeRec => o.kind === 'entity' || o.kind === 'sprite3d',
+  );
   const byName = new Map<string, CKRecord[]>();
   for (const o of objects) {
     if (!o.name) continue;
@@ -154,7 +156,7 @@ export function parseNmo(buffer: ArrayBuffer | Uint8Array): NmoFile {
     arr.push(o);
   }
 
-  return { info, objects, groups, entities, byName };
+  return { info, objects, chunks, groups, entities, byName };
 }
 
 export { CKClassId };

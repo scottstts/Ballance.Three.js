@@ -72,7 +72,7 @@ export class AudioManager {
   private musicMutedUntil = 0;
   private disposed = false;
   sfxVolume = 1;
-  musicVolume = 0.55;
+  musicVolume = 1;
 
   constructor(camera: THREE.Camera) {
     this.listener = new THREE.AudioListener();
@@ -95,6 +95,11 @@ export class AudioManager {
       this.buffers.set(name, p);
     }
     return p;
+  }
+
+  setMusicVolume(volume: number): void {
+    this.musicVolume = volume;
+    if (this.musicGain) this.musicGain.gain.value = volume;
   }
 
   /** looping positional effect bound to an object (fans etc.) */

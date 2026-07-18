@@ -10,6 +10,7 @@ import type { Ball } from '../ball.ts';
 import type { Surface } from '../audio.ts';
 import type { PrefabInstance } from './prefabs.ts';
 import type { PartPhys } from './physTable.ts';
+import type { MeshRec } from '../../formats/ck2/types.ts';
 
 export interface ModulContext {
   physics: PhysicsWorld;
@@ -33,6 +34,7 @@ export interface DynamicPart {
   name: string;
   visual: THREE.Mesh;
   body: RAPIER.RigidBody;
+  colliders: RAPIER.Collider[];
   collider: RAPIER.Collider;
   homePos: THREE.Vector3;
   homeRot: THREE.Quaternion;
@@ -68,6 +70,32 @@ export abstract class Modul {
     if (!obj) return null;
     obj.updateWorldMatrix(true, false);
     return new THREE.Vector3().setFromMatrixPosition(obj.matrixWorld);
+  }
+
+  /** A Virtools-space point transformed by an authored prefab referential. */
+  referenceWorldPoint(suffix: string, point: [number, number, number]): THREE.Vector3 | null {
+    const obj = this.part(suffix);
+    if (!obj) return null;
+    obj.updateWorldMatrix(true, false);
+    return new THREE.Vector3(point[0], point[1], -point[2]).applyMatrix4(obj.matrixWorld);
+  }
+
+  /** A Virtools-space direction transformed by an authored prefab referential. */
+  referenceWorldDirection(suffix: string, direction: [number, number, number]): THREE.Vector3 | null {
+    const obj = this.part(suffix);
+    if (!obj) return null;
+    obj.updateWorldMatrix(true, false);
+    return new THREE.Vector3(direction[0], direction[1], -direction[2]).transformDirection(obj.matrixWorld);
+  }
+
+  /** Like referenceWorldDirection, but preserves the serialized magnitude. */
+  referenceWorldVector(suffix: string, vector: [number, number, number]): THREE.Vector3 | null {
+    const obj = this.part(suffix);
+    if (!obj) return null;
+    obj.updateWorldMatrix(true, false);
+    return new THREE.Vector3(vector[0], vector[1], -vector[2]).applyMatrix3(
+      new THREE.Matrix3().setFromMatrix4(obj.matrixWorld),
+    );
   }
 
   // Inactive moduls sleep rather than disable: Rapier panics on joints
@@ -118,6 +146,20 @@ export abstract class Modul {
 
   /** build a static collider for a mesh part (world-space baked trimesh) */
   protected makeFixedPart(obj: THREE.Mesh, phys: PartPhys): RAPIER.Collider | null {
+    if (phys.collisionMeshes?.length) {
+      obj.updateWorldMatrix(true, false);
+      const pos = new THREE.Vector3();
+      const quat = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      obj.matrixWorld.decompose(pos, quat, scale);
+      const body = this.ctx.physics.world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed()
+          .setTranslation(pos.x, pos.y, pos.z)
+          .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w }),
+      );
+      const colliders = this.createColliders(body, obj, phys, scale);
+      return colliders[0] ?? null;
+    }
     const collider = this.ctx.physics.addStaticMesh(obj, phys.friction, phys.elasticity);
     if (collider && phys.surface) this.ctx.registerSurface(collider.handle, phys.surface);
     return collider;
@@ -140,35 +182,36 @@ export abstract class Modul {
     if (phys.startFrozen) bodyDesc.setSleeping(true);
     const body = world.createRigidBody(bodyDesc);
 
-    const verts = localVertices(obj, scale);
-    let desc: RAPIER.ColliderDesc | null = null;
-    if (phys.sphereRadius) {
-      desc = RAPIER.ColliderDesc.ball(phys.sphereRadius);
-    } else if (phys.trimesh) {
-      const index = obj.geometry.getIndex();
-      if (index) desc = RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(index.array));
-    }
-    desc ??= RAPIER.ColliderDesc.convexHull(verts) ?? RAPIER.ColliderDesc.ball(1);
-    desc
-      .setFriction(phys.friction)
-      .setRestitution(phys.elasticity)
-      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
-      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply);
+    const colliders = this.createColliders(body, obj, phys, scale);
+    const collider = colliders[0];
 
-    // mass properties: original mass, optional shifted center, box-approx inertia
+    // Build compound inertia from the authored hulls at unit density, then
+    // scale it to the Physicalize mass. Automatic Calculate Mass Center is
+    // false in the source module behaviors, so their serialized shift (often
+    // exactly the entity origin) takes precedence over the geometric COM.
+    body.recomputeMassPropertiesFromColliders();
+    const unitMass = body.mass();
+    const unitInertia = body.principalInertia();
+    const inertiaFrame = body.principalInertiaLocalFrame();
+    const geometricCom = body.localCom();
+    for (const partCollider of colliders) partCollider.setDensity(0);
+    body.recomputeMassPropertiesFromColliders();
     const mass = phys.mass ?? 1;
-    const bbox = new THREE.Box3().setFromBufferAttribute(obj.geometry.getAttribute('position') as THREE.BufferAttribute);
-    const ex = Math.max(0.2, (bbox.max.x - bbox.min.x) * scale.x);
-    const ey = Math.max(0.2, (bbox.max.y - bbox.min.y) * scale.y);
-    const ez = Math.max(0.2, (bbox.max.z - bbox.min.z) * scale.z);
-    const ix = (mass / 12) * (ey * ey + ez * ez);
-    const iy = (mass / 12) * (ex * ex + ez * ez);
-    const iz = (mass / 12) * (ex * ex + ey * ey);
-    const com = phys.shiftCom ? { x: phys.shiftCom[0], y: phys.shiftCom[1], z: -phys.shiftCom[2] } : { x: 0, y: 0, z: 0 };
-    desc.setMassProperties(mass, com, { x: ix, y: iy, z: iz }, { x: 0, y: 0, z: 0, w: 1 });
-
-    const collider = world.createCollider(desc, body);
-    if (phys.surface) this.ctx.registerSurface(collider.handle, phys.surface);
+    const scaleMass = unitMass > 1e-8 ? mass / unitMass : mass;
+    const com = phys.shiftCom
+      ? { x: phys.shiftCom[0], y: phys.shiftCom[1], z: -phys.shiftCom[2] }
+      : geometricCom;
+    body.setAdditionalMassProperties(
+      mass,
+      com,
+      {
+        x: Math.max(unitInertia.x * scaleMass, 1e-6),
+        y: Math.max(unitInertia.y * scaleMass, 1e-6),
+        z: Math.max(unitInertia.z * scaleMass, 1e-6),
+      },
+      inertiaFrame,
+      false,
+    );
 
     // reparent visual to scene root so physics drives it directly
     this.ctx.scene.attach(obj);
@@ -178,6 +221,7 @@ export abstract class Modul {
       name: obj.name,
       visual: obj,
       body,
+      colliders,
       collider,
       homePos: pos.clone(),
       homeRot: quat.clone(),
@@ -185,6 +229,50 @@ export abstract class Modul {
     };
     this.dynamicParts.push(dp);
     return dp;
+  }
+
+  private createColliders(
+    body: RAPIER.RigidBody,
+    obj: THREE.Mesh,
+    phys: PartPhys,
+    scale: THREE.Vector3,
+  ): RAPIER.Collider[] {
+    const descriptions: RAPIER.ColliderDesc[] = [];
+    if (phys.sphereRadius) {
+      descriptions.push(RAPIER.ColliderDesc.ball(phys.sphereRadius));
+    } else if (phys.collisionMeshes?.length) {
+      for (const meshName of phys.collisionMeshes) {
+        const mesh = this.instance.file.byName
+          .get(meshName)
+          ?.find((record): record is MeshRec => record.kind === 'mesh');
+        if (!mesh) continue;
+        const desc = RAPIER.ColliderDesc.convexHull(meshRecordVertices(mesh, scale));
+        if (desc) descriptions.push(desc);
+      }
+    } else {
+      const verts = localVertices(obj, scale);
+      if (phys.trimesh) {
+        const index = obj.geometry.getIndex();
+        if (index) descriptions.push(RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(index.array)));
+      } else {
+        const convex = RAPIER.ColliderDesc.convexHull(verts);
+        if (convex) descriptions.push(convex);
+      }
+    }
+    if (descriptions.length === 0) descriptions.push(RAPIER.ColliderDesc.ball(1));
+
+    return descriptions.map((desc) => {
+      desc
+        .setFriction(phys.friction)
+        .setRestitution(phys.elasticity)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+        .setDensity(1);
+      if (phys.collisionEnabled === false) desc.setCollisionGroups(0).setSolverGroups(0);
+      const collider = this.ctx.physics.world.createCollider(desc, body);
+      if (phys.surface && phys.collisionEnabled !== false) this.ctx.registerSurface(collider.handle, phys.surface);
+      return collider;
+    });
   }
 
   protected findDynamic(suffix: string): DynamicPart | undefined {
@@ -198,6 +286,7 @@ export abstract class Modul {
     axisWorld: THREE.Vector3,
     other: DynamicPart | null,
     spherical = false,
+    limits?: [number, number],
   ): RAPIER.ImpulseJoint {
     const world = this.ctx.physics.world;
     let body1: RAPIER.RigidBody;
@@ -210,10 +299,12 @@ export abstract class Modul {
       axis1 = axisWorld.clone().applyQuaternion(other.homeRot.clone().invert()).normalize();
     } else {
       body1 = world.createRigidBody(
-        RAPIER.RigidBodyDesc.fixed().setTranslation(pinWorld.x, pinWorld.y, pinWorld.z),
+        RAPIER.RigidBodyDesc.fixed()
+          .setTranslation(pinWorld.x, pinWorld.y, pinWorld.z)
+          .setRotation({ x: part.homeRot.x, y: part.homeRot.y, z: part.homeRot.z, w: part.homeRot.w }),
       );
       anchor1 = new THREE.Vector3();
-      axis1 = axisWorld.clone().normalize();
+      axis1 = axisWorld.clone().applyQuaternion(part.homeRot.clone().invert()).normalize();
     }
     const inv2 = new THREE.Matrix4().compose(part.homePos, part.homeRot, ONE).invert();
     const anchor2 = pinWorld.clone().applyMatrix4(inv2);
@@ -222,6 +313,11 @@ export abstract class Modul {
       ? RAPIER.JointData.spherical(anchor1, anchor2)
       : RAPIER.JointData.revolute(anchor1, anchor2, axis1);
     const joint = world.createImpulseJoint(data, body1, part.body, true);
+    // IVP jointed assemblies do not resolve contacts between the two linked
+    // bodies. Rapier enables those contacts by default, which makes authored
+    // overlapping hinge geometry inject unbounded separation impulses.
+    joint.setContactsEnabled(false);
+    if (!spherical && limits) (joint as RAPIER.RevoluteImpulseJoint).setLimits(limits[0], limits[1]);
     this.joints.push(joint);
     return joint;
   }
@@ -230,22 +326,65 @@ export abstract class Modul {
   protected makePrismatic(
     part: DynamicPart,
     axisWorld: THREE.Vector3,
-    limits: [number, number],
-    spring?: { stiffness: number; damping: number },
+    limits?: [number, number],
+    other: DynamicPart | null = null,
   ): RAPIER.ImpulseJoint {
     const world = this.ctx.physics.world;
-    const base = world.createRigidBody(
-      RAPIER.RigidBodyDesc.fixed().setTranslation(part.homePos.x, part.homePos.y, part.homePos.z),
-    );
-    const inv2 = new THREE.Matrix4().compose(part.homePos, part.homeRot, ONE).invert();
-    const anchor2 = part.homePos.clone().applyMatrix4(inv2);
-    const data = RAPIER.JointData.prismatic({ x: 0, y: 0, z: 0 }, anchor2, axisWorld.clone().normalize());
-    data.limitsEnabled = true;
-    data.limits = limits;
-    const joint = world.createImpulseJoint(data, base, part.body, true) as RAPIER.PrismaticImpulseJoint;
-    if (spring) {
-      joint.configureMotorPosition(0, spring.stiffness, spring.damping);
+    const object2 = other
+      ? other.body
+      : world.createRigidBody(
+          RAPIER.RigidBodyDesc.fixed()
+            .setTranslation(part.homePos.x, part.homePos.y, part.homePos.z)
+            .setRotation({ x: part.homeRot.x, y: part.homeRot.y, z: part.homeRot.z, w: part.homeRot.w }),
+        );
+    const anchor1 = new THREE.Vector3();
+    const anchor2 = other
+      ? part.homePos
+          .clone()
+          .applyMatrix4(new THREE.Matrix4().compose(other.homePos, other.homeRot, ONE).invert())
+      : new THREE.Vector3();
+    // Virtools' Target is the first slider object and Object2 is the second;
+    // keeping that order also preserves the sign of its serialized limits.
+    const axis1 = axisWorld.clone().applyQuaternion(part.homeRot.clone().invert()).normalize();
+    const data = RAPIER.JointData.prismatic(anchor1, anchor2, axis1);
+    if (limits) {
+      data.limitsEnabled = true;
+      data.limits = limits;
     }
+    const joint = world.createImpulseJoint(data, part.body, object2, true) as RAPIER.PrismaticImpulseJoint;
+    joint.setContactsEnabled(false);
+    this.joints.push(joint);
+    return joint;
+  }
+
+  /** Source Set Physics Spring: Position 1 is on Target, Position 2 on Object2/world. */
+  protected makeSpring(
+    part: DynamicPart,
+    other: DynamicPart | null,
+    anchor1World: THREE.Vector3,
+    anchor2World: THREE.Vector3,
+    length: number,
+    stiffness: number,
+    damping: number,
+  ): RAPIER.ImpulseJoint {
+    const world = this.ctx.physics.world;
+    let body1: RAPIER.RigidBody;
+    let anchor1: THREE.Vector3;
+    if (other) {
+      body1 = other.body;
+      const inv1 = new THREE.Matrix4().compose(other.homePos, other.homeRot, ONE).invert();
+      anchor1 = anchor2World.clone().applyMatrix4(inv1);
+    } else {
+      body1 = world.createRigidBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(anchor2World.x, anchor2World.y, anchor2World.z),
+      );
+      anchor1 = new THREE.Vector3();
+    }
+    const inv2 = new THREE.Matrix4().compose(part.homePos, part.homeRot, ONE).invert();
+    const anchor2 = anchor1World.clone().applyMatrix4(inv2);
+    const data = RAPIER.JointData.spring(length, stiffness, damping, anchor1, anchor2);
+    const joint = world.createImpulseJoint(data, body1, part.body, true);
+    joint.setContactsEnabled(false);
     this.joints.push(joint);
     return joint;
   }
@@ -265,6 +404,16 @@ export function localVertices(obj: THREE.Mesh, scale: THREE.Vector3): Float32Arr
     out[i * 3] = attr.getX(i) * scale.x;
     out[i * 3 + 1] = attr.getY(i) * scale.y;
     out[i * 3 + 2] = attr.getZ(i) * scale.z;
+  }
+  return out;
+}
+
+function meshRecordVertices(mesh: MeshRec, scale: THREE.Vector3): Float32Array {
+  const out = new Float32Array(mesh.vertexCount * 3);
+  for (let i = 0; i < mesh.vertexCount; i++) {
+    out[i * 3] = mesh.positions[i * 3] * scale.x;
+    out[i * 3 + 1] = mesh.positions[i * 3 + 1] * scale.y;
+    out[i * 3 + 2] = -mesh.positions[i * 3 + 2] * scale.z;
   }
   return out;
 }

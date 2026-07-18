@@ -6,8 +6,11 @@
 import * as THREE from 'three';
 import { loadNmo } from '../../engine/assets.ts';
 import { buildScene } from '../../engine/sceneBuilder.ts';
+import type { NmoFile } from '../../formats/ck2/types.ts';
 
 export interface PrefabPart {
+  index: number;
+  parentIndex: number;
   name: string;
   /** template object (shared geometry/materials) */
   object: THREE.Object3D;
@@ -17,6 +20,7 @@ export interface PrefabPart {
 
 export interface Prefab {
   name: string;
+  file: NmoFile;
   parts: PrefabPart[];
 }
 
@@ -31,9 +35,15 @@ export function loadPrefab(name: string): Promise<Prefab> {
         const parts: PrefabPart[] = [];
         for (const [entName, e] of built.entities) {
           if (entName.endsWith('_MF') && !(e.object instanceof THREE.Mesh)) continue;
-          parts.push({ name: entName, object: e.object, local: e.object.matrix.clone() });
+          parts.push({
+            index: e.rec.index,
+            parentIndex: e.rec.parentIndex,
+            name: entName,
+            object: e.object,
+            local: e.object.matrix.clone(),
+          });
         }
-        return { name, parts };
+        return { name, file: built.file, parts };
       });
     prefabCache.set(name, p);
   }
@@ -43,6 +53,8 @@ export function loadPrefab(name: string): Promise<Prefab> {
 export interface PrefabInstance {
   root: THREE.Group;
   parts: Map<string, THREE.Object3D>;
+  /** parsed source records, including unbound authored collision CKMeshes */
+  file: NmoFile;
 }
 
 /**
@@ -58,10 +70,13 @@ export function instantiatePrefab(prefab: Prefab, placementMatrix: THREE.Matrix4
   root.updateMatrix();
 
   const parts = new Map<string, THREE.Object3D>();
+  const partsByIndex = new Map<number, THREE.Object3D>();
   for (const part of prefab.parts) {
     let obj: THREE.Object3D;
     if (part.object instanceof THREE.Mesh) {
       obj = new THREE.Mesh(part.object.geometry, part.object.material);
+    } else if (part.object instanceof THREE.Sprite) {
+      obj = new THREE.Sprite(part.object.material);
     } else {
       obj = new THREE.Object3D();
     }
@@ -71,8 +86,28 @@ export function instantiatePrefab(prefab: Prefab, placementMatrix: THREE.Matrix4
     obj.matrix.copy(part.local);
     obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
     obj.updateMatrix();
-    root.add(obj);
     parts.set(part.name, obj);
+    partsByIndex.set(part.index, obj);
   }
-  return { root, parts };
+
+  // CK3dEntity matrices are serialized in world/prefab space. Rebuild the
+  // authored parent tree by converting each child matrix into parent-local
+  // space; static placement stays byte-for-byte visually identical while
+  // rotations/animations now carry their descendants correctly.
+  const partByIndex = new Map(prefab.parts.map((part) => [part.index, part]));
+  for (const part of prefab.parts) {
+    const obj = partsByIndex.get(part.index)!;
+    const parent = partsByIndex.get(part.parentIndex);
+    const parentPart = partByIndex.get(part.parentIndex);
+    if (parent && parentPart) {
+      obj.matrix.copy(parentPart.local).invert().multiply(part.local);
+      obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
+      obj.updateMatrix();
+      parent.add(obj);
+    } else {
+      root.add(obj);
+    }
+  }
+  root.updateMatrixWorld(true);
+  return { root, parts, file: prefab.file };
 }

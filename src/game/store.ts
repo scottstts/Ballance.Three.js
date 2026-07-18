@@ -1,6 +1,9 @@
 /** Shared game state bridge between the engine loop and the React UI. */
 import { create } from 'zustand';
 import type { BallKind } from './constants.ts';
+import { DEFAULT_SETTINGS, SCREEN_MODES, type Settings } from './settings.ts';
+
+export type { Settings } from './settings.ts';
 
 export type GamePhase =
   | 'intro'
@@ -14,12 +17,13 @@ export type GamePhase =
   | 'paused'
   | 'dead'
   | 'finished'
-  | 'gameover';
+  | 'gameover'
+  | 'pauseOptions'
+  | 'pauseHighscore';
 
 export interface ScoreEntry {
   name: string;
   score: number;
-  date: string;
 }
 
 export interface Progress {
@@ -27,30 +31,40 @@ export interface Progress {
   unlocked: number;
   /** best score per level (index 1..12) */
   highscores: Record<number, number>;
-  /** per-level top-10 tables (original defaults: Mr. Default, 2004/8/8) */
+  /** per-level top-10 tables */
   tables: Record<number, ScoreEntry[]>;
 }
 
 /** the original default leaderboard seeds */
 export function defaultTable(level: number): ScoreEntry[] {
-  const top = level === 12 ? 7000 : 4000;
-  const bottom = level === 12 ? 3600 : 400;
-  const step = (top - bottom) / 9;
+  const isLastLevel = level === 12;
+  const top = isLastLevel ? 7000 : 4000;
   return Array.from({ length: 10 }, (_, i) => ({
-    name: 'Mr. Default',
-    score: Math.round((top - step * i) / 10) * 10,
-    date: '2004/8/8',
+    name: isLastLevel ? 'Mrs. Default' : 'Mr. Default',
+    score: top - i * 400,
   }));
 }
 
-export interface Settings {
-  musicVolume: number;
-  sfxVolume: number;
-  /** original Graphics option: the drifting cloud layer on/off */
-  clouds: boolean;
-}
-
 const STORAGE_KEY = 'ballance-save';
+
+function loadSettings(saved: Partial<Settings> | undefined): Settings {
+  const key = (value: unknown, fallback: string) => (typeof value === 'string' && value !== '' ? value : fallback);
+  const volume = typeof saved?.musicVolume === 'number' ? saved.musicVolume : DEFAULT_SETTINGS.musicVolume;
+  const mode = typeof saved?.screenMode === 'number' ? Math.trunc(saved.screenMode) : DEFAULT_SETTINGS.screenMode;
+  return {
+    musicVolume: Math.max(0, Math.min(1, volume)),
+    syncToScreen: saved?.syncToScreen ?? DEFAULT_SETTINGS.syncToScreen,
+    screenMode: Math.max(0, Math.min(SCREEN_MODES.length - 1, mode)),
+    keyForward: key(saved?.keyForward, DEFAULT_SETTINGS.keyForward),
+    keyBackward: key(saved?.keyBackward, DEFAULT_SETTINGS.keyBackward),
+    keyLeft: key(saved?.keyLeft, DEFAULT_SETTINGS.keyLeft),
+    keyRight: key(saved?.keyRight, DEFAULT_SETTINGS.keyRight),
+    keyRotateCamera: key(saved?.keyRotateCamera, DEFAULT_SETTINGS.keyRotateCamera),
+    keyLiftCamera: key(saved?.keyLiftCamera, DEFAULT_SETTINGS.keyLiftCamera),
+    invertCameraRotation: saved?.invertCameraRotation ?? DEFAULT_SETTINGS.invertCameraRotation,
+    clouds: saved?.clouds ?? DEFAULT_SETTINGS.clouds,
+  };
+}
 
 function loadSave(): { progress: Progress; settings: Settings } {
   try {
@@ -63,17 +77,13 @@ function loadSave(): { progress: Progress; settings: Settings } {
           highscores: data.progress?.highscores ?? {},
           tables: data.progress?.tables ?? {},
         },
-        settings: {
-          musicVolume: data.settings?.musicVolume ?? 0.55,
-          sfxVolume: data.settings?.sfxVolume ?? 1,
-          clouds: data.settings?.clouds ?? true,
-        },
+        settings: loadSettings(data.settings),
       };
     }
   } catch {
     /* fresh save */
   }
-  return { progress: { unlocked: 1, highscores: {}, tables: {} }, settings: { musicVolume: 0.55, sfxVolume: 1, clouds: true } };
+  return { progress: { unlocked: 1, highscores: {}, tables: {} }, settings: { ...DEFAULT_SETTINGS } };
 }
 
 function persist(progress: Progress, settings: Settings): void {
@@ -96,6 +106,9 @@ export interface GameState {
   whiteFade: boolean;
   /** the win tally appears 6s after the finish trigger */
   winScreen: boolean;
+  /** Authored level-1 tutorial row currently shown, or null when inactive. */
+  tutorialChapter: number | null;
+  tutorialVisible: boolean;
   progress: Progress;
   settings: Settings;
   set: (partial: Partial<GameState>) => void;
@@ -117,6 +130,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   ballKind: 'wood',
   whiteFade: false,
   winScreen: false,
+  tutorialChapter: null,
+  tutorialVisible: false,
   progress: initial.progress,
   settings: initial.settings,
   set: (partial) => set(partial),
@@ -133,11 +148,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   submitScore: (level, name, score) => {
     const { progress, settings } = get();
     const table = [...(progress.tables[level] ?? defaultTable(level))];
-    const now = new Date();
     table.push({
       name: name.trim() === '' ? 'Player' : name.trim().slice(0, 16),
       score,
-      date: `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`,
     });
     table.sort((a, b) => b.score - a.score);
     const next: Progress = { ...progress, tables: { ...progress.tables, [level]: table.slice(0, 10) } };

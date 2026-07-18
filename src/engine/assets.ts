@@ -36,7 +36,7 @@ export function levelPath(level: number): string {
 }
 
 /** Original per-level sky set assignment (from the level definitions). */
-const SKY_LETTERS = ['L', 'F', 'A', 'F', 'C', 'H', 'D', 'G', 'K', 'B', 'J', 'I'];
+const SKY_LETTERS = ['L', 'E', 'A', 'F', 'C', 'H', 'D', 'G', 'K', 'B', 'J', 'I'];
 
 export function skyLetter(level: number): string {
   return SKY_LETTERS[level - 1] ?? 'A';

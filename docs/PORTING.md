@@ -10,9 +10,10 @@ The game splits cleanly into two kinds of content:
    open formats mechanically. **No hand-remodeling needed.**
 2. **Behavior** (ball physics, camera, moduls, checkpoints, scoring, menus) — implemented as
    Virtools visual-scripting behavior graphs inside `base.cmo` / `Gameplay.nmo`. These are
-   **not portable** and must be reimplemented in TypeScript. The good news: open-source
-   rebuilds (notably the Ballance Unity Rebuild) already did the archaeology and serve as a
-   behavioral spec.
+   **not portable** and must be reimplemented in TypeScript. The shipped CMO/NMO files,
+   plugin DLLs, database, text, and manual are the behavioral specification. Community
+   rebuilds may help locate a question, but every value and rule must be confirmed against
+   the original game payload before it becomes authoritative here.
 
 So the port = **one-time asset conversion pipeline** + **TypeScript reimplementation of the
 game rules** on Three.js + a physics engine, with React as the UI shell.
@@ -52,11 +53,10 @@ Raw asset footprint: ~136 MB → expect ~30–40 MB web-ready after transcoding 
 - **[nmo2escn](https://github.com/yyc12345/nmo2escn)** — converts maps for the OpenBallance
   (Godot) project and, importantly, **emits JSON files describing Virtools grouping data** in
   two established schemas (OpenBallance-style and imengyu-style). Steal the schema.
-- **[Ballance Unity Rebuild](https://github.com/imengyu/Ballance)** (GPL-3.0) — complete
-  open-source reimplementation. Loads original NMO levels; reimplements **every modul
-  behavior**, ball physics constants, sector rules, scoring. This is the **behavioral spec**
-  for the TS rewrite. (License note: re-derive behavior rather than transliterating C# if a
-  non-GPL license matters to you; if not, just make the port GPL-3.0.)
+- **[Ballance Unity Rebuild](https://github.com/imengyu/Ballance)** (GPL-3.0) — useful
+  complementary prior art and a way to identify areas worth auditing. It is not a source of
+  truth: values and behavior are re-derived from this install's original NMO/CMO graphs,
+  DLLs, database, text, and manual rather than copied from the rebuild.
 - Prior art proving web feasibility: a [Ballance imitation demo in Three.js + Ammo.js](https://discourse.threejs.org/t/ballance-imitation-demo-using-three-js-and-ammo-js/6773).
 
 ---
@@ -150,8 +150,8 @@ ballance-web/
 ### 4.3 Core systems to reimplement (the actual work)
 
 1. **Ball + input.** Arrow keys apply a camera-relative horizontal force; no jump. Three ball
-   types with distinct mass / push force / friction / restitution / damping — pull reference
-   constants from the Unity Rebuild rather than guessing. Falling below the sector kill
+   types with distinct mass / push force / friction / restitution / damping — decode the
+   original Physicalize and controller graphs rather than guessing. Falling below the sector kill
    plane → `Pieces_*` death effect → life lost → respawn at current checkpoint.
 2. **Camera rig.** The iconic scheme: camera follows at fixed offset; Shift+←/→ rotates in
    90° steps around the ball; Space lifts the camera for overview while held. Smooth lag on
@@ -162,9 +162,13 @@ ballance-web/
    balloon (`PE_Balloon`) → fly-off animation → score tally.
 4. **Trafos.** `P_Trafo_{Paper,Wood,Stone}` transform the ball type on contact, with the
    `AnimTrafo` animation and lightning-sphere effect.
-5. **Scoring/lives.** Level point budget counts down over time; `P_Extra_Point` +points,
-   `P_Extra_Life` +life; remaining points bank at level end. Exact numbers: crib from the
-   Unity Rebuild / original observation.
+5. **Scoring/lives.** Level point budget counts down at the original two points/second;
+   remaining points bank at level end. `P_Extra_Life` uses its source 2-second CK2dCurve
+   bob/squash animation, awards one life after 317 ms, and reappears when the active section
+   restarts. `P_Extra_Point` activates inside the authored 3-unit radius for +100, sends six
+   original sprites outward for 1000 ms, then pursues the ball using the shipped
+   `TT_Gravity_RT.dll` Verlet update. Each real satellite contact adds +20 (220 total), while
+   checkpoint crossing discards any remaining satellites. Point extras never reappear.
 6. **Audio logic.** Impact sounds chosen by (ball material × surface material × impact
    speed); rolling loops cross-faded by contact material with velocity-scaled volume/pitch;
    per-level music themes with variation shuffling and atmo layers.

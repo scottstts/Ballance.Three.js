@@ -4,17 +4,28 @@
 import { StateChunk } from './stateChunk.ts';
 import {
   CKClassId,
+  CKArrayType,
   Ident,
   VertexSaveFlags,
   type CKRecord,
+  type DataArrayRec,
+  type DataArrayValue,
   type EmbeddedBitmap,
+  type Entity2dRec,
   type Entity3dRec,
   type GroupRec,
   type LightRec,
   type MaterialRec,
   type MeshRec,
   type ObjectBase,
+  type ParameterRec,
+  type BehaviorLinkRec,
+  type BehaviorIoRec,
+  type BehaviorRec,
+  type ObjectAnimationRec,
+  type KeyedAnimationRec,
   type RGBA,
+  type Sprite3dRec,
   type TextureRec,
 } from './types.ts';
 
@@ -36,9 +47,9 @@ function loadBase(index: number, id: number, classId: number, name: string, chun
   return { index, id, classId, name, visible, hierHidden };
 }
 
-const ENTITY_FLAG_PLACEVALID = 0x2;
-const ENTITY_FLAG_PARENTVALID = 0x1;
-const ENTITY_FLAG_ZORDERVALID = 0x1000;
+const ENTITY_FLAG_PLACEVALID = 0x00010000;
+const ENTITY_FLAG_PARENTVALID = 0x00020000;
+const ENTITY_FLAG_ZORDERVALID = 0x00100000;
 
 function loadEntityInto(base: ObjectBase, chunk: StateChunk): Entity3dRec {
   const rec: Entity3dRec = {
@@ -49,6 +60,8 @@ function loadEntityInto(base: ObjectBase, chunk: StateChunk): Entity3dRec {
     entityFlags: 0,
     moveableFlags: 0,
     zOrder: 0,
+    placeIndex: -1,
+    parentIndex: -1,
   };
   if (chunk.seekIdentifier(Ident.ENTITY_MESHS) >= 0) {
     rec.meshIndex = chunk.objectRef();
@@ -65,8 +78,8 @@ function loadEntityInto(base: ObjectBase, chunk: StateChunk): Entity3dRec {
       m[row * 4 + 2] = chunk.f32();
       m[row * 4 + 3] = row === 3 ? 1 : 0;
     }
-    if (rec.entityFlags & ENTITY_FLAG_PLACEVALID) chunk.objectRef();
-    if (rec.entityFlags & ENTITY_FLAG_PARENTVALID) chunk.objectRef();
+    if (rec.entityFlags & ENTITY_FLAG_PLACEVALID) rec.placeIndex = chunk.objectRef();
+    if (rec.entityFlags & ENTITY_FLAG_PARENTVALID) rec.parentIndex = chunk.objectRef();
     if (rec.entityFlags & ENTITY_FLAG_ZORDERVALID) rec.zOrder = chunk.i32();
   }
   return rec;
@@ -76,6 +89,49 @@ function identityMatrix(): Float32Array {
   const m = new Float32Array(16);
   m[0] = m[5] = m[10] = m[15] = 1;
   return m;
+}
+
+function loadEntity2d(base: ObjectBase, chunk: StateChunk): Entity2dRec {
+  const rec: Entity2dRec = {
+    ...base,
+    kind: 'entity2d',
+    flags: 0,
+    rect: [0, 0, 1, 1],
+    relativeRect: [0, 0, 1, 1],
+    materialIndex: -1,
+    parentIndex: -1,
+  };
+  const dataSize = chunk.seekIdentifier(Ident.ENTITY2D_ONLY);
+  if (dataSize >= 36) {
+    rec.flags = chunk.u32();
+    rec.rect = [chunk.f32(), chunk.f32(), chunk.f32(), chunk.f32()];
+    rec.relativeRect = [chunk.f32(), chunk.f32(), chunk.f32(), chunk.f32()];
+  }
+  if (chunk.seekIdentifier(Ident.ENTITY2D_MATERIAL) >= 4) rec.materialIndex = chunk.objectRef();
+  if (chunk.seekIdentifier(Ident.ENTITY2D_HIERARCHY) >= 4) rec.parentIndex = chunk.objectRef();
+  return rec;
+}
+
+function loadSprite3d(base: ObjectBase, chunk: StateChunk): Sprite3dRec {
+  const loaded = loadEntityInto(base, chunk);
+  const { kind: _kind, meshIndex: _meshIndex, ...entity } = loaded;
+  const rec: Sprite3dRec = {
+    ...entity,
+    kind: 'sprite3d',
+    spriteFlags: 0,
+    size: [1, 1],
+    offset: [0, 0],
+    uvRect: [0, 0, 1, 1],
+    materialIndex: -1,
+  };
+  if (chunk.seekIdentifier(Ident.SPRITE3D_DATA) >= 40) {
+    rec.spriteFlags = chunk.u32();
+    rec.size = [chunk.f32(), chunk.f32()];
+    rec.offset = [chunk.f32(), chunk.f32()];
+    rec.uvRect = [chunk.f32(), chunk.f32(), chunk.f32(), chunk.f32()];
+    rec.materialIndex = chunk.objectRef();
+  }
+  return rec;
 }
 
 function loadMesh(base: ObjectBase, chunk: StateChunk): MeshRec {
@@ -393,6 +449,53 @@ function loadGroup(base: ObjectBase, chunk: StateChunk): GroupRec {
   return rec;
 }
 
+function loadDataArray(base: ObjectBase, chunk: StateChunk): DataArrayRec {
+  const rec: DataArrayRec = { ...base, kind: 'dataArray', columns: [], rows: [], members: [] };
+  if (chunk.seekIdentifier(Ident.DATAARRAY_FORMAT) >= 0) {
+    const count = chunk.u32();
+    for (let i = 0; i < count; i++) {
+      const name = chunk.string();
+      const type = chunk.u32();
+      const parameterGuid: [number, number] | null =
+        type === CKArrayType.Parameter ? [chunk.u32(), chunk.u32()] : null;
+      rec.columns.push({ name, type, parameterGuid });
+    }
+  }
+  if (chunk.seekIdentifier(Ident.DATAARRAY_DATA) >= 0) {
+    const count = chunk.u32();
+    for (let rowIndex = 0; rowIndex < count; rowIndex++) {
+      const row: DataArrayValue[] = [];
+      for (const column of rec.columns) {
+        switch (column.type) {
+          case CKArrayType.Int:
+            row.push(chunk.i32());
+            break;
+          case CKArrayType.Float:
+            row.push(chunk.f32());
+            break;
+          case CKArrayType.String:
+            row.push(chunk.string());
+            break;
+          case CKArrayType.Object:
+          case CKArrayType.Parameter:
+            row.push(chunk.objectRef());
+            break;
+          default:
+            // Unknown columns are a single dword in Virtools 2.1 data arrays.
+            row.push(chunk.u32());
+            break;
+        }
+      }
+      rec.rows.push(row);
+    }
+  }
+  const membersSize = chunk.seekIdentifier(Ident.DATAARRAY_MEMBERS);
+  if (membersSize >= 0) {
+    for (let i = 0; i < membersSize / 4; i++) rec.members.push(chunk.u32());
+  }
+  return rec;
+}
+
 function loadLight(base: ObjectBase, chunk: StateChunk): LightRec {
   const entity = loadEntityInto(base, chunk);
   const rec: LightRec = {
@@ -404,26 +507,213 @@ function loadLight(base: ObjectBase, chunk: StateChunk): LightRec {
     constAttenuation: 1,
     linearAttenuation: 0,
     quadAttenuation: 0,
-    range: 100,
-    hotSpot: 0.7,
-    falloff: 0.5,
+    range: 5000,
+    hotSpot: 0.6981317,
+    falloff: 0.7853982,
     falloffShape: 1,
     active: true,
     specularFlag: false,
     lightPower: 1,
   };
-  if (chunk.seekIdentifier(Ident.LIGHT_DATA) >= 0) {
-    // LightSave structure: type, color, attenuations, range, hotspot, falloff, falloffshape
-    rec.lightType = chunk.u32();
+  const lightDataSize = chunk.seekIdentifier(Ident.LIGHT_DATA);
+  if (lightDataSize >= 24) {
+    // Lowest byte is VXLIGHT_TYPE; upper bytes are CKLight::LightFlags.
+    const typeAndFlags = chunk.u32();
+    rec.lightType = typeAndFlags & 0xff;
+    rec.active = (typeAndFlags & 0x100) !== 0;
+    rec.specularFlag = (typeAndFlags & 0x200) !== 0;
     rec.color = argbToRgba(chunk.u32());
     rec.constAttenuation = chunk.f32();
     rec.linearAttenuation = chunk.f32();
     rec.quadAttenuation = chunk.f32();
     rec.range = chunk.f32();
-    rec.hotSpot = chunk.f32();
-    rec.falloff = chunk.f32();
-    rec.falloffShape = chunk.f32();
+    if (rec.lightType === 2 && lightDataSize >= 36) {
+      rec.falloff = chunk.f32();
+      rec.hotSpot = chunk.f32();
+      rec.falloffShape = chunk.f32();
+    }
   }
+  if (chunk.seekIdentifier(Ident.LIGHT_DATA2) >= 0) rec.lightPower = chunk.f32();
+  return rec;
+}
+
+function loadParameter(base: ObjectBase, chunk: StateChunk): ParameterRec {
+  const rec: ParameterRec = {
+    ...base,
+    kind: 'parameter',
+    typeGuid: null,
+    valueVersion: 0,
+    valueBytes: new Uint8Array(0),
+    valueObjectIndex: -1,
+    destinationIndices: [],
+    ownerIndex: -1,
+    sharedIndex: -1,
+    sourceIndex: -1,
+    disabled: chunk.seekIdentifier(Ident.PARAMETER_IN_DISABLED) >= 0,
+  };
+
+  const valueSize = chunk.seekIdentifier(Ident.PARAMETER_OUT_VALUE);
+  if (valueSize >= 8) {
+    const end = chunk.cursor + valueSize / 4;
+    rec.typeGuid = [chunk.u32(), chunk.u32()];
+    if (chunk.cursor < end) rec.valueVersion = chunk.u32();
+    if (chunk.cursor < end) {
+      const remainingDwords = end - chunk.cursor;
+      if (rec.valueVersion === 2 && remainingDwords === 1) {
+        rec.valueObjectIndex = chunk.objectRef();
+      } else {
+        // Primitive parameter values (version 1) store a byte count. Complex
+        // runtime types (version 0), including CK2dCurve, store a packed
+        // CKStateChunk preceded by its dword count instead. Keeping the full
+        // packed value is essential: treating that count as bytes silently
+        // truncated every authored Bezier curve after its header.
+        const serializedLength = chunk.u32();
+        const byteLength = rec.valueVersion === 0 ? serializedLength * 4 : serializedLength;
+        const availableBytes = Math.max(0, (end - chunk.cursor) * 4);
+        rec.valueBytes = chunk.bytes(Math.min(byteLength, availableBytes));
+      }
+    }
+  }
+
+  if (chunk.seekIdentifier(Ident.PARAMETER_OUT_DESTINATIONS) >= 0) {
+    rec.destinationIndices = chunk.objectRefArray();
+  }
+  if (chunk.seekIdentifier(Ident.PARAMETER_OUT_OWNER) >= 0) rec.ownerIndex = chunk.objectRef();
+  const sharedSize = chunk.seekIdentifier(Ident.PARAMETER_IN_SHARED);
+  if (sharedSize >= 12) {
+    rec.typeGuid = [chunk.u32(), chunk.u32()];
+    rec.sharedIndex = chunk.objectRef();
+  }
+  const sourceSize = chunk.seekIdentifier(Ident.PARAMETER_IN_SOURCE);
+  if (sourceSize >= 12) {
+    rec.typeGuid = [chunk.u32(), chunk.u32()];
+    rec.sourceIndex = chunk.objectRef();
+  }
+  return rec;
+}
+
+function loadBehaviorLink(base: ObjectBase, chunk: StateChunk): BehaviorLinkRec {
+  const rec: BehaviorLinkRec = {
+    ...base,
+    kind: 'behaviorLink',
+    activationDelay: 0,
+    currentDelay: 0,
+    outputIndex: -1,
+    inputIndex: -1,
+  };
+  const size = chunk.seekIdentifier(Ident.BEHAVIOR_LINK_NEWDATA);
+  if (size >= 12) {
+    const delays = chunk.u32();
+    rec.activationDelay = delays & 0xffff;
+    rec.currentDelay = delays >>> 16;
+    rec.outputIndex = chunk.objectRef();
+    rec.inputIndex = chunk.objectRef();
+  }
+  return rec;
+}
+
+function loadBehaviorIo(base: ObjectBase, chunk: StateChunk): BehaviorIoRec {
+  const rec: BehaviorIoRec = { ...base, kind: 'behaviorIo', flags: 0 };
+  if (chunk.seekIdentifier(Ident.BEHAVIOR_IO_FLAGS) >= 0) rec.flags = chunk.u32();
+  return rec;
+}
+
+function loadBehavior(base: ObjectBase, chunk: StateChunk): BehaviorRec {
+  const rec: BehaviorRec = {
+    ...base,
+    kind: 'behavior',
+    behaviorFlags: 0,
+    saveFlags: 0,
+    headerData: [],
+    referenceLists: [],
+    trailingData: [],
+  };
+  const size = chunk.seekIdentifier(Ident.BEHAVIOR_NEWDATA);
+  if (size < 4) return rec;
+
+  const payload: number[] = [];
+  for (let i = 0; i < size / 4; i++) payload.push(chunk.u32());
+  rec.behaviorFlags = payload[0] ?? 0;
+
+  // Script behaviors have a 2-dword header. Plugin building blocks add a
+  // prototype GUID plus optional owner/target references before the same
+  // sequence of counted object-reference arrays. Find the first boundary
+  // whose arrays consume the payload exactly; this is stable across both.
+  let parsed: { start: number; lists: number[][] } | null = null;
+  for (let start = 1; start < payload.length; start++) {
+    const lists: number[][] = [];
+    let pos = start;
+    let valid = true;
+    while (pos < payload.length) {
+      const count = payload[pos++] >>> 0;
+      if (count > payload.length - pos) {
+        valid = false;
+        break;
+      }
+      const refs = payload.slice(pos, pos + count).map((value) => ((value | 0) >= 0 ? value | 0 : -1));
+      pos += count;
+      lists.push(refs);
+    }
+    if (valid && pos === payload.length && lists.length > 0) {
+      parsed = { start, lists };
+      break;
+    }
+  }
+
+  if (parsed) {
+    rec.headerData = payload.slice(0, parsed.start);
+    rec.saveFlags = rec.headerData.at(-1) ?? 0;
+    rec.referenceLists = parsed.lists;
+  } else {
+    rec.headerData = payload;
+    rec.saveFlags = payload.at(-1) ?? 0;
+    rec.trailingData = payload.slice(1);
+  }
+  return rec;
+}
+
+function dwordAsFloat(value: number): number {
+  const buffer = new ArrayBuffer(4);
+  new Uint32Array(buffer)[0] = value;
+  return new Float32Array(buffer)[0];
+}
+
+function loadObjectAnimation(base: ObjectBase, chunk: StateChunk): ObjectAnimationRec {
+  const rec: ObjectAnimationRec = { ...base, kind: 'objectAnimation', entityIndex: -1, length: 0, rotationKeys: [] };
+  const size = chunk.seekIdentifier(Ident.OBJECT_ANIMATION_CONTROLLERS);
+  if (size < 52) return rec;
+  const payload = Array.from({ length: size / 4 }, () => chunk.u32());
+  // Ballance's Virtools 2.1 controller serialization: eight controller
+  // slots, target entity, duration, controller tag/flags, then TCB rotation
+  // keys (time + quaternion + tension/continuity/bias/eases).
+  rec.entityIndex = (payload[8] | 0) >= 0 ? payload[8] | 0 : -1;
+  rec.length = dwordAsFloat(payload[9]);
+  const count = payload[12] >>> 0;
+  let pos = 13;
+  if (count > 1024 || pos + count * 10 > payload.length) return rec;
+  for (let i = 0; i < count; i++) {
+    rec.rotationKeys.push({
+      time: dwordAsFloat(payload[pos]),
+      quaternion: [
+        dwordAsFloat(payload[pos + 1]),
+        dwordAsFloat(payload[pos + 2]),
+        dwordAsFloat(payload[pos + 3]),
+        dwordAsFloat(payload[pos + 4]),
+      ],
+      tension: dwordAsFloat(payload[pos + 5]),
+      continuity: dwordAsFloat(payload[pos + 6]),
+      bias: dwordAsFloat(payload[pos + 7]),
+      easeTo: dwordAsFloat(payload[pos + 8]),
+      easeFrom: dwordAsFloat(payload[pos + 9]),
+    });
+    pos += 10;
+  }
+  return rec;
+}
+
+function loadKeyedAnimation(base: ObjectBase, chunk: StateChunk): KeyedAnimationRec {
+  const rec: KeyedAnimationRec = { ...base, kind: 'keyedAnimation', animationIndices: [] };
+  if (chunk.seekIdentifier(Ident.KEYED_ANIMATION_LIST) >= 0) rec.animationIndices = chunk.objectRefArray();
   return rec;
 }
 
@@ -437,11 +727,15 @@ export function loadObjectRecord(
   const base = loadBase(index, id, classId, name, chunk);
   if (!chunk) return { ...base, kind: 'other' };
   switch (classId) {
+    case CKClassId.Entity2d:
+      return loadEntity2d(base, chunk);
     case CKClassId.Entity3d:
     case CKClassId.Object3d:
     case CKClassId.Camera:
     case CKClassId.TargetCamera:
       return loadEntityInto(base, chunk);
+    case CKClassId.Sprite3d:
+      return loadSprite3d(base, chunk);
     case CKClassId.Mesh:
       return loadMesh(base, chunk);
     case CKClassId.Material:
@@ -450,6 +744,23 @@ export function loadObjectRecord(
       return loadTexture(base, chunk);
     case CKClassId.Group:
       return loadGroup(base, chunk);
+    case CKClassId.DataArray:
+      return loadDataArray(base, chunk);
+    case CKClassId.ParameterIn:
+    case CKClassId.ParameterOut:
+    case CKClassId.ParameterLocal:
+    case CKClassId.Parameter:
+      return loadParameter(base, chunk);
+    case CKClassId.BehaviorLink:
+      return loadBehaviorLink(base, chunk);
+    case CKClassId.BehaviorIO:
+      return loadBehaviorIo(base, chunk);
+    case CKClassId.Behavior:
+      return loadBehavior(base, chunk);
+    case CKClassId.ObjectAnimation:
+      return loadObjectAnimation(base, chunk);
+    case CKClassId.KeyedAnimation:
+      return loadKeyedAnimation(base, chunk);
     case CKClassId.Light:
     case CKClassId.TargetLight:
       return loadLight(base, chunk);

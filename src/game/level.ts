@@ -23,6 +23,8 @@ const CHECKPOINT_RADIUS = 5;
 const CHECKPOINT_HEIGHT = 8;
 const PICKUP_RADIUS = 4;
 const PICKUP_HEIGHT = 6;
+/** TT Extra's authored Activationdistance. */
+const EXTRA_POINT_ACTIVATION_DISTANCE_SQUARED = 3 * 3;
 /** total of the six +20 orbit balls and the +100 center ball */
 export const EXTRA_POINT_VALUE = 220;
 
@@ -78,6 +80,11 @@ export class LevelLogic {
     return rp;
   }
 
+  /** The manual and source scripts reset every Life Extra after a fall. */
+  resetAfterFall(): void {
+    for (const pickup of this.pickupsLife) this.collected.delete(pickup.rec.name);
+  }
+
   /**
    * Death check: the DepthTestCubes are kill volumes stacked *beneath* the
    * course — the ball dying means it fell into one (or below the safety net).
@@ -113,7 +120,8 @@ export class LevelLogic {
 
     for (const p of this.pickupsPoint) {
       if (this.collected.has(p.rec.name)) continue;
-      if (cylinderContains(p.object.position, ballPos, PICKUP_RADIUS, PICKUP_HEIGHT)) {
+      // TT Extra performs a true 3D distance check at Activationdistance=3.
+      if (p.object.position.distanceToSquared(ballPos) < EXTRA_POINT_ACTIVATION_DISTANCE_SQUARED) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
         events.push({ kind: 'extraPoint', amount: EXTRA_POINT_VALUE, name: p.rec.name });

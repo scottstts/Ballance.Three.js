@@ -6,17 +6,30 @@
  * of the Virtools 2.1 runtime. This is an original TypeScript implementation.
  */
 
+import type { StateChunk } from './stateChunk.ts';
+
 export const NEMO_MAGIC = 'Nemo Fi\0';
 
 export const CKClassId = {
   Object: 1,
+  ParameterIn: 2,
+  ParameterOut: 3,
+  ParameterOperation: 4,
+  State: 5,
+  BehaviorLink: 6,
+  Behavior: 8,
+  BehaviorIO: 9,
   SceneObject: 11,
+  ObjectAnimation: 15,
+  Animation: 16,
+  KeyedAnimation: 18,
   BeObject: 19,
   Level: 21,
   Place: 22,
   Group: 23,
   Sound: 24,
   WaveSound: 25,
+  Entity2d: 27,
   Material: 30,
   Texture: 31,
   Mesh: 32,
@@ -28,7 +41,10 @@ export const CKClassId = {
   TargetLight: 39,
   Object3d: 41,
   Curve: 43,
+  ParameterLocal: 45,
+  Parameter: 46,
   RenderObject: 47,
+  DataArray: 52,
 } as const;
 
 export const FileWriteMode = {
@@ -72,9 +88,45 @@ export const Ident = {
   TEX_OLDTEXONLY: 0x002ff000,
   TEX_ONLY: 0x00fff000,
   // CKLight
-  LIGHT_DATA: 0x00001000,
+  LIGHT_DATA: 0x00400000,
+  LIGHT_DATA2: 0x00800000,
+  // CKSprite3D (class-specific; shares the numeric identifier with CKLight)
+  SPRITE3D_DATA: 0x00400000,
+  // CK2dEntity
+  ENTITY2D_ONLY: 0x0010f000,
+  ENTITY2D_MATERIAL: 0x00200000,
+  ENTITY2D_HIERARCHY: 0x00400000,
   // CKCamera
   CAMERA_ALL: 0x000fffff,
+  // CKDataArray
+  DATAARRAY_FORMAT: 0x00001000,
+  DATAARRAY_DATA: 0x00002000,
+  DATAARRAY_MEMBERS: 0x00004000,
+  // CKObjectAnimation / CKKeyedAnimation
+  OBJECT_ANIMATION_CONTROLLERS: 0x04000000,
+  KEYED_ANIMATION_LIST: 0x00001000,
+  // CKBehaviorLink
+  BEHAVIOR_LINK_NEWDATA: 0x00000020,
+  // CKBehaviorIO
+  BEHAVIOR_IO_FLAGS: 0x00000008,
+  // CKBehavior
+  BEHAVIOR_NEWDATA: 0x00000020,
+  // CKParameterLocal / CKParameterOut
+  PARAMETER_OUT_DESTINATIONS: 0x00000020,
+  PARAMETER_OUT_VALUE: 0x00000040,
+  PARAMETER_OUT_OWNER: 0x00000080,
+  // CKParameterIn
+  PARAMETER_IN_SHARED: 0x00000800,
+  PARAMETER_IN_SOURCE: 0x00001000,
+  PARAMETER_IN_DISABLED: 0x00002000,
+} as const;
+
+export const CKArrayType = {
+  Int: 1,
+  Float: 2,
+  String: 3,
+  Object: 4,
+  Parameter: 5,
 } as const;
 
 export const ChunkOptions = {
@@ -148,6 +200,36 @@ export interface Entity3dRec extends ObjectBase {
   entityFlags: number;
   moveableFlags: number;
   zOrder: number;
+  placeIndex: number;
+  parentIndex: number;
+}
+
+export interface Sprite3dRec extends ObjectBase {
+  kind: 'sprite3d';
+  worldMatrix: Float32Array;
+  entityFlags: number;
+  moveableFlags: number;
+  zOrder: number;
+  placeIndex: number;
+  parentIndex: number;
+  spriteFlags: number;
+  size: [number, number];
+  offset: [number, number];
+  uvRect: [number, number, number, number];
+  materialIndex: number;
+}
+
+export type Entity3dLikeRec = Entity3dRec | Sprite3dRec;
+
+export interface Entity2dRec extends ObjectBase {
+  kind: 'entity2d';
+  flags: number;
+  /** Normalized screen rectangle: left, top, right, bottom. */
+  rect: [number, number, number, number];
+  /** Serialized UV/relative rectangle following the screen rectangle. */
+  relativeRect: [number, number, number, number];
+  materialIndex: number;
+  parentIndex: number;
 }
 
 export interface MeshRec extends ObjectBase {
@@ -220,6 +302,23 @@ export interface GroupRec extends ObjectBase {
   memberIndices: number[];
 }
 
+export interface DataArrayColumn {
+  name: string;
+  type: number;
+  /** Present for parameter columns; the serialized parameter-type GUID. */
+  parameterGuid: [number, number] | null;
+}
+
+export type DataArrayValue = number | string | null;
+
+export interface DataArrayRec extends ObjectBase {
+  kind: 'dataArray';
+  columns: DataArrayColumn[];
+  rows: DataArrayValue[][];
+  /** Serialized sort/key/current-row metadata retained for inspection. */
+  members: number[];
+}
+
 export interface LightRec extends ObjectBase {
   kind: 'light';
   entity: Entity3dRec;
@@ -237,17 +336,103 @@ export interface LightRec extends ObjectBase {
   lightPower: number;
 }
 
+export interface ParameterRec extends ObjectBase {
+  kind: 'parameter';
+  /** Virtools parameter type GUID, when the parameter owns serialized data. */
+  typeGuid: [number, number] | null;
+  /** Parameter-manager serialization version stored before the value buffer. */
+  valueVersion: number;
+  valueBytes: Uint8Array;
+  /** Direct CK object reference used by version-2 object/sound parameters. */
+  valueObjectIndex: number;
+  destinationIndices: number[];
+  ownerIndex: number;
+  sharedIndex: number;
+  sourceIndex: number;
+  disabled: boolean;
+}
+
+export interface BehaviorLinkRec extends ObjectBase {
+  kind: 'behaviorLink';
+  activationDelay: number;
+  currentDelay: number;
+  outputIndex: number;
+  inputIndex: number;
+}
+
+export interface BehaviorIoRec extends ObjectBase {
+  kind: 'behaviorIo';
+  flags: number;
+}
+
+export interface BehaviorRec extends ObjectBase {
+  kind: 'behavior';
+  behaviorFlags: number;
+  saveFlags: number;
+  /** Full plugin/script-specific header preceding the reference arrays. */
+  headerData: number[];
+  /**
+   * Ordered XObjectArray payloads from CK_STATESAVE_BEHAVIORNEWDATA. Lists
+   * are deliberately retained generically: their referenced class IDs make
+   * sub-behaviors, links, parameter operations, parameters and input/output
+   * IO unambiguous without hard-coding plugin-specific behavior layouts.
+   */
+  referenceLists: number[][];
+  /** Unexpected trailing dwords, retained so archaeology never drops data. */
+  trailingData: number[];
+}
+
+export interface RotationKey {
+  time: number;
+  quaternion: [number, number, number, number];
+  tension: number;
+  continuity: number;
+  bias: number;
+  easeTo: number;
+  easeFrom: number;
+}
+
+export interface ObjectAnimationRec extends ObjectBase {
+  kind: 'objectAnimation';
+  entityIndex: number;
+  length: number;
+  rotationKeys: RotationKey[];
+}
+
+export interface KeyedAnimationRec extends ObjectBase {
+  kind: 'keyedAnimation';
+  animationIndices: number[];
+}
+
 export interface OtherRec extends ObjectBase {
   kind: 'other';
 }
 
-export type CKRecord = Entity3dRec | MeshRec | MaterialRec | TextureRec | GroupRec | LightRec | OtherRec;
+export type CKRecord =
+  | Entity3dRec
+  | Sprite3dRec
+  | Entity2dRec
+  | MeshRec
+  | MaterialRec
+  | TextureRec
+  | GroupRec
+  | LightRec
+  | DataArrayRec
+  | ParameterRec
+  | BehaviorLinkRec
+  | BehaviorIoRec
+  | BehaviorRec
+  | ObjectAnimationRec
+  | KeyedAnimationRec
+  | OtherRec;
 
 export interface NmoFile {
   info: FileInfo;
   objects: CKRecord[];
+  /** Raw per-object chunks retained for read-only format archaeology tools. */
+  chunks: (StateChunk | null)[];
   /** helpers */
   groups: GroupRec[];
-  entities: Entity3dRec[];
+  entities: Entity3dLikeRec[];
   byName: Map<string, CKRecord[]>;
 }

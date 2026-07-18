@@ -48,14 +48,25 @@ class PhysicsModul extends Modul {
     for (const hinge of phys.hinges ?? []) {
       const part = this.findDynamic(hinge.part);
       const pin = this.partWorldPosition(hinge.pin);
-      if (!part || !pin) continue;
+      const axis = this.referenceWorldDirection(hinge.pin, hinge.axis ?? [0, 0, 1]);
+      if (!part || !pin || !axis) continue;
       const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
-      this.makeHinge(part, pin, localDirToWorld(instance, hinge.axis), other, hinge.spherical);
+      this.makeHinge(part, pin, axis, other, hinge.spherical, hinge.limits);
     }
     for (const pris of phys.prismatics ?? []) {
       const part = this.findDynamic(pris.part);
-      if (!part) continue;
-      this.makePrismatic(part, localDirToWorld(instance, pris.axis), pris.limits, pris.spring);
+      const first = this.partWorldPosition(pris.points[0]);
+      const second = this.partWorldPosition(pris.points[1]);
+      if (!part || !first || !second) continue;
+      this.makePrismatic(part, second.sub(first).normalize(), pris.limits);
+    }
+    for (const spring of phys.springs ?? []) {
+      const part = this.findDynamic(spring.part);
+      const other = spring.other ? (this.findDynamic(spring.other) ?? null) : null;
+      const anchor1 = this.referenceWorldPoint(spring.anchor1.ref, spring.anchor1.position);
+      const anchor2 = this.referenceWorldPoint(spring.anchor2.ref, spring.anchor2.position);
+      if (!part || !anchor1 || !anchor2) continue;
+      this.makeSpring(part, other, anchor1, anchor2, spring.length, spring.stiffness, spring.damping);
     }
     this.altTarget = phys.altForce ? this.findDynamic(phys.altForce.part) : undefined;
     // spawn asleep until the sector activates
@@ -77,7 +88,9 @@ class PhysicsModul extends Modul {
         this.altTimer -= alt.switchTime;
         this.altForceState = (this.altForceState + 1) % (alt.delayTime !== undefined ? 4 : 2);
       }
-      const dir = localDirToWorld(this.instance, alt.axis);
+      const dir = alt.reference
+        ? (this.referenceWorldDirection(alt.reference, alt.axis) ?? localDirToWorld(this.instance, alt.axis))
+        : localDirToWorld(this.instance, alt.axis);
       // with delay: 4-state cycle idle, +F, idle, -F; without: +F / -F
       const scale =
         alt.delayTime !== undefined
@@ -140,7 +153,8 @@ class BridgeModul extends PhysicsModul {
         const pin = this.partWorldPosition(hinge.pin);
         const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
         if (part && pin) {
-          this.middleJoint = this.makeHinge(part, pin, localDirToWorld(this.instance, hinge.axis), other, hinge.spherical);
+          const axis = this.referenceWorldDirection(hinge.pin, hinge.axis ?? [0, 0, 1]);
+          if (axis) this.middleJoint = this.makeHinge(part, pin, axis, other, hinge.spherical, hinge.limits);
         }
       }
     }

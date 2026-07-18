@@ -7,10 +7,87 @@ body,
   height: 100%;
   overflow: hidden;
   background: #000;
+  display: grid;
+  place-items: center;
+}
+
+.game-frame {
+  position: relative;
+  width: min(100vw, calc(100vh * 4 / 3));
+  height: min(100vh, calc(100vw * 3 / 4));
+  overflow: hidden;
+  background: #000;
+  container-type: size;
+}
+
+/* ---------- original level-1 tutorial (Tutorial.nmo normalized bounds) ---------- */
+
+.tutorial-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+  user-select: none;
+}
+
+.tutorial-back {
+  position: absolute;
+  left: 23.525%;
+  top: 73.995%;
+  width: 58.03%;
+  height: 26.005%;
+  background: rgba(0, 0, 0, 0.4705883);
+  animation: tutorial-back-in 0.2s linear both;
+}
+
+.tutorial-text {
+  position: absolute;
+  left: 24.33255%;
+  top: 74.79535%;
+  width: 48.97482%;
+  height: 24.09985%;
+  box-sizing: border-box;
+  padding: 0.4167cqh 0.3125cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  animation: tutorial-text-in 0.5s linear both;
+}
+
+.tutorial-text img {
+  display: block;
+  flex: 0 0 auto;
+  height: 3.3333cqh;
+  max-width: 100%;
+  filter: drop-shadow(-0.31cqw 0.72cqh 0 rgba(0, 0, 0, 0.5));
+}
+
+.tutorial-blank {
+  height: 3.3333cqh;
+  flex: 0 0 auto;
+}
+
+@keyframes tutorial-back-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tutorial-text-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .load-error {
-  position: fixed;
+  position: absolute;
   top: 12px;
   left: 12px;
   color: #ff6666;
@@ -22,7 +99,7 @@ body,
 /* ---------- in-game HUD (original sprite pieces) ---------- */
 
 .hud {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
   user-select: none;
@@ -88,94 +165,195 @@ body,
 }
 
 .intro-screen {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: #000;
   z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 1;
-  transition: opacity 0.6s ease;
   overflow: hidden;
 }
 
-.intro-out {
-  opacity: 0;
+.intro-atari {
+  position: absolute;
+  left: 16.272103786%;
+  top: 5.660386756%;
+  width: 66.666686535%;
+  height: 88.948915526%;
+  object-fit: fill;
 }
 
-.intro-card {
-  max-width: 60vw;
-  max-height: 60vh;
-  animation: intro-fade 2.4s ease both;
-}
-
-.intro-logo-stage {
+.intro-cloud-stage {
   position: absolute;
   inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+
+.intro-gravity-logo {
+  position: absolute;
+  left: 27.100008726%;
+  top: 35.699987411%;
+  width: 45.799982548%;
+  height: 30.660843849%;
+  object-fit: fill;
 }
 
 .intro-cloud {
   position: absolute;
-  width: 85vh;
-  mix-blend-mode: screen;
-  opacity: 0.8;
-  -webkit-mask-image: radial-gradient(ellipse at center, #000 32%, transparent 58%);
-  mask-image: radial-gradient(ellipse at center, #000 32%, transparent 58%);
-  animation: intro-clouds-drift 36s linear infinite;
+  overflow: hidden;
+  opacity: 1;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
 }
 
-.intro-cloud-a {
-  left: -12vw;
-  top: 6vh;
+.intro-cloud img {
+  position: absolute;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
 }
 
-.intro-cloud-b {
-  right: -10vw;
-  bottom: -4vh;
-  width: 100vh;
-  animation-duration: 46s;
+.intro-cloud-one {
+  left: 24.42%;
+  top: 37.9%;
+  width: 54.74%;
+  height: 26.04%;
+  animation:
+    intro-cloud-one-motion 2200ms linear forwards,
+    intro-cloud-fade 800ms linear 1800ms forwards;
 }
 
-.intro-cloud-c {
-  left: 24vw;
-  bottom: -18vh;
-  width: 70vh;
-  animation-duration: 30s;
-  animation-direction: reverse;
+.intro-cloud-one img {
+  left: 0;
+  top: -83.486238532%;
+  width: 100%;
+  height: 183.486238532%;
 }
 
-.intro-logo {
-  position: relative;
-  animation: intro-fade 3s ease both;
+.intro-cloud-two {
+  left: 45.12%;
+  top: 37.69%;
+  width: 32.37%;
+  height: 26.27%;
+  animation:
+    intro-cloud-two-motion 2600ms linear forwards,
+    intro-cloud-fade 800ms linear 1800ms forwards;
 }
 
-@keyframes intro-fade {
-  0% {
-    opacity: 0;
-  }
-  25% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-  }
+.intro-cloud-two img {
+  left: -88.679245283%;
+  top: 0;
+  width: 188.679245283%;
+  height: 222.222222222%;
 }
 
-@keyframes intro-clouds-drift {
+.intro-mask,
+.intro-black {
+  position: absolute;
+  background: #000;
+}
+
+.intro-mask-left {
+  left: 0;
+  top: 0;
+  width: 27.090775967%;
+  height: 100%;
+}
+
+.intro-mask-top {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 38.283789158%;
+}
+
+.intro-mask-right {
+  left: 72.984218597%;
+  top: -2.653927915%;
+  width: 27.090835402%;
+  height: 100%;
+}
+
+.intro-mask-bottom {
+  left: 0;
+  top: 64.062428474%;
+  width: 100%;
+  height: 36.066579819%;
+}
+
+.intro-black {
+  inset: 0;
+}
+
+.intro-black-atari {
+  animation: intro-black-out 300ms linear forwards;
+}
+
+.intro-black-atariOut,
+.intro-black-out {
+  animation: intro-black-in 300ms linear forwards;
+}
+
+.intro-black-clouds {
+  animation: intro-black-out 3000ms linear forwards;
+}
+
+@keyframes intro-black-out {
   from {
-    transform: translate(-4vw, 1vh);
+    opacity: 1;
   }
   to {
-    transform: translate(6vw, -2vh);
+    opacity: 0;
+  }
+}
+
+@keyframes intro-black-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes intro-cloud-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes intro-cloud-one-motion {
+  from {
+    left: 24.42%;
+    top: 37.9%;
+    width: 54.74%;
+    height: 26.04%;
+  }
+  to {
+    left: -5%;
+    top: 37.79%;
+    width: 80%;
+    height: 40%;
+  }
+}
+
+@keyframes intro-cloud-two-motion {
+  from {
+    left: 45.12%;
+    top: 37.69%;
+    width: 32.37%;
+    height: 26.27%;
+  }
+  to {
+    left: 67.69%;
+    top: 41%;
+    width: 50%;
+    height: 35%;
   }
 }
 
 .white-fade {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: #fff;
   opacity: 0;
@@ -191,16 +369,16 @@ body,
 /* ---------- menu screens (original band + capsule sprites) ---------- */
 
 .menu-backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   display: block;
   z-index: 15;
 }
 
 .og-screen {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 20;
   user-select: none;
@@ -384,6 +562,31 @@ body,
   animation: og-credits-scroll 55s linear infinite;
 }
 
+.og-credit-block {
+  width: 46vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65vh;
+  margin-bottom: 3.4vh;
+}
+
+.og-credit-title {
+  max-width: 44vh;
+  height: 2.5vh;
+  object-fit: contain;
+}
+
+.og-credit-copy {
+  max-width: 44vh;
+  height: 1.85vh;
+  object-fit: contain;
+}
+
+.og-credit-gap {
+  height: 0.8vh;
+}
+
 @keyframes og-credits-scroll {
   from {
     transform: translateY(72vh);
@@ -434,6 +637,54 @@ body,
 
 .og-key-row img {
   height: 44%;
+}
+
+.og-key-listening {
+  filter: sepia(1) saturate(1.4);
+}
+
+.og-controls-list {
+  margin-top: 1.8vh;
+  gap: 0.5vh;
+}
+
+.og-controls-list .og-option-row {
+  margin-top: 0.7vh;
+  gap: 0.4vh;
+}
+
+.og-controls-list .og-option-row > img {
+  height: 2.2vh;
+}
+
+.og-resolution {
+  width: 23vh;
+  height: 3.1vh;
+  background-size: 100% 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.og-resolution img {
+  height: 54%;
+}
+
+.og-pause-stack {
+  margin-top: 9vh;
+  gap: 2.1vh;
+}
+
+.og-confirm-question {
+  margin-top: 25vh;
+  max-width: 48vh;
+  display: flex;
+  justify-content: center;
+}
+
+.og-confirm-question img {
+  max-width: 46vh;
+  height: 2.6vh;
 }
 
 .og-score-list-win {

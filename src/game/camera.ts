@@ -105,7 +105,7 @@ export class CamRig {
     this.camera.lookAt(ballPos);
   }
 
-  update(dt: number, ballPos: THREE.Vector3, input: InputState): void {
+  update(dt: number, ballPos: THREE.Vector3, input: InputState, invertRotation = false): void {
     if (!this.initialized) this.resetTo(ballPos);
     if (this.mode === 'frozen') return;
 
@@ -115,7 +115,8 @@ export class CamRig {
       const rightEdge = input.shift && input.right && !this.prevRight;
       if (leftEdge || rightEdge) {
         this.yawFrom = this.yawTarget;
-        this.yawTarget = this.yawFrom + (leftEdge ? Math.PI / 2 : -Math.PI / 2);
+        const direction = invertRotation ? -1 : 1;
+        this.yawTarget = this.yawFrom + (leftEdge ? direction * Math.PI / 2 : -direction * Math.PI / 2);
         this.rotateT = 0;
       }
     }

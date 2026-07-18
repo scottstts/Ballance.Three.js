@@ -9,18 +9,22 @@ import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuild
 import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
+import { BalloonPhysics } from './balloon.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TrafoAnim } from './effects.ts';
+import { prepareBalloonInstance, UfoFinale } from './finale.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
-import { instantiatePrefab, loadPrefab } from './moduls/prefabs.ts';
+import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/prefabs.ts';
 import { modulFactories } from './moduls/registry.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
 import { PickupSystem } from './pickups.ts';
+import { screenMode } from './settings.ts';
 import { gameStore } from './store.ts';
+import { TutorialSystem, tutorialEligible } from './tutorial.ts';
 
 export interface GameHandle {
   dispose(): void;
@@ -74,8 +78,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   // preserveDrawingBuffer keeps the last frame capturable (automation screenshots)
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+  renderer.setPixelRatio(1);
+  const initialMode = screenMode(gameStore.getState().settings);
+  renderer.setSize(initialMode.width, initialMode.height, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -107,7 +112,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // the level file only carries gray placement dummies for the scenery
   // pieces; the textured versions live in PH/*.nmo (as the original loads)
   bootStage('scenery');
-  let balloonInstance: THREE.Object3D | null = null;
+  let balloonInstance: PrefabInstance | null = null;
   for (const { group, prefab } of [
     { group: 'PC_Checkpoints', prefab: 'PC_TwoFlames' },
     { group: 'PS_Levelstart', prefab: 'PS_FourFlames' },
@@ -120,15 +125,16 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       e.object.visible = false;
       const inst = instantiatePrefab(p, e.object.matrix);
       scene.add(inst.root);
-      if (group === 'PE_Levelende') balloonInstance = inst.root;
+      if (group === 'PE_Levelende') balloonInstance = inst;
     }
   }
   for (const e of groupEntities(built, 'PR_Resetpoints')) e.object.visible = false;
+  const balloonVisual = balloonInstance ? prepareBalloonInstance(balloonInstance) : null;
+  const ufoFinale = level === 12 && balloonInstance ? new UfoFinale(await loadPrefab('PE_Balloon'), balloonInstance) : null;
 
   bootStage('ball');
   const spawn = logic.spawnFor(1);
   const spawnPos = spawn.position.clone();
-  spawnPos.y += 4;
   const ball = await Ball.create(physics, scene, spawnPos);
   ball.teleport(spawnPos);
 
@@ -149,22 +155,44 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   await ballShadow.init();
   scene.add(ballShadow.mesh);
 
-  const rig = new CamRig(canvas.clientWidth / canvas.clientHeight);
+  const rig = new CamRig(4 / 3);
   rig.resetTo(ball.position, spawn.yaw);
+  const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
   let skyLayerRef: THREE.Object3D | null = null;
   const applyVolumes = () => {
     const s = gameStore.getState().settings;
-    audio.musicVolume = s.musicVolume;
-    audio.sfxVolume = s.sfxVolume;
+    audio.setMusicVolume(s.musicVolume);
+    audio.sfxVolume = 1;
+    const mode = screenMode(s);
+    renderer.setSize(mode.width, mode.height, false);
     if (skyLayerRef) skyLayerRef.visible = s.clouds;
   };
   applyVolumes();
   const unsubscribeSettings = gameStore.subscribe((s, prev) => {
-    if (s.settings !== prev.settings) applyVolumes();
+    if (s.settings !== prev.settings) {
+      input.clear();
+      applyVolumes();
+    }
   });
   audio.startMusic(level);
+
+  const balloonPhysics = balloonInstance
+    ? new BalloonPhysics(balloonInstance, {
+        physics,
+        scene,
+        ball,
+        registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
+        attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
+        emit: () => {},
+      })
+    : null;
+  if (import.meta.env.DEV && (bootFlags.has('finish') || bootFlags.has('wakeballoon'))) balloonPhysics?.wake();
+
+  const tutorial = tutorialEligible(level, bootFlags)
+    ? await TutorialSystem.create(scene, () => audio.playFlat('Hit_Stone_Kuppel.wav', 1))
+    : null;
 
   bootStage('moduls');
   const onlyModuls = bootFlags.get('moduls')?.split(',');
@@ -209,7 +237,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   flames.setSector(1);
   bootStage('done');
 
-  const input = new Input();
   input.attach(window);
 
   const store = gameStore.getState();
@@ -222,18 +249,24 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     sectorCount: logic.sectorCount,
     ballKind: 'wood',
     whiteFade: false,
+    tutorialChapter: tutorial?.chapter ?? null,
+    tutorialVisible: tutorial?.active ?? false,
   });
+  if (import.meta.env.DEV && bootFlags.has('finish')) {
+    logic.currentSector = logic.sectorCount;
+    moduls.setSector(logic.sectorCount);
+    flames.setSector(logic.sectorCount);
+    const end = groupEntities(built, 'PE_Levelende')[0];
+    if (end) {
+      // Start above the physical platform so the deterministic helper enters
+      // the authored proximity without spawning inside its compound hull.
+      ball.teleport(end.object.position.clone().add(new THREE.Vector3(0, 5, 0)));
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(end.object.quaternion);
+      rig.resetTo(end.object.position, Math.atan2(-forward.x, -forward.z));
+    }
+  }
 
   let disposed = false;
-  const onResize = () => {
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    renderer.setSize(w, h, false);
-    rig.camera.aspect = w / h;
-    rig.camera.updateProjectionMatrix();
-  };
-  window.addEventListener('resize', onResize);
-
   let simTicks = 0;
   let paused = false;
   let debug: GameDebug | null = null;
@@ -242,13 +275,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let birthTimer = 0;
   let flapCooldown = 0;
   let pendingTrafo: { ball: BallKind; timer: number; hold: THREE.Vector3 } | null = null;
-  let finishRise = 0;
-  const balloonVisual = balloonInstance ?? groupEntities(built, 'PE_Levelende')[0]?.object ?? null;
   // simple sim-time one-shot timer queue
   const timers: { t: number; fn: () => void }[] = [];
   const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
   // final-sector ambient from the balloon (Music_EndCheckpoint loop)
   const balloonAmbient = balloonVisual ? audio.createLoop('Music_EndCheckpoint.wav', balloonVisual, 0.9) : null;
+  const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
 
   const startBirth = () => {
     birthTimer = BIRTH_TIME;
@@ -294,6 +326,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const respawn = () => {
     const s = gameStore.getState();
     shatter.clear();
+    logic.resetAfterFall();
+    pickups.resetAfterFall();
     ball.visual.visible = true;
     // original: the ball materializes exactly at the reset point
     const rp = logic.spawnFor(logic.currentSector);
@@ -353,21 +387,39 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       if (deathTimer <= 0) respawn();
       return;
     }
-    if (s.phase === 'finished' && balloonVisual && finishRise < 45) {
-      // balloon fly-off: buoyant rise that gently decays (original forces
-      // taper 0.15 -> 0.10 -> 0 over ~43s), carrying the ball along
-      finishRise += SIM_DT;
-      const rate = Math.max(0.35, 3.1 * Math.exp(-finishRise / 16));
-      const dy = SIM_DT * rate;
-      balloonVisual.position.y += dy;
-      balloonVisual.position.x += Math.sin(finishRise * 1.3) * 0.015;
-      balloonVisual.rotation.y += SIM_DT * 0.1;
-      balloonVisual.updateMatrix();
-      const bt = ball.body.translation();
-      ball.body.setTranslation({ x: bt.x, y: bt.y + dy, z: bt.z }, false);
+    if (s.phase === 'finished') {
+      balloonPhysics?.update();
+      let carryPosition: THREE.Vector3 | null = null;
+      if (ufoFinale?.active) {
+        const ufo = ufoFinale.update(SIM_DT, ball.position);
+        if (ufo.playAnimationSound) audio.play('Misc_UFO_anim.wav', ufoFinale.ballCarryPosition(), 0.9, scene);
+        if (ufo.enteredHyperspace) ufoLoop?.setActive(false);
+        if (ufo.carryBall) {
+          carryPosition = ufoFinale.ballCarryPosition();
+          ball.body.setTranslation(carryPosition, false);
+          ball.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+          ball.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+        }
+      }
+      physics.step();
+      simTicks++;
+      balloonPhysics?.syncVisuals();
+      if (carryPosition) {
+        ball.body.setTranslation(carryPosition, false);
+        ball.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+        ball.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+      }
       return;
     }
     if (s.phase !== 'playing') return; // paused/gameover freeze the sim
+
+    tutorial?.update(SIM_DT, ball.position, input);
+    if (tutorial?.frozen) {
+      // CK's tutorial writes the global physics time factor to zero. Keep
+      // rigid-body velocities intact and simply do not advance the world.
+      simTicks++;
+      return;
+    }
 
     // pending ball transformation: the ball is held centered above the
     // transformer while the ring cage spins, then the old ball bursts
@@ -398,6 +450,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       rig.pushDirection(input.state, pushDir);
     }
     ball.applyPush(pushDir);
+    balloonPhysics?.update();
     moduls.update(SIM_DT);
     const preVel = ball.body.linvel();
     physics.step();
@@ -451,6 +504,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     for (const ev of logic.update(pos, ball.kind)) {
       switch (ev.kind) {
         case 'checkpoint': {
+          // Pursuing +20 balls are tied to the current section. Source2's
+          // manual explicitly warns that they vanish at a checkpoint.
+          pickups.checkpoint();
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
           flames.setSector(ev.sector);
@@ -458,6 +514,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           // entering the final sector: the balloon hums its ambient and the
           // background music stays out of the way (original: 70s mute)
           if (ev.sector === logic.sectorCount) {
+            balloonPhysics?.wake();
             balloonAmbient?.setActive(true);
             audio.muteMusicFor(70);
           }
@@ -469,35 +526,32 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           s.completeLevel(level, finalScore);
           balloonAmbient?.setActive(false);
           audio.stopMusic();
+          balloonPhysics?.launch();
           // camera: follow briefly, then hold position and watch the ascent
           after(0.6, () => {
             rig.mode = 'lookOnly';
           });
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
-            audio.play('Misc_UFO.wav', pos, 1, scene);
-            audio.play('Misc_UFO_anim.wav', pos, 0.9, scene);
+            ufoFinale?.start();
+            ufoLoop?.setActive(true);
             audio.play('Music_LastFinal.wav', pos, 0.9, scene);
             after(5.5, () => audio.play('Music_Final.wav', ball.position, 0.9, scene));
           } else {
             audio.play('Music_Final.wav', pos, 0.9, scene);
           }
           // original: the win tally appears 6s after the pass
-          after(6, () => gameStore.getState().set({ winScreen: true }));
+          if (!(import.meta.env.DEV && bootFlags.has('nowinscreen'))) {
+            after(6, () => gameStore.getState().set({ winScreen: true }));
+          }
           break;
         }
         case 'extraPoint': {
-          // original: +100 at the center, then the six orbiters strike the
-          // counter for +20 each as they fly in
+          // TT Extra emits Activated for the +100 center. Its six +20 Hit
+          // outputs occur only when dispersed satellites catch the ball.
           s.set({ points: gameStore.getState().points + 100 });
           pickups.collect(ev.name);
           audio.play('Extra_Start.wav', pos, 1, scene);
-          for (let i = 0; i < 6; i++) {
-            after(0.45 + i * 0.12, () => {
-              gameStore.getState().set({ points: gameStore.getState().points + 20 });
-              audio.playFlat('Extra_Hit.wav', 0.8);
-            });
-          }
           break;
         }
         case 'extraLife':
@@ -509,6 +563,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           });
           break;
       }
+    }
+    for (const _hit of pickups.updateSimulation(SIM_DT, pos)) {
+      gameStore.getState().set({ points: gameStore.getState().points + 20 });
+      audio.playFlat('Extra_Hit.wav', 0.8);
     }
   };
 
@@ -524,13 +582,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const present = (frameDt: number) => {
     ball.syncVisual();
-    rig.update(frameDt, ball.position, input.state);
+    rig.update(frameDt, ball.position, input.state, gameStore.getState().settings.invertCameraRotation);
     const v = ball.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
     audio.updateRoll(ball.kind, contactSurfaces(), speed, frameDt);
     const flameScale = renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360));
     flames.update(frameDt, flameScale);
-    pickups.update(frameDt, rig.camera.position);
+    pickups.update(frameDt, flameScale);
     lightning.update(frameDt, ball.position);
     trafoAnim.update(frameDt, ball.position);
     shatter.update();
@@ -559,6 +617,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     sky.position.copy(rig.camera.position);
     renderer.render(scene, rig.camera);
+    if (import.meta.env.DEV) {
+      canvas.dataset.gameDebug = JSON.stringify({
+        input: input.debugState(),
+        tutorial: tutorial?.debugState() ?? null,
+        balloon: balloonPhysics?.debugState() ?? null,
+      });
+    }
   };
 
   let accumulator = 0;
@@ -607,7 +672,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         const steps = Math.round(seconds / SIM_DT);
         for (let i = 0; i < steps; i++) {
           simStep();
-          rig.update(SIM_DT, ball.position, input.state);
+          rig.update(SIM_DT, ball.position, input.state, gameStore.getState().settings.invertCameraRotation);
         }
         present(SIM_DT);
       },
@@ -633,9 +698,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       unsubscribeSettings();
       audio.dispose();
       shatter.clear();
+      balloonPhysics?.dispose();
       moduls.dispose();
+      tutorial?.dispose();
       input.detach(window);
-      window.removeEventListener('resize', onResize);
       ball.dispose();
       renderer.dispose();
     },

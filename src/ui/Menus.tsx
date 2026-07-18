@@ -5,7 +5,9 @@
  * pause and win/fail flows with their exact English strings).
  */
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { defaultTable, useGameStore } from '../game/store.ts';
+import { CONTROL_ROWS, SCREEN_MODES, displayKey, type ControlSetting, type Settings } from '../game/settings.ts';
+import { scoreCountStep } from '../game/score.ts';
+import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
 import { useOgui } from './useOgui.ts';
 import type { Ogui } from './ogui.ts';
@@ -38,16 +40,24 @@ export function MenuButton({
   const piece = medium ? 'buttonMedium' : 'buttonLarge';
   const img = ogui.piece[hover && !disabled ? `${piece}Hover` : piece];
   const text = ogui.text(label, medium ? 22 : 26);
+  const activate = () => {
+    if (disabled) return;
+    menuAudio.click();
+    onClick();
+  };
   return (
     <div
+      role="button"
+      aria-label={label}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : 0}
       className={`og-button${medium ? ' og-button-medium' : ''}${disabled ? ' og-disabled' : ''}`}
       style={{ backgroundImage: `url(${img})` }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => {
-        if (disabled) return;
-        menuAudio.click();
-        onClick();
+      onClick={activate}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') activate();
       }}
     >
       <img className="og-button-label" src={text.url} style={{ height: medium ? '45%' : '42%' }} alt="" draggable={false} />
@@ -73,8 +83,19 @@ export function MenuBand({ ogui, children, style }: { ogui: Ogui; children: Reac
 
 export function MainMenu() {
   const set = useGameStore((s) => s.set);
+  const [confirmExit, setConfirmExit] = useState(false);
   const ogui = useOgui();
   if (!ogui) return null;
+  if (confirmExit) {
+    return (
+      <ConfirmScreen
+        ogui={ogui}
+        question="Do you want to quit the game?"
+        onConfirm={() => window.close()}
+        onCancel={() => setConfirmExit(false)}
+      />
+    );
+  }
   return (
     <MenuBand ogui={ogui}>
       <div className="og-stack">
@@ -89,7 +110,7 @@ export function MainMenu() {
         />
         <MenuButton ogui={ogui} label="Options" onClick={() => set({ phase: 'options' })} />
         <MenuButton ogui={ogui} label="Credits" onClick={() => set({ phase: 'credits' })} />
-        <MenuButton ogui={ogui} label="Exit" onClick={() => window.close()} />
+        <MenuButton ogui={ogui} label="Exit" onClick={() => setConfirmExit(true)} />
       </div>
     </MenuBand>
   );
@@ -124,7 +145,7 @@ export function LevelSelect() {
 }
 
 /** original: paged per-level top-10 tables (rank, name, points) */
-export function HighscoreScreen() {
+export function HighscoreScreen({ backPhase = 'menu' }: { backPhase?: GamePhase }) {
   const { progress, set } = useGameStore();
   const [level, setLevel] = useState(1);
   const ogui = useOgui();
@@ -151,17 +172,37 @@ export function HighscoreScreen() {
           label="Next"
           onClick={() => setLevel(level >= Math.max(1, progress.unlocked) ? 1 : level + 1)}
         />
-        <MenuButton ogui={ogui} medium label="Back" onClick={() => set({ phase: 'menu' })} />
+        <MenuButton ogui={ogui} medium label="Back" onClick={() => set({ phase: backPhase })} />
       </div>
     </MenuBand>
   );
 }
 
 /** original Options: Graphics / Controls / Sound subscreens */
-export function OptionsScreen() {
+export function OptionsScreen({ backPhase = 'menu' }: { backPhase?: GamePhase }) {
   const { settings, updateSettings, set } = useGameStore();
   const [page, setPage] = useState<'root' | 'graphics' | 'controls' | 'sound'>('root');
+  const [listening, setListening] = useState<ControlSetting | null>(null);
   const ogui = useOgui();
+
+  useEffect(() => {
+    if (!listening) return;
+    const capture = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (event.code !== 'Escape') {
+        updateSettings({ [listening]: event.code } as Partial<Settings>);
+      }
+      setListening(null);
+    };
+    window.addEventListener('keydown', capture, true);
+    return () => window.removeEventListener('keydown', capture, true);
+  }, [listening, updateSettings]);
+
+  useEffect(() => {
+    menuAudio.setMusicVolume(settings.musicVolume);
+  }, [settings.musicVolume]);
+
   if (!ogui) return null;
 
   const yesNoRow = (label: string, value: boolean, apply: (v: boolean) => void) => (
@@ -169,6 +210,9 @@ export function OptionsScreen() {
       <img src={ogui.text(label, 22).url} alt="" draggable={false} />
       <div className="og-option-controls">
         <div
+          role="button"
+          aria-label={`${label}: ${value ? 'Yes' : 'No'}`}
+          tabIndex={0}
           className="og-yesno"
           style={{ backgroundImage: `url(${ogui.piece[value ? 'optionRowHover' : 'optionRow']})` }}
           onClick={() => {
@@ -182,10 +226,20 @@ export function OptionsScreen() {
     </div>
   );
 
-  const keyRow = (action: string, key: string) => (
-    <div className="og-key-row" style={barStyle(ogui)}>
+  const keyRow = (setting: ControlSetting, action: string) => (
+    <div
+      role="button"
+      aria-label={`${action}: ${listening === setting ? 'Press Key' : displayKey(settings[setting])}`}
+      tabIndex={0}
+      className={`og-key-row${listening === setting ? ' og-key-listening' : ''}`}
+      style={barStyle(ogui)}
+      onClick={() => {
+        menuAudio.click();
+        setListening(setting);
+      }}
+    >
       <img src={ogui.text(action, 18).url} alt="" draggable={false} />
-      <img src={ogui.text(key, 18).url} alt="" draggable={false} />
+      <img src={ogui.text(listening === setting ? 'Press Key' : displayKey(settings[setting]), 18).url} alt="" draggable={false} />
     </div>
   );
 
@@ -209,16 +263,53 @@ export function OptionsScreen() {
         </div>
       )}
       {page === 'graphics' && (
-        <div className="og-stack og-options">{yesNoRow('Clouds?', settings.clouds, (v) => updateSettings({ clouds: v }))}</div>
+        <div className="og-stack og-options">
+          <div className="og-option-row">
+            <img src={ogui.text('Screen Resolution', 22).url} alt="" draggable={false} />
+            <div className="og-option-controls">
+              <div
+                role="button"
+                aria-label="Previous screen resolution"
+                tabIndex={0}
+                className="og-round"
+                style={{ backgroundImage: `url(${ogui.piece.roundA})` }}
+                onClick={() => {
+                  menuAudio.click();
+                  updateSettings({ screenMode: Math.max(0, settings.screenMode - 1) });
+                }}
+              />
+              <div className="og-resolution" style={barStyle(ogui)}>
+                <img
+                  src={ogui.text(`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`, 18).url}
+                  alt=""
+                  draggable={false}
+                />
+              </div>
+              <div
+                role="button"
+                aria-label="Next screen resolution"
+                tabIndex={0}
+                className="og-round"
+                style={{ backgroundImage: `url(${ogui.piece.roundB})` }}
+                onClick={() => {
+                  menuAudio.click();
+                  updateSettings({ screenMode: Math.min(SCREEN_MODES.length - 1, settings.screenMode + 1) });
+                }}
+              />
+            </div>
+          </div>
+          {yesNoRow('Synch to Screen?', settings.syncToScreen, (value) => updateSettings({ syncToScreen: value }))}
+          {yesNoRow('Clouds?', settings.clouds, (value) => updateSettings({ clouds: value }))}
+        </div>
       )}
       {page === 'controls' && (
-        <div className="og-score-list">
-          {keyRow('Forward', 'Up')}
-          {keyRow('Backward', 'Down')}
-          {keyRow('Left', 'Left')}
-          {keyRow('Right', 'Right')}
-          {keyRow('Overview', 'Space')}
-          {keyRow('Rotation', 'Shift')}
+        <div className="og-score-list og-controls-list">
+          {CONTROL_ROWS.map(({ setting, label }) => (
+            <div key={setting}>{keyRow(setting, label)}</div>
+          ))}
+          {yesNoRow('Invert Rotation?', settings.invertCameraRotation, (value) =>
+            updateSettings({ invertCameraRotation: value }),
+          )}
         </div>
       )}
       {page === 'sound' && (
@@ -227,6 +318,9 @@ export function OptionsScreen() {
             <img src={ogui.text('Music Volume', 22).url} alt="" draggable={false} />
             <div className="og-option-controls">
               <div
+                role="button"
+                aria-label="Decrease music volume"
+                tabIndex={0}
                 className="og-round"
                 style={{ backgroundImage: `url(${ogui.piece.roundA})` }}
                 onClick={() => {
@@ -238,6 +332,9 @@ export function OptionsScreen() {
                 <div className="og-vol-fill" style={{ width: `${settings.musicVolume * 100}%` }} />
               </div>
               <div
+                role="button"
+                aria-label="Increase music volume"
+                tabIndex={0}
                 className="og-round"
                 style={{ backgroundImage: `url(${ogui.piece.roundB})` }}
                 onClick={() => {
@@ -250,45 +347,83 @@ export function OptionsScreen() {
         </div>
       )}
       <div className="og-bottom">
-        <MenuButton ogui={ogui} label="Back" onClick={() => (page === 'root' ? set({ phase: 'menu' }) : setPage('root'))} />
+        <MenuButton ogui={ogui} label="Back" onClick={() => (page === 'root' ? set({ phase: backPhase }) : setPage('root'))} />
       </div>
     </MenuBand>
   );
 }
 
-/** the original credit roll (from the menu data), scrolling upward */
-const CREDIT_LINES = [
-  ['Ballance', 30],
-  ['A Cyparade production', 20],
-  ['All rights reserved. Berlin 2004', 16],
-  ['for LISA MARIE', 16],
-  ['', 0],
-  ['Sound Design and Music', 16],
-  ['Klaus Riech', 20],
-  ['', 0],
-  ['Lead Scripting', 16],
-  ['Mirco Nierenz', 20],
-  ['', 0],
-  ['Technical Direction', 16],
-  ['Stephan Bludau', 20],
-  ['', 0],
-  ['Lead Level Design', 16],
-  ['Britta Fahrenbruch', 20],
-  ['', 0],
-  ['Sky Design', 16],
-  ['Michael Herm', 20],
-  ['', 0],
-  ['Interface Design', 16],
-  ['Constantin Rahn', 20],
-  ['', 0],
-  ['Producing', 16],
-  ['Ulrich Weinberg', 20],
-  ['', 0],
-  ['Lead Testing', 16],
-  ['Ruth Meiners', 20],
-  ['', 0],
-  ['special thanks to Panda!', 16],
+function ConfirmScreen({
+  ogui,
+  question,
+  onConfirm,
+  onCancel,
+}: {
+  ogui: Ogui;
+  question: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.3)' }}>
+      <div className="og-confirm-question">
+        <img src={ogui.text(question, 20).url} alt={question} draggable={false} />
+      </div>
+      <div className="og-stack og-stack-tight">
+        <MenuButton ogui={ogui} label="OK" onClick={onConfirm} />
+        <MenuButton ogui={ogui} label="Back" onClick={onCancel} />
+      </div>
+    </MenuBand>
+  );
+}
+
+/** Menu_Credits_Strings from the original Menu.nmo. */
+const CREDIT_BLOCKS = [
+  ['Ballance', 'A Cyparade production\n\nAll rights reserved.\n Berlin 2004.'],
+  ['for\nLISA MARIE', ''],
+  ['Monamur Musikproduktion', 'Sound Design and Music'],
+  ['Klaus Riech', 'Game Design\nProject Management\nArt Direction'],
+  ['Mirco Nierenz', 'Lead Scripting\nSoftware Development'],
+  ['Stephan Bludau', 'Technical Direction\nSoftware Development'],
+  ['Britta Fahrenbruch', 'Lead Level Design\nGraphic Design'],
+  ['Michael Herm', 'Sky Design\nGraphic Design'],
+  ['Constantin Rahn', 'Interface Design'],
+  ['Ulrich Weinberg', 'Producing'],
+  ['Ruth Meiners', 'Lead Testing'],
+  ['Level Design', 'Matthias Bauer\nBritta Fahrenbruch\nStanislav Funda\nMichael Herm\nJürgen Kisch\nJan Liebetrau\n Klaus Riech'],
+  ['Testing', 'Dorothea Busche, Paul Cultus, Oliver Franzke, Robert Hoffman, Lars Krüger, Ruth Lemmen, Max "phAsEr" Ulbricht, Manni, Philipp, Beate Schulz and Mariano Spiegelberg.'],
+  ['Translation', 'Annette Weinberg, Laura and Adrian Villalba-Weinberg, Giuseppe Littera, Virginie Delrieu-Meyer, Fabienne Chisloup, Klaus Riech, Tamara Lindner.'],
+  ['Thanks to', 'Ralf Löwenhaupt (go Ralfi, go Ralfi)\nAndre Menzel\nLars Krüger\nConstantin Rahn\nVirtools support team\n\nspecial thanks to Panda!'],
+  ['ATARI Europe', 'Jean Marcel Nicolaï\nHead of Operations'],
+  ['Republishing Team', 'Rebecka Pernered\nRepublishing Director\n\nSébastien Chaudat\nRepublishing Team Leader\n\nDiane Delaye\nRepublishing Producer\n\nLudovic Bony\nLocalisation team Leader'],
+  ['', 'Diane Delaye\nLocalisation Project Manager\n\nCaroline Fauchille\nPrinted Materials Team Leader\n\nSandrine Dubois\nPrinted Materials Project Manager\n\nVincent Hattenberger\nCopy Writer\n\nJenny Clark\nMAM Project Manager'],
+  ['Quality Assurance Team', 'Lewis Glover\nQuality Director\n\nCarine Mawart\nQuality Control Project Manager\n\nLisa Charman\nCertification Project Manager'],
+  ['', 'Pierre Marc Bissay\nProduct Planning Project Manager\n\nPhilippe Louvet\nEngineering Services Manager\n\nStéphane Entéric\nEngineering Services Expert\n\nEmeric Polin\nEngineering Services Expert'],
+  ['Marketing', 'Martin Spiess\nEuropean Marketing Senior VP\n\nCyril Voiron\nEuropean Group Marketing Manager\n\nSarah Brind\nEuropean Product Manager'],
+  ['Local Marketing', 'Spain\nDe La Pedraja Rodrigo\n\nGermany\nJens Hofmann\n\nUK\nBen Walker\n\nFrance\nLionel Arnaud\n\nBenelux\nSimone Goudsmit\n\nItaly\nGiorgia Jannelli'],
+  ['Special Thanks', 'RelQ\nPrashanth "TheWizard" Kannan\nRohit "NTT" Agarwal\nGaurav "Mofo" Kudva\nGautam "Vieri" Kudva\nBabel/Absolute Quality\nJulien Amougou\nTake Off/Ace\nKBP\nSynthesis'],
 ] as const;
+
+function wrapCredit(text: string, limit = 45): string[] {
+  const output: string[] = [];
+  for (const sourceLine of text.split('\n')) {
+    if (sourceLine === '') {
+      output.push('');
+      continue;
+    }
+    let line = '';
+    for (const word of sourceLine.split(' ')) {
+      if (line !== '' && line.length + word.length + 1 > limit) {
+        output.push(line);
+        line = word;
+      } else {
+        line += `${line === '' ? '' : ' '}${word}`;
+      }
+    }
+    output.push(line);
+  }
+  return output;
+}
 
 export function CreditsScreen() {
   const set = useGameStore((s) => s.set);
@@ -298,9 +433,24 @@ export function CreditsScreen() {
     <MenuBand ogui={ogui}>
       <div className="og-credits-viewport">
         <div className="og-credits-roll">
-          {CREDIT_LINES.map(([line, px], i) =>
-            line === '' ? <div key={i} style={{ height: '3.2vh' }} /> : <img key={i} src={ogui.text(line, px).url} alt="" draggable={false} />,
-          )}
+          {CREDIT_BLOCKS.map(([title, copy], blockIndex) => (
+            <div className="og-credit-block" key={blockIndex}>
+              {wrapCredit(title).map((line, lineIndex) =>
+                line === '' ? (
+                  <div className="og-credit-gap" key={`title-${lineIndex}`} />
+                ) : (
+                  <img className="og-credit-title" key={`title-${lineIndex}`} src={ogui.text(line, 20).url} alt={line} draggable={false} />
+                ),
+              )}
+              {wrapCredit(copy).map((line, lineIndex) =>
+                line === '' ? (
+                  <div className="og-credit-gap" key={`copy-${lineIndex}`} />
+                ) : (
+                  <img className="og-credit-copy" key={`copy-${lineIndex}`} src={ogui.text(line, 14).url} alt={line} draggable={false} />
+                ),
+              )}
+            </div>
+          ))}
         </div>
       </div>
       <div className="og-bottom">
@@ -313,14 +463,27 @@ export function CreditsScreen() {
 export function PauseOverlay() {
   const set = useGameStore((s) => s.set);
   const level = useGameStore((s) => s.level);
+  const [confirm, setConfirm] = useState<'restart' | 'exit' | null>(null);
   const ogui = useOgui();
   if (!ogui) return null;
+  if (confirm) {
+    return (
+      <ConfirmScreen
+        ogui={ogui}
+        question={confirm === 'restart' ? 'Do you want to restart the level?' : 'Do you want to exit the level?'}
+        onConfirm={() => set({ phase: confirm === 'restart' ? 'loading' : 'menu', level })}
+        onCancel={() => setConfirm(null)}
+      />
+    );
+  }
   return (
     <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.25)' }}>
-      <div className="og-stack">
-        <MenuButton ogui={ogui} label="Continue" onClick={() => set({ phase: 'playing' })} />
-        <MenuButton ogui={ogui} label="Restart Level" onClick={() => set({ phase: 'loading', level })} />
-        <MenuButton ogui={ogui} label="Exit Level" onClick={() => set({ phase: 'menu' })} />
+      <div className="og-stack og-pause-stack">
+        <MenuButton ogui={ogui} label="Options" onClick={() => set({ phase: 'pauseOptions' })} />
+        <MenuButton ogui={ogui} label="Restart Level" onClick={() => setConfirm('restart')} />
+        <MenuButton ogui={ogui} label="Highscore" onClick={() => set({ phase: 'pauseHighscore' })} />
+        <MenuButton ogui={ogui} label="Exit Level" onClick={() => setConfirm('exit')} />
+        <MenuButton ogui={ogui} label="Back" onClick={() => set({ phase: 'playing' })} />
       </div>
     </MenuBand>
   );
@@ -343,16 +506,15 @@ export function FinishedOverlay() {
   const tallyDone = shown >= total;
   useEffect(() => {
     let current = 0;
-    const step = Math.max(5, Math.round(total / 60));
     const timer = setInterval(() => {
-      current = Math.min(total, current + step);
+      current = Math.min(total, current + scoreCountStep(total - current));
       setShown(current);
-      if (current % 4 === 0) menuAudio.counter();
+      menuAudio.counter();
       if (current >= total) {
         clearInterval(timer);
         menuAudio.dong();
       }
-    }, 30);
+    }, 1000 / 60);
     return () => clearInterval(timer);
   }, [total, level]);
   useEffect(() => {

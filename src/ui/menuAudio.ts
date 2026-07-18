@@ -1,5 +1,6 @@
 /** Menu sounds: the original atmosphere loop and click, via Web Audio. */
 import { fetchGameBuffer } from '../engine/assets.ts';
+import { gameStore } from '../game/store.ts';
 
 class MenuAudio {
   private ctx: AudioContext | null = null;
@@ -41,7 +42,7 @@ class MenuAudio {
         if (!buffer || !this.atmoWanted) return;
         const ctx = this.ensureCtx();
         const gain = ctx.createGain();
-        gain.gain.value = 0.5;
+        gain.gain.value = 0.5 * gameStore.getState().settings.musicVolume;
         gain.connect(ctx.destination);
         const src = ctx.createBufferSource();
         src.buffer = buffer;
@@ -75,15 +76,20 @@ class MenuAudio {
     }
   }
 
-  private oneShot(name: string, volume = 1): void {
+  setMusicVolume(volume: number): void {
+    if (this.atmo) this.atmo.gain.gain.value = 0.5 * volume;
+  }
+
+  private oneShot(name: string, volume = 1, music = false, playbackRate = 1): void {
     void this.load(name).then((buffer) => {
       if (!buffer) return;
       const ctx = this.ensureCtx();
       const gain = ctx.createGain();
-      gain.gain.value = volume;
+      gain.gain.value = volume * (music ? gameStore.getState().settings.musicVolume : 1);
       gain.connect(ctx.destination);
       const src = ctx.createBufferSource();
       src.buffer = buffer;
+      src.playbackRate.value = playbackRate;
       src.connect(gain);
       src.start();
     });
@@ -110,12 +116,17 @@ class MenuAudio {
 
   /** highscore screen music */
   highscoreMusic(): void {
-    this.oneShot('Music_Highscore.wav', 0.7);
+    this.oneShot('Music_Highscore.wav', 0.7, true);
   }
 
   /** intro sequence theme */
   introMusic(): void {
-    this.oneShot('Music_Theme_4_1.wav', 0.6);
+    this.oneShot('Music_Theme_4_1.wav', 0.5, true);
+  }
+
+  /** Atari movie sound: CKWaveSound gain 0.5 and pitch 0.8. */
+  atariIntro(): void {
+    this.oneShot('ATARI.wav', 0.5, true, 0.8);
   }
 }
 

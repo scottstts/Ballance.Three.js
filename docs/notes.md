@@ -128,7 +128,9 @@ Append-only scratchpad of things learned during the port. Read this first when r
 - Balloon finale: physical fly-off (PE_Balloon multi-body: platform 4kg + balloons 0.2kg
   buoyancy 0.1/PSI + plank chain; forces 0.37/0.31 staged shutdown) — currently the level
   ends on touch without the animation. Spec in the modul physics extraction + agent notes.
-- Level 12 ends with UFO (endWithUFO) — PE_UFO prefab + Misc_UFO sounds, not implemented.
+- Level 12 ends with UFO (endWithUFO) — the UFO geometry, materials, animation,
+  behavior, and hyperspace graph are embedded in `PE_Balloon.nmo`; Misc_UFO
+  sounds are separate. The authored finale behavior is not yet implemented.
 - Flames (PS/PC), Extra Point orbit + fly-to-HUD animation, Extra Life bob/spin, trafo
   ring animation (2.3s, colors wood #ff9300 stone #00ff1d paper #0091ff), death Pieces_*
   shatter effects, fan particles: cosmetic systems still to build.
@@ -168,7 +170,7 @@ Append-only scratchpad of things learned during the port. Read this first when r
   y~-180 with slow UV scroll, sky-horizon-sampled fog color per level.
 - Remaining known deltas vs original (acceptable/documented): extra-point balls do not
   fly to the HUD on collect (flash+hide instead); L12 UFO ending approximated by the
-  balloon rise (no UFO model exists in the original asset files); menu is DOM-based
+  balloon rise (the original UFO is embedded in `PE_Balloon.nmo`); menu is DOM-based
   rather than the 3D menu tower; trafo ring animation is the lightning sphere only.
 
 ## Continuation batch (loose balls, shadows, flame states)
@@ -336,7 +338,7 @@ sphere — that is the birth effect), extra points fly staggered (+100 then six
 +20 with Extra_Hit), and death-by-fall no longer shatters (Misc_Fall + white
 fade + falling ball, per the original). Still-open approximations: balloon
 fly-off is a kinematic rise (not the original multi-body flight), L12 UFO is
-sound-only (no UFO model exists in the original data), tutorial arrows
+sound-only even though the authored UFO lives in `PE_Balloon.nmo`, tutorial arrows
 (Tutorial.nmo) and the intro logo sequence (Intro.nmo) are not implemented,
 options subscreens are simplified (volume only).
 
@@ -375,19 +377,244 @@ options subscreens are simplified (volume only).
   with a post-win 'New highscore entry!' name input. All implemented; the
   win screen shows the tally then the entry then Next Level/Restart
   Level/Home.
-- **Intro**: Atari card (atari.bmp — the AVI cannot be decoded by browsers),
-  then Gravitylogo_intro.bmp over drifting Wolken_intro.tga cloud sprites,
-  key/click skippable, Music_Theme_4_1. Implemented in IntroScreen.tsx
-  (phase 'intro' precedes 'menu').
+- **Intro**: source-backed timing and layout are documented in the later
+  "exact intro and light" note. The Microsoft Video 1 AVI is converted to a
+  byte-identical lossless APNG at development/preview serve time rather than
+  replaced by its still fallback.
 - **SkyLayer**: never grow the plane (moire/speckle at grazing angles);
   keep the authored size and make it FOLLOW the camera in XZ with UV
   compensation (offset += delta/size*repeat). Clouds? option toggles it.
 - Tutorial arrows in Tutorial.nmo are parked at the origin — the original
-  SCRIPT moves them per step, so static placement is wrong; the guided
-  tutorial (text steps from Text/Tutorial2.txt, RETURN to advance) remains
-  unimplemented.
-- Remaining approximations after this round: L12 UFO abduction cutscene
-  (sounds + balloon rise stand in; the rebuild uses a custom-made saucer
-  model textured with Misc_Ufo.bmp and a 15-keyframe path), the guided L1
-  tutorial, AVI intro clip, resolution/vsync options rows, Yes/No confirm
-  dialogs, per-category audio mixer buses.
+  script moves them per step. The later source-backed tutorial implementation
+  now performs that movement and chapter sequencing.
+- Remaining approximations recorded here were subsequently resolved except
+  for the audio/mixer parity work, which remains part of the continuing audit.
+
+## 2026-07-18 original-source cross-check
+
+- `Ballance_bin/source1/Ballance` is the installed game tree. `source2` is an
+  original UK/EU disc image payload: InstallShield CABs, the three-page
+  multilingual `Quickstart.pdf`, release metadata dated 2004-04-02, and the
+  same help files. Static extraction of `Setup/data1.cab` to `/private/tmp`
+  showed all gameplay inputs are byte-identical to source1: every NMO/level,
+  `base.cmo`, `Database.tdb`, texture, sound, and tutorial text. Treat them as
+  complementary evidence; source2 authenticates the disc payload and manual,
+  while source1 is the convenient byte-identical asset tree. The dgVoodoo
+  files present only in source1 are later compatibility wrappers.
+- The original quick-start/manual explicitly confirms: 4:3 resolutions
+  (800x600 recommended, not much above 1024x768), Synch to Screen off by
+  default, animated Clouds as a Graphics option, ESC pause with options still
+  available, remappable movement controls, Left Shift + left/right for fixed
+  90-degree camera steps, an invert-camera-rotation option, Space to raise the
+  view, and permanent sequential level unlocking.
+- Direct `Levelinit.nmo` data-array corrections supersede older notes/code:
+  Level 2 uses `Sky_E` (not `Sky_F`), `Phys_FloorStopper` elasticity is 0.3,
+  and loose `P_Ball_Stone` friction is 0.7. `base.cmo` highscore arrays contain
+  only player name and score—no date. Levels 1-11 seed `Mr. Default` at
+  4000..400 by 400; Level 12 seeds `Mrs. Default` at 7000..3400 by 400.
+- Correction to every earlier "no UFO model" note: `3D Entities/PH/PE_Balloon.nmo`
+  contains `Misc_Ufo.bmp`, `Misc_UFO_Flash.bmp`, `PE_Ufo_env.bmp`, material
+  `PE_UFO_Arm`, animation `PE_UFO_Arm_A_04`, behavior `UFO`, behavior
+  `Hyperspace`, and the enclosing `PE_Balloon Script`. This prefab is the
+  authoritative source for the Level 12 finale; a hand-authored replacement is
+  not faithful.
+
+## 2026-07-18 behavior graph and authored UFO recovery
+
+- The CK2 parser now decodes classes 2/3/45/46 (parameters), 6 (behavior
+  links), 8 (behaviors), 9 (behavior IO), 15 (object-animation controller
+  tracks), and 18 (keyed animations). Behavior NEWDATA has variable headers:
+  scripts/composites use a short header while plugin building blocks include a
+  prototype GUID plus optional owner/target references. Find the first counted
+  reference-array boundary that consumes the payload exactly; do not assume a
+  fixed header. The original Gameplay tutorial and PE_Balloon graphs are now
+  covered by source-backed tests.
+- Version-2 object/sound parameters store a direct CK object reference after
+  the type GUID/version; they do not use the version-1 byte-length/value buffer.
+  ParameterOut destination arrays expose implicit BB parameter wiring (for
+  example the UFO iterator's `Target Position` output writes the Set Position
+  block's local Position parameter).
+- Correct CK3dEntity NEWDATA validity flags are Place `0x00010000`, Parent
+  `0x00020000`, and ZOrder `0x00100000`. The earlier low-bit constants silently
+  discarded hierarchy. Prefab instantiation now rebuilds parent-local matrices;
+  static visuals remain unchanged while child pieces correctly inherit authored
+  rotation/animation.
+- The exact UFO sequence is now implemented from original data: 13 path rows
+  with waits `[3,2,1,1,1,.5,.5,2,.5,.5,3,2,1.8]`, per-row force/damping,
+  rows 4-6 relative to the live ball, 150 degrees/s body rotation with inverse
+  top rotation, eight arm tracks of six TCB quaternion keys over 1 second,
+  row-11 `Misc_UFO_anim`, ball capture after the arm cycle, and the 800 ms
+  `.01 -> 20` hyperspace flash. `Misc_UFO` remains a positional loop over the
+  path. The balloon flight visuals move independently while PE_Balloon_MF stays
+  fixed as the path referential.
+- Live browser validation (`?level=12&finish=1&nowinscreen=1`) exercised the
+  full UFO sequence with no console errors; normal Level 1 rendering also
+  survived hierarchy reconstruction. The `finish` and `nowinscreen` switches
+  are development-only deterministic visual-audit helpers. The in-app browser
+  tab and Vite server were closed immediately after validation.
+- `M_FontData_01` from Menu.nmo now supplies glyph source positions and advance
+  metrics directly. The 23 original `Menu_Credits_Strings` records render and
+  scroll correctly in the browser (including the original dedication and
+  publisher/team blocks); no synthetic credits remain.
+
+## 2026-07-18 source-backed level-1 tutorial
+
+- `Tutorial2.txt` is plain Windows-1252 text split on `*`: rows 0-9 are the
+  ten English chapters and TutorialArray row 10 is the terminator. The other
+  numbered files are the German, Spanish, Italian, and French counterparts.
+- `Tutorial_Interface` is CK class 27 (`CK2dEntity`) with normalized rect
+  `(0.24332549, 0.74795353)-(0.73307371, 0.98895204)`.
+  `Tutorial_Interface_Back` uses `(0.23525, 0.73995)-(0.81555, 1.0)` and the
+  source graph fades it to black alpha `0.4705883`. The parser now retains
+  these records instead of dropping them as `other`.
+- `Gameplay_Tutorial` drives chapters 0-9. The source switch's output labels
+  skip the literal name `Out 9`, but list position proves ID 8 is Checkpoints
+  and ID 9 is the closing hints chapter. The final row follows after 4 seconds.
+- Exact action radii recovered from the nested graphs: KeyEnd 4, ExtraLife 3,
+  StoneTrafo 5, HolzTrafo 2.5, Rampe 4.5, ExtraPoint 3, Checkpoint 2.5. The
+  opening has a 25-second physics-resume failsafe but still waits for RETURN.
+  Q is wired only during the opening chapter.
+- Tutorial.nmo supplies the actual circular, overview, direction, and downward
+  arrow meshes. The circular/direction/up arrows follow the ball; the down
+  arrow is reparented to the current authored marker. Chapters 4-9 freeze CK
+  physics and play `Hit_Stone_Kuppel.wav` until RETURN. The browser port now
+  implements this full state machine and honors remapped movement keys.
+- Live in-app-browser validation covered the opening, camera, overview,
+  navigation, remapped movement-key, life-extra, and Q-exit branches. The tab
+  and Vite server were closed after the run.
+
+## 2026-07-18 exact intro and light decoding
+
+- `source1` and the statically extracted `source2` disc payload have identical
+  SHA-256 hashes for `Intro.nmo`, `Textures/atari.avi`, and `Sounds/ATARI.wav`.
+  The intro evidence is therefore common to both original sources.
+- `base.cmo` launches `Intro_Start`, starts `Music_Theme_4_1` after exactly
+  6000 ms at source gain 0.5, and invokes `Intro_End` after its parallel main
+  loading/minimum-delay controller completes. `Intro.nmo` itself waits 1000 ms,
+  plays the 125-frame/25-fps Atari AVI for 5000 ms with `ATARI.wav` at gain
+  0.5 and pitch 0.8, covers to black over 300 ms, then reveals the logo/cloud
+  composition through black over 3000 ms. `Intro_End` covers in 300 ms.
+- Exact CK2dEntity rectangles are used for Atari, Gravitylogo, two clouds, and
+  four edge masks. The cloud UV crops come from `relativeRect`; their position
+  and size tracks are linear 2200/2600 ms motions, while their shared material
+  fades from alpha 1 to 0 during 1800-2600 ms. The previous third cloud,
+  synthetic mask, broad CSS drift, early theme start, and key/click skip were
+  not source-authored and were removed.
+- Browsers do not decode Microsoft Video 1. The Vite asset middleware now
+  converts the read-only AVI on demand with ffmpeg to a 165 KiB lossless APNG.
+  A normalized `framemd5` comparison of all decoded RGB24 frames is identical
+  between the AVI and APNG. The original `atari.bmp` remains the failure-mode
+  fallback, matching `Intro_Init`'s authored fallback path.
+- CK light data uses identifier `0x00400000`; its first dword packs type in the
+  low byte and Active/Specular flags above it. `Light_Ingame` is type 3
+  (directional), active+specular, white, power 1, range 1000, with its exact
+  world forward row driving the Three directional target. The temporary point
+  light interpretation was incorrect and is superseded.
+- Lint, typecheck, 21 unit/regression tests, and the production build pass.
+  Live in-app-browser inspection verified the lossless Atari phase, the
+  logo/cloud phase, menu handoff, and Level 1 under the corrected light with no
+  errors; Rapier emits only its known deprecated-init warning. The tab and
+  Vite server were closed after validation.
+
+## 2026-07-18 original module physics recovery
+
+- `docs/modul-physics.json` and `tools/extract-modul-physics.mjs` came from a
+  Unity rebuild and are not authoritative. Use the new read-only
+  `tools/extract-source-physics.ts` against the original PH NMO files. Plugin
+  behavior headers store the target `CKParameterIn` immediately before
+  `saveFlags`; resolving source/shared parameter chains recovers exact body,
+  joint, collision-mesh, force, and spring values.
+- All 12 physical module prefabs now match their original `Physicalize`
+  targets. Removed invented colliders on reference/visual parts; corrected
+  masses, damping, elasticity, frozen flags, collision enable flags, and every
+  serialized center-of-mass shift. Notable old errors included P_Modul_25's
+  five nonexistent bodies and `[0,2,0]` COM (source has only Bridge and
+  `[-2.5,.2,0]`), P_Modul_37's `.5` elasticity/positive COM (source is `1` and
+  `[-7.5,0,0]`), and P_Modul_34 Kiste `.6/.3` friction/elasticity (source is
+  `.8/.4`).
+- Physicalize's numbered convex CKMeshes are compound collision shapes, not
+  render meshes or trimeshes. Prefab instances retain their parsed NMO so
+  unbound collision meshes can become one Rapier convex collider per authored
+  hull. Compound inertia is computed at unit density, scaled to the exact
+  source mass, and placed at the explicit source COM; collision-disabled rope
+  bodies remain jointable but have collision/solver groups zeroed.
+- `Set Physics Hinge` derives its axis from the joint referential's local Z.
+  This explains why most identity frames rotate around prefab Z while
+  P_Modul_17's rotated frame produces prefab Y. Sliders derive their axis from
+  the two serialized frame points and honor the source's disabled limitation
+  flag. P_Modul_03 and P_Modul_17 now create their authored springs.
+- Source force timing supersedes Unity values: P_Modul_08 applies +force for
+  500 ms, idles 500 ms, applies -force 500 ms, then idles 500 ms; P_Modul_26
+  alternates its two forces every 1500 ms (not 1400), relative to the authored
+  Fix/Halter referential.
+- `physTable.test.ts` parses the read-only original files and checks all 12
+  modules' 32 Physicalize bodies plus every hinge/ball-joint target, other
+  body, and referential against runtime definitions. The suite is now 45
+  passing tests. Levels 7 and 9 stress-loaded the compound bodies/joints in the
+  built-in browser without runtime errors; the browser tab and Vite server were
+  closed afterward.
+
+## 2026-07-18 exact PE_Balloon physics and departure
+
+- The former hand-authored `finishRise` is removed. `PE_Balloon.nmo` now
+  drives an explicit runtime assembly: Platform (six convex hulls), Box_slide,
+  eight bridge plates, four ropes, and four balloons; 17 hinges; two sliders;
+  one spring; eight continuous float/rope forces; and the finish-only Box
+  force. The first Platform/Platte01 hinge is broken by the source finish
+  branch while the far bridge hinge remains attached to the world.
+- The source's bridge and floating-object selectors reuse Physicalize
+  templates, so five serialized Physicalize nodes expand to 18 assembly
+  bodies (one additional node has a runtime-selected non-assembly target).
+  Do not infer body count from the number of Physicalize building blocks.
+- Rapier world reference bodies must inherit the attached body's authored
+  rotation. Creating an identity-rotation world body under the level-end's
+  180-degree placement made its last hinge and slider axes oppose their body
+  frames, injecting catastrophic solver energy through the joint chain even
+  though positional anchors matched within 0.0001 units.
+- Virtools slider ordering is Target first, Object2 second. Preserve that body
+  order in Rapier or the signed `[-30000, 0]` Box_slide limits reverse and
+  block the authored departure force. Spring Position 1 belongs to Target and
+  Position 2 to Object2/world; the previous endpoint reversal pushed the
+  platform in the wrong vertical direction.
+- Jointed overlapping pieces have pairwise Rapier contacts disabled, matching
+  the IVP assembly behavior and avoiding internal contact impulses. The source
+  collision-enabled flags still apply to contacts with unrelated bodies.
+- `balloon.test.ts` directly parses the read-only original NMO and verifies all
+  18 runtime bodies/hulls, 17 hinge targets/partners/referentials, both slider
+  axes and signed limits, spring endpoints/constants, and all nine force
+  targets/referentials/vectors/values. A development-only `wakeballoon` URL
+  switch supports isolated stability checks without triggering level finish.
+
+## 2026-07-18 source-exact Extra Life and Extra Point
+
+- CK class 37 is `CKSprite3D`. The NMO parser, prefab builder, clone path, and
+  dump tool now retain its material, size, transform, and hierarchy; pickups
+  use the original silver-ball sprites instead of replacement Three meshes.
+- Version-0 structured CK parameters begin with a dword byte count, not a byte
+  count. Retaining the complete payload exposed the authored CK2dCurve data.
+  `decodeCk2dCurve` reads its 12-dword control points and evaluates their
+  Hermite tangents; parser regressions lock the Life Extra's seven scale keys
+  and three vertical-position keys to the original bytes.
+- `P_Extra_Life.nmo` supplies the bubble, floor glow, silver-ball sprite, and
+  exact repeating 2000 ms animation. The scale tracks are `[1,1.2,1]` and
+  `[1,.8,1]`; the bob tracks are `[0,-.4,0]` and `[0,1.2,0]`. Collection waits
+  317 ms, awards one life, and hides the instance. Both the source2 English
+  manual and live restart validation confirm that Life Extras reappear after a
+  fall in the active section.
+- `P_Extra_Point.nmo` contains the center sprite, six .25-unit satellites, and
+  floor glow. Static disassembly of the shipped `TT_Gravity_RT.dll` recovered
+  six orbit axes, 5 rad/s orbit speed, 1000 ms fly-away, force .12, damping
+  .95, away force 1, away damping .3, width .08, and squared hit threshold 4.
+  Its update is Verlet-like: `current + (current - previous) * damping +
+  direction * force * dt`.
+- Activation uses the graph's 3-unit 3D radius and awards +100. The center and
+  floor hide, satellites fly outward then chase, and each true contact awards
+  +20. The original particle settings are also retained: one emission every
+  90 ms, 1000±250 ms life, .5→.2 size, white→.156862 grey, additive
+  `ExtraParticle.bmp`. Crossing a checkpoint discards active satellites and
+  Point Extras never respawn, matching the source2 manual's 220 total.
+- Live browser validation on Level 2 confirmed +100 activation, six independent
+  +20 hits, exact one-second state transition, Life Extra +1 after the source
+  delay, Life Extra reappearance after death, and zero console errors. Only
+  Rapier's known deprecated-init warning remains; the tab and server were
+  closed afterward.

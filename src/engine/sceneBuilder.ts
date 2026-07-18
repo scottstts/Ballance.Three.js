@@ -3,13 +3,13 @@
  * material / texture references and Virtools->three coordinate conversion.
  */
 import * as THREE from 'three';
-import type { Entity3dRec, GroupRec, MaterialRec, MeshRec, NmoFile, TextureRec } from '../formats/ck2/types.ts';
+import type { Entity3dLikeRec, GroupRec, MaterialRec, MeshRec, NmoFile, TextureRec } from '../formats/ck2/types.ts';
 import { MESH_FLAG_PRELIT } from '../formats/ck2/types.ts';
-import { materialToThree, meshToGeometry, vxMatrixToThree } from './convert.ts';
+import { materialToThree, meshToGeometry, spriteMaterialToThree, vxMatrixToThree } from './convert.ts';
 import { loadCkTexture } from './textures.ts';
 
 export interface BuiltEntity {
-  rec: Entity3dRec;
+  rec: Entity3dLikeRec;
   object: THREE.Mesh | THREE.Object3D;
 }
 
@@ -57,12 +57,38 @@ export async function buildScene(file: NmoFile): Promise<BuiltScene> {
     return mat;
   };
 
+  const getSpriteMaterial = (mtlIndex: number, uv: [number, number, number, number]): THREE.SpriteMaterial => {
+    const key = `sprite|${mtlIndex}|${uv.join(',')}`;
+    const cached = materialCache.get(key);
+    if (cached instanceof THREE.SpriteMaterial) return cached;
+    const rec = mtlIndex >= 0 ? (file.objects[mtlIndex] as MaterialRec) : null;
+    const texRec = rec && rec.textureIndex >= 0 ? (file.objects[rec.textureIndex] as TextureRec) : null;
+    let texture = texRec ? (textures.get(texRec.index) ?? null) : null;
+    if (texture && (uv[0] !== 0 || uv[1] !== 0 || uv[2] !== 1 || uv[3] !== 1)) {
+      texture = texture.clone();
+      texture.offset.set(uv[0], uv[1]);
+      texture.repeat.set(uv[2] - uv[0], uv[3] - uv[1]);
+      texture.needsUpdate = true;
+    }
+    const mat = spriteMaterialToThree(rec?.kind === 'material' ? rec : null, {
+      prelit: true,
+      texture,
+      colorKeyed: !!texRec?.transparent,
+      textureName: texRec?.fileNames.find(Boolean) ?? texRec?.name,
+    });
+    mat.name = rec?.name ?? `sprite-mtl-${mtlIndex}`;
+    materialCache.set(key, mat);
+    return mat;
+  };
+
   const entities = new Map<string, BuiltEntity>();
   const entitiesByIndex = new Map<number, BuiltEntity>();
 
   for (const rec of file.entities) {
     let object: THREE.Mesh | THREE.Object3D;
-    if (rec.meshIndex >= 0) {
+    if (rec.kind === 'sprite3d') {
+      object = new THREE.Sprite(getSpriteMaterial(rec.materialIndex, rec.uvRect));
+    } else if (rec.meshIndex >= 0) {
       const meshRec = file.objects[rec.meshIndex] as MeshRec;
       if (meshRec.kind === 'mesh' && meshRec.vertexCount > 0) {
         let geo = geometryCache.get(rec.meshIndex);
@@ -89,6 +115,7 @@ export async function buildScene(file: NmoFile): Promise<BuiltScene> {
     object.matrixAutoUpdate = false;
     vxMatrixToThree(rec.worldMatrix, object.matrix);
     object.matrix.decompose(object.position, object.quaternion, object.scale);
+    if (rec.kind === 'sprite3d') object.scale.multiply(new THREE.Vector3(rec.size[0], rec.size[1], 1));
     object.updateMatrix();
     root.add(object);
     const built: BuiltEntity = { rec, object };
