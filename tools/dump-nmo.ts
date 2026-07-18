@@ -27,6 +27,8 @@ const fromFilterText = process.argv.find((arg) => arg.startsWith('--from='))?.sl
 const fromFilter = fromFilterText === undefined ? null : Number(fromFilterText);
 const toFilterText = process.argv.find((arg) => arg.startsWith('--to='))?.slice('--to='.length);
 const toFilter = toFilterText === undefined ? null : Number(toFilterText);
+const containsIndexText = process.argv.find((arg) => arg.startsWith('--contains-index='))?.slice('--contains-index='.length);
+const containsIndex = containsIndexText === undefined ? null : Number(containsIndexText);
 const file = parseNmo(readFileSync(path));
 
 function parameterValue(parameter: ParameterRec): string {
@@ -84,6 +86,7 @@ if (objects) {
     if (indexFilter !== null && o.index !== indexFilter) continue;
     if (fromFilter !== null && o.index < fromFilter) continue;
     if (toFilter !== null && o.index > toFilter) continue;
+    if (containsIndex !== null && (o.kind !== 'behavior' || !o.referenceLists.some((list) => list.includes(containsIndex)))) continue;
     const chunk = file.chunks[o.index];
     console.log(
       `  [${String(o.index).padStart(4)}] class=${String(o.classId).padStart(3)} kind=${o.kind.padEnd(8)} ` +

@@ -788,3 +788,33 @@ options subscreens are simplified (volume only).
   wind, fade at absolute trafo time 20 s, removal at 22 s, and zero browser
   errors. The full gate passes with 64 tests plus lint, typecheck, and production
   build; the browser tab and Vite server were closed afterward.
+
+## 2026-07-18 source-exact end-flow handoff
+
+- `Gameplay_Events` does not open the win tally after six seconds. `fadeout
+  Sky` first completes its 3000 ms linear `SkyLayer` filter, then activates the
+  composite `Wait` graph. Its `Op` node is serialized with function address
+  `0x24b46040`; static recovery from the shipped `ParameterOperations.dll`
+  confirms that function calls `CKDataArray::GetRowCount()` on `AllLevel Array`
+  (12 rows).
+- The following source `Test` has mode 3. Static recovery from `Logics.dll`
+  (`Test` GUID `17d66d26:726b7dec`) confirms mode 3 is strict `A < B`.
+  Therefore current levels 1–11 select the 10,000 ms timer and level 12 selects
+  23,000 ms. Including the preceding sky fade, `End Level` is sent at 13 s or
+  26 s respectively.
+- The `3 keys` graph enables three `Key Event` nodes alongside that timer. Its
+  raw DirectInput scan codes are 1, 28, and 57: Escape, Enter, and Space. A
+  Pressed event sends `Menu_Click` and exits the wait early. Edges accumulated
+  before the sky fade finishes are deliberately discarded because those key
+  nodes are still Off in the source then.
+- `base.cmo/Event_handler` routes `Dead` to `Menu_Dead Script` and `End Level`
+  to `Menu_Score Script`, followed by its high-score branch. Progress/unlock
+  persistence now occurs at the `End Level` handoff rather than on contact with
+  the balloon. The Game Over branch's source `Delayer` is exactly 2000 ms, so
+  its old 2.5 s approximation was removed.
+- Source-backed regressions cover the 3 s fade, 10/23 s selector, comparison
+  mode, three scan codes, 2 s Game Over delay, and base menu-script targets.
+  Deterministic browser validation confirmed hidden/visible boundaries at
+  12.8/13.1 s and 25.8/26.1 s, rejected an early Enter, accepted Space after
+  the fade, and changed dead to gameover only after 2 s. There were no browser
+  errors; the tab and Vite server were closed afterward.

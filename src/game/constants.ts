@@ -110,3 +110,15 @@ export const CAM_FAR = 1200;
 export const BALL_OFF_DELAY = 1;
 export const BALL_BIRTH_DELAY = 3;
 export const DEATH_FADE_DURATION = 2;
+
+/** Gameplay_Events end-flow timing, decoded from Gameplay.nmo's graphs. */
+export const GAME_OVER_MENU_DELAY = 2;
+export const FINISH_SKY_FADE_DURATION = 3;
+export const FINISH_WAIT_DURATION = 10;
+export const FINAL_FINISH_WAIT_DURATION = 23;
+/** DirectInput scan codes 1, 28, and 57 in the source's `3 keys` graph. */
+export const FINISH_SKIP_KEYS = ['Escape', 'Enter', 'Space'] as const;
+
+export function finishMenuDelay(level: number): number {
+  return FINISH_SKY_FADE_DURATION + (level < 12 ? FINISH_WAIT_DURATION : FINAL_FINISH_WAIT_DURATION);
+}

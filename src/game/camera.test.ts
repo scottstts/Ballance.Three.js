@@ -22,6 +22,11 @@ import {
   CAM_TARGET_DAMPING,
   CAM_TARGET_FORCE,
   DEATH_FADE_DURATION,
+  FINAL_FINISH_WAIT_DURATION,
+  FINISH_SKY_FADE_DURATION,
+  FINISH_WAIT_DURATION,
+  GAME_OVER_MENU_DELAY,
+  finishMenuDelay,
 } from './constants.ts';
 import { decodeCk2dCurve } from './curve.ts';
 import type { InputState } from './input.ts';
@@ -32,6 +37,7 @@ const GAME_DIR = [
 ].find(existsSync) ?? '';
 const cameraPath = join(GAME_DIR, '3D Entities/Camera.nmo');
 const gameplayPath = join(GAME_DIR, '3D Entities/Gameplay.nmo');
+const basePath = join(GAME_DIR, 'base.cmo');
 
 const EMPTY_INPUT: InputState = {
   forward: false,
@@ -86,6 +92,10 @@ function parameter(file: NmoFile, node: BehaviorRec, name: string): ParameterRec
 
 function floatValue(parameter: ParameterRec): number {
   return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getFloat32(0, true);
+}
+
+function integerValue(parameter: ParameterRec): number {
+  return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getInt32(0, true);
 }
 
 describe('TT Set Dynamic Position runtime', () => {
@@ -247,6 +257,35 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('camera bi
     expect(floatValue(parameter(gameplay, birth, 'Time to Wait')) / 1000).toBe(BALL_BIRTH_DELAY);
   });
 
+  it('retains the exact Game Over and End Level wait graphs', () => {
+    if (!gameplay) return;
+    const gameOverDelays = children(gameplay, 'Gameplay_Events', 'Delayer').map(
+      (node) => floatValue(parameter(gameplay, node, 'Time to Wait')) / 1000,
+    );
+    expect(gameOverDelays).toContain(GAME_OVER_MENU_DELAY);
+
+    const fade = children(gameplay, 'fadeout Sky', 'Linear Progression')[0];
+    expect(floatValue(parameter(gameplay, fade, 'Duration')) / 1000).toBe(FINISH_SKY_FADE_DURATION);
+
+    const waitSelector = children(gameplay, 'Wait', 'Parameter Selector')[0];
+    const waits = parameters(gameplay, waitSelector)
+      .filter((entry) => entry.name.startsWith('pIn '))
+      .map((entry) => floatValue(resolve(gameplay, entry)) / 1000);
+    expect(waits).toEqual([FINISH_WAIT_DURATION, FINAL_FINISH_WAIT_DURATION]);
+
+    const rowCount = children(gameplay, 'Wait', 'Op')[0];
+    expect(parameter(gameplay, rowCount, 'p1').name).toBe('AllLevel Array');
+    const lessThan = children(gameplay, 'Wait', 'Test')[0];
+    expect(integerValue(parameter(gameplay, lessThan, 'Test'))).toBe(3);
+    expect(finishMenuDelay(1)).toBe(13);
+    expect(finishMenuDelay(12)).toBe(26);
+
+    const skipKeys = children(gameplay, '3 keys', 'Key Event')
+      .map((node) => integerValue(parameter(gameplay, node, 'Key Waited')))
+      .sort((a, b) => a - b);
+    expect(skipKeys).toEqual([1, 28, 57]); // Escape, Enter, Space
+  });
+
   it('detaches the source Cam_Pos slot while its target controller keeps following', () => {
     const rig = new CamRig(4 / 3);
     const origin = new THREE.Vector3();
@@ -283,5 +322,32 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('camera bi
       expect(parent?.valueObjectIndex).toBe(-1);
       expect(parent?.valueBytes).toHaveLength(0);
     }
+  });
+});
+
+describe.skipIf(!existsSync(basePath))('base end-flow authority', () => {
+  const base = existsSync(basePath) ? parseNmo(readFileSync(basePath)) : null;
+
+  it('routes Dead to Menu_Dead and End Level to Menu_Score', () => {
+    if (!base) return;
+    const switcher = children(base, 'Event_handler', 'Switch On Message')[0];
+    const messages = parameters(base, switcher)
+      .filter((entry) => entry.name.startsWith('Message '))
+      .map((entry) => {
+        const value = resolve(base, entry);
+        return value.managerInt === null ? null : base.messageTypes[value.managerInt];
+      });
+    expect(messages).toContain('Dead');
+    expect(messages).toContain('End Level');
+
+    const scriptParameters = [
+      ...children(base, 'Event_handler', 'Activate Script'),
+      ...children(base, 'Event_handler', 'Execute Script'),
+    ]
+      .flatMap((node) => parameters(base, node))
+      .filter((entry) => entry.name === 'Script')
+      .map((entry) => resolve(base, entry).name);
+    expect(scriptParameters).toContain('Menu_Dead Script');
+    expect(scriptParameters).toContain('Menu_Score Script');
   });
 });

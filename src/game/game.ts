@@ -15,8 +15,12 @@ import {
   BALL_BIRTH_DELAY,
   BALL_OFF_DELAY,
   DEATH_FADE_DURATION,
+  FINISH_SKIP_KEYS,
+  FINISH_SKY_FADE_DURATION,
+  GAME_OVER_MENU_DELAY,
   FLOOR_GROUPS,
   SIM_DT,
+  finishMenuDelay,
   type BallKind,
 } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
@@ -56,7 +60,7 @@ export interface GameDebug {
   teleport(x: number, y: number, z: number): void;
   setVelocity(x: number, y: number, z: number): void;
   setLives(n: number): void;
-  state(): { phase: string; lives: number; points: number; sector: number; ballKind: string };
+  state(): { phase: string; lives: number; points: number; sector: number; ballKind: string; winScreen: boolean };
   level: LevelLogic;
   scene: BuiltScene;
   three: THREE.Scene;
@@ -303,7 +307,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // simple sim-time one-shot timer queue
   const timers: { t: number; fn: () => void }[] = [];
   const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
-  let finishSkyFade = -1;
+  let finishElapsed = -1;
+  let finishEnded = false;
+  let finishScore = 0;
   // final-sector ambient from the balloon (Music_EndCheckpoint loop)
   const balloonAmbient = balloonVisual ? audio.createLoop('Music_EndCheckpoint.wav', balloonVisual, 0.9) : null;
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
@@ -319,6 +325,23 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   };
   audio.play('Misc_StartLevel.wav', ball.position, 1, scene);
   startBirth();
+
+  const consumeFinishSkip = (): boolean => {
+    let pressed = false;
+    for (const code of FINISH_SKIP_KEYS) pressed = input.consumePressed(code) || pressed;
+    return pressed;
+  };
+
+  const endLevel = (skipped: boolean): void => {
+    if (finishEnded) return;
+    finishEnded = true;
+    if (skipped) audio.playFlat('Menu_click.wav', 1);
+    const state = gameStore.getState();
+    // base.cmo handles End Level by activating Menu_Score and then running
+    // Highscore. Persistence therefore belongs here, not at the finish hit.
+    state.completeLevel(level, finishScore);
+    if (!(import.meta.env.DEV && bootFlags.has('nowinscreen'))) state.set({ winScreen: true });
+  };
 
   // the original's slowly drifting cloud layer plane
   const skyLayer = built.entities.get('SkyLayer')?.object ?? null;
@@ -408,7 +431,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       after(DEATH_FADE_DURATION, () => gameStore.getState().set({ whiteFade: false }));
       // Gameplay_Events detaches Cam_Pos after its 2000 ms Game Over delay.
       after(DEATH_FADE_DURATION, () => rig.detachSlot());
-      after(2.5, () => {
+      after(GAME_OVER_MENU_DELAY, () => {
         audio.stopMusic();
         gameStore.getState().set({ phase: 'gameover' });
       });
@@ -438,6 +461,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       return;
     }
     if (s.phase === 'finished') {
+      finishElapsed += SIM_DT;
+      // `3 keys` is switched on only after fadeout Sky finishes. Discard any
+      // earlier edges so holding overview before the finish cannot skip it.
+      const skip = consumeFinishSkip();
+      if (!finishEnded && finishElapsed >= FINISH_SKY_FADE_DURATION) {
+        if (skip || finishElapsed >= finishMenuDelay(level)) endLevel(skip);
+      }
       balloonPhysics?.update();
       shatter.advance(SIM_DT);
       let carryPosition: THREE.Vector3 | null = null;
@@ -597,8 +627,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         }
         case 'finish': {
           s.set({ phase: 'finished', winScreen: false });
-          const finalScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
-          s.completeLevel(level, finalScore);
+          finishScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
+          finishElapsed = 0;
+          finishEnded = false;
+          // Clear movement/menu edges accumulated before `3 keys` is active.
+          consumeFinishSkip();
           balloonAmbient?.setActive(false);
           audio.stopMusic();
           balloonPhysics?.launch();
@@ -607,7 +640,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           rig.setNavigationActive(false);
           rig.detachSlot();
           rig.setClippingPlanes(3, 2500);
-          finishSkyFade = 0;
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             ufoFinale?.start();
@@ -616,10 +648,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             after(5.5, () => audio.play('Music_Final.wav', ball.position, 0.9, scene));
           } else {
             audio.play('Music_Final.wav', pos, 0.9, scene);
-          }
-          // original: the win tally appears 6s after the pass
-          if (!(import.meta.env.DEV && bootFlags.has('nowinscreen'))) {
-            after(6, () => gameStore.getState().set({ winScreen: true }));
           }
           break;
         }
@@ -660,11 +688,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const present = (frameDt: number) => {
     ball.syncVisual();
     rig.update(frameDt, ball.position, input.state, gameStore.getState().settings.invertCameraRotation);
-    if (finishSkyFade >= 0) {
-      finishSkyFade = Math.min(3, finishSkyFade + frameDt);
+    if (finishElapsed >= 0) {
       // Gameplay_Events/fadeout Sky linearly filters SkyLayer from 200/255
       // to black over exactly 3000 ms.
-      setSkyLayerFilter(0.7843137979507446 * (1 - finishSkyFade / 3));
+      const fade = Math.min(1, finishElapsed / FINISH_SKY_FADE_DURATION);
+      setSkyLayerFilter(0.7843137979507446 * (1 - fade));
     }
     const v = ball.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
@@ -759,7 +787,14 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       setLives: (n) => gameStore.getState().set({ lives: n }),
       state: () => {
         const s = gameStore.getState();
-        return { phase: s.phase, lives: s.lives, points: s.points, sector: s.sector, ballKind: s.ballKind };
+        return {
+          phase: s.phase,
+          lives: s.lives,
+          points: s.points,
+          sector: s.sector,
+          ballKind: s.ballKind,
+          winScreen: s.winScreen,
+        };
       },
       level: logic,
       scene: built,

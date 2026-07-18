@@ -173,7 +173,9 @@ ballance-web/
    checkpoint (`PC_TwoFlames`) completes the sector: previous sector's moduls deactivate,
    next sector's activate/reset. Death resets the active sector's moduls. End = touch the
    balloon (`PE_Balloon`) → source multi-body fly-off, fixed-position/look-target camera,
-   three-second `SkyLayer` prelit fade, then score tally.
+   three-second `SkyLayer` prelit fade, then the source `Wait` graph. Levels 1–11 send
+   `End Level` after another 10 seconds; level 12 waits 23 seconds. Escape, Enter, or Space
+   can skip only that post-fade wait. `base.cmo` routes `End Level` to `Menu_Score`.
 4. **Trafos.** `P_Trafo_{Paper,Wood,Stone}` transform the ball type on contact, with the
    `AnimTrafo` ring animation and old-ball piece burst. The lightning sphere belongs only
    to ball birth/respawn.

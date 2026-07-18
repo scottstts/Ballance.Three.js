@@ -104,7 +104,7 @@ export interface GameState {
   ballKind: BallKind;
   /** white screen fade during the fall-death transition */
   whiteFade: boolean;
-  /** the win tally appears 6s after the finish trigger */
+  /** Menu_Score is activated by the source-authored End Level handoff. */
   winScreen: boolean;
   /** Authored level-1 tutorial row currently shown, or null when inactive. */
   tutorialChapter: number | null;
