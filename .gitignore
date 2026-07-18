@@ -25,3 +25,5 @@ dist-ssr
 
 Ballance_bin
 ref_images
+screenshots
+.playwright-mcp

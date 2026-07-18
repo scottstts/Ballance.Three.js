@@ -1,6 +1,6 @@
 # Ballance React/Threejs Port
 
-This is a project porting Ballance game binary to react ts + three.js. Ballance_bin/ is the original game binary. This is the sole reference and the single source of truth for the port and rebuild. It must remain read-only.
+This is a project porting Ballance game binary to react ts + three.js. Ballance_bin/ is the original game binary. This is the sole reference and the single source of truth for the port and rebuild. It must remain read-only. Treat both as complementary source of the same game bin, just in case they cover slightly different parts that can help you replicate 100%.
 
 ## Rules
 
@@ -15,6 +15,8 @@ This is a project porting Ballance game binary to react ts + three.js. Ballance_
 - You the main agent (gpt 5.6 Sol) may spawn as many subagents (must be gpt 5.6 Terra xhigh) as needed for read-only research tasks between the orignal bin and the codebase, to find all existing discrepancies. And you the main agent will solely act upon the research results provided by the subagents, make decisions, edit code. This process is to ensure 100% replication, LEAVE NO STONE UNTURNED!
 - Subagents can NOT spawn more agents
 - after you're done with dev server and live browser inspection, you should kill the dev server and close the browser tab instead of leaving them hanging
+- you can use external sources of other ported version of the game, that's okay, and can be especially useful for the exact assets in a complimentary manner. but just make sure the final port still treats the original game bin as the primary authority
+- all captures stay in .playwright-mcp/ or screenshots/
 
 ## Notes
 
