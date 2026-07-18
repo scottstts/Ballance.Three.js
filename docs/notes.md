@@ -339,3 +339,55 @@ fly-off is a kinematic rise (not the original multi-body flight), L12 UFO is
 sound-only (no UFO model exists in the original data), tutorial arrows
 (Tutorial.nmo) and the intro logo sequence (Intro.nmo) are not implemented,
 options subscreens are simplified (volume only).
+
+## Wave-2 audit round (camera prefab values, endgame, menus, coverage)
+
+- **Camera runtime values live in the serialized camera host, NOT the code
+  defaults**: rotate 0.55s (not 0.3), overview up 0.45s / down 1.66s (not
+  0.8/1.3), overview Z 14 (not 8). Follow is per-axis critically-damped
+  SmoothDamp in two stages — ball-follow target {0.2, 0.6, 0.2}, camera
+  position {0.2, 0.3, 0.2} — plus an independent look target {0.16}. The
+  CamFollowSpeed=0.05 constant is dead code in the original. Rotate easing
+  curve keys: (0,0.0067) (0.497,0.58) (1,1). Push direction follows the
+  LIVE rotating orientation (continuous, never snapped).
+- **Death camera**: follow for ~1s, then freeze (respawn path) or switch to
+  look-only (game-over path, 1.5s). Finish: follow 0.6s then look-only while
+  the balloon carries the ball up.
+- **Balloon finale**: buoyancy decays (~0.15 -> 0.10 -> 0 over 43s) so the
+  rise DEcelerates; the ball rides along; the win tally appears 6s after the
+  pass. Port approximates with rate = max(0.35, 3.1*exp(-t/16)).
+- **Trafo**: ball is snapped to trafo+2y and held (no control) during the
+  2.3s ring spin; old ball bursts at the held spot.
+- **Modul_29 bridge is repaired on EVERY sector reset** (not only level
+  restart). Modul_08 swing starts its cycle at +F immediately; Modul_26 sack
+  starts -F first (startState 1 in the altForce table).
+- **Level coverage audit**: every functional group in all 12 levels is
+  handled; 'Shadow'/'invisible'/'test' groups are redundant editor
+  groupings; Sound_HitID_* == Sound_RollID_* memberships in all levels;
+  Phys_FloorWoods appears in NO level file (wood floors are tagged by sound
+  groups). Only true content gap was the L1 tutorial overlay.
+- **Menu truths (from Language.nmo strings)**: score rows are 'Level Bonus:'
+  / 'Time Points:' / 'Extra Lives:' / 'Score:' (no "Congratulations"
+  anywhere); pause = Restart Level / Exit Level; game over = Restart Level /
+  Home; options = Graphics / Controls / Sound subscreens (single Music
+  Volume slider; Clouds? yes/no toggle); highscore = per-level top-10 with
+  names+dates seeded by "Mr. Default" 2004/8/8 (4000..400, L12 7000..3600),
+  with a post-win 'New highscore entry!' name input. All implemented; the
+  win screen shows the tally then the entry then Next Level/Restart
+  Level/Home.
+- **Intro**: Atari card (atari.bmp — the AVI cannot be decoded by browsers),
+  then Gravitylogo_intro.bmp over drifting Wolken_intro.tga cloud sprites,
+  key/click skippable, Music_Theme_4_1. Implemented in IntroScreen.tsx
+  (phase 'intro' precedes 'menu').
+- **SkyLayer**: never grow the plane (moire/speckle at grazing angles);
+  keep the authored size and make it FOLLOW the camera in XZ with UV
+  compensation (offset += delta/size*repeat). Clouds? option toggles it.
+- Tutorial arrows in Tutorial.nmo are parked at the origin — the original
+  SCRIPT moves them per step, so static placement is wrong; the guided
+  tutorial (text steps from Text/Tutorial2.txt, RETURN to advance) remains
+  unimplemented.
+- Remaining approximations after this round: L12 UFO abduction cutscene
+  (sounds + balloon rise stand in; the rebuild uses a custom-made saucer
+  model textured with Misc_Ufo.bmp and a 15-keyframe path), the guided L1
+  tutorial, AVI intro clip, resolution/vsync options rows, Yes/No confirm
+  dialogs, per-category audio mixer buses.
