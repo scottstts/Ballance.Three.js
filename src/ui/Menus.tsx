@@ -178,10 +178,7 @@ export function MainMenu() {
           rect={LARGE_MENU_BUTTON_RECTS[1]}
           ogui={ogui}
           label="Highscore"
-          onClick={() => {
-            menuAudio.dong();
-            set({ phase: 'highscore' });
-          }}
+          onClick={() => set({ phase: 'highscore' })}
         />,
         <SourceButton key="options" rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => set({ phase: 'options' })} />,
         <SourceButton key="credits" rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Credits" onClick={() => set({ phase: 'credits' })} />,

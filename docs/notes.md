@@ -386,7 +386,9 @@ options subscreens are simplified (volume only).
   starts -F first (startState 1 in the altForce table).
 - **Level coverage audit**: every functional group in all 12 levels is
   handled; 'Shadow'/'invisible'/'test' groups are redundant editor
-  groupings; Sound_HitID_* == Sound_RollID_* memberships in all levels;
+  groupings. (Correction: later direct set comparison proves selected entities
+  intentionally differ between Sound_HitID_* and Sound_RollID_*; see the
+  dedicated impact/roll note below.)
   Phys_FloorWoods appears in NO level file (wood floors are tagged by sound
   groups). Only true content gap was the L1 tutorial overlay.
 - **Menu truths (from Language.nmo strings)**: score rows are 'Level Bonus:'
@@ -1290,3 +1292,23 @@ options subscreens are simplified (volume only).
 - A same-level restart previously retained `GameCanvas` because its React key was
   only the level number. The store now increments a run id for each Load/Reset/
   Next Level action so every authored load message creates a fresh engine.
+
+## 2026-07-18 independent impact/roll surface recovery
+
+- The original level groups are not interchangeable: direct set comparison of
+  all twelve NMOs finds 21 entity assignments whose `Sound_HitID_*` and
+  `Sound_RollID_*` values differ. Examples include metal-only impact rails in
+  levels 1, 2, 4-6, and 8-11, level 2's stone-only `A02_Floor_03` impact, and
+  level 5's roll-only stone `A03_Modul16`. The port had built both hit and roll
+  lookup tables from `Sound_RollID_*`, silently losing these authored choices.
+- Static colliders now retain separate hit and roll surface maps. Collision
+  start events select `Sound_HitID_*`; the delayed continuous contact mixer
+  selects `Sound_RollID_*`. Prefab colliders still register the same explicitly
+  decoded material for both where no independent level groups exist. A new
+  all-level source-lock enumerates the complete intentional difference set.
+- `Sound.nmo/Simple Sound Messages` uses reusable Wave Players: Menu_Click,
+  Menu_Load, Menu_Dong, and Menu_Highscore stop immediately and play one 66 Hz
+  behavior tick later at their CKWaveSound gain 1. `Menu.nmo`'s two 37 ms
+  Menu_counter players alternate immediately so ticks can overlap. The React
+  menu mixer now follows both paths; its former 0.7 counter/highscore gains and
+  the extra Dong on the ordinary Highscore button were not source-authored.

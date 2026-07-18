@@ -1,5 +1,6 @@
 /** Menu sounds: the original atmosphere loop and click, via Web Audio. */
 import { fetchGameBuffer } from '../engine/assets.ts';
+import { SIM_DT } from '../game/constants.ts';
 import { gameStore } from '../game/store.ts';
 
 class MenuAudio {
@@ -8,6 +9,8 @@ class MenuAudio {
   private atmo: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private atmoWanted = false;
   private atmoTimer: ReturnType<typeof setTimeout> | null = null;
+  private restartSources = new Map<string, AudioBufferSourceNode>();
+  private restartGenerations = new Map<string, number>();
 
   private ensureCtx(): AudioContext {
     if (!this.ctx) {
@@ -92,31 +95,64 @@ class MenuAudio {
       src.playbackRate.value = playbackRate;
       src.connect(gain);
       src.start();
+      src.onended = () => gain.disconnect();
+    });
+  }
+
+  /** Sound.nmo direct players: Stop now, Play one behavior tick later. */
+  private restartOneShot(name: string, music = false): void {
+    const generation = (this.restartGenerations.get(name) ?? 0) + 1;
+    this.restartGenerations.set(name, generation);
+    const existing = this.restartSources.get(name);
+    if (existing) {
+      try {
+        existing.stop();
+      } catch {
+        /* already ended */
+      }
+      this.restartSources.delete(name);
+    }
+    void this.load(name).then((buffer) => {
+      if (!buffer || this.restartGenerations.get(name) !== generation) return;
+      const ctx = this.ensureCtx();
+      const gain = ctx.createGain();
+      gain.gain.value = music ? gameStore.getState().settings.musicVolume : 1;
+      gain.connect(ctx.destination);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(gain);
+      this.restartSources.set(name, src);
+      src.start(ctx.currentTime + SIM_DT);
+      src.onended = () => {
+        if (this.restartSources.get(name) === src) this.restartSources.delete(name);
+        gain.disconnect();
+      };
     });
   }
 
   click(): void {
-    this.oneShot('Menu_click.wav');
+    this.restartOneShot('Menu_click.wav');
   }
 
   /** page/confirm chime */
   dong(): void {
-    this.oneShot('Menu_dong.wav');
+    this.restartOneShot('Menu_dong.wav');
   }
 
   /** level begins loading */
   levelLoad(): void {
-    this.oneShot('Menu_load.wav');
+    this.restartOneShot('Menu_load.wav');
   }
 
   /** score-counter tick on the win screen */
   counter(): void {
-    this.oneShot('Menu_counter.wav', 0.7);
+    // Menu.nmo alternates two 37 ms players so rapid ticks may overlap.
+    this.oneShot('Menu_counter.wav');
   }
 
   /** highscore screen music */
   highscoreMusic(): void {
-    this.oneShot('Music_Highscore.wav', 0.7, true);
+    this.restartOneShot('Music_Highscore.wav', true);
   }
 
   /** intro sequence theme */

@@ -44,6 +44,7 @@ import { PickupSystem } from './pickups.ts';
 import { ScaleableProximity } from './proximity.ts';
 import { screenMode } from './settings.ts';
 import { gameStore } from './store.ts';
+import { soundSurfaceByName } from './surfaces.ts';
 import { TutorialSystem, tutorialEligible } from './tutorial.ts';
 
 export interface GameHandle {
@@ -124,8 +125,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   bootStage('colliders');
   const bootFlags = new URLSearchParams(window.location.search);
   const physics = new PhysicsWorld();
-  const { surfaceByCollider, floorHitByCollider } = bootFlags.has('nocolliders')
-    ? { surfaceByCollider: new Map<number, Surface>(), floorHitByCollider: new Map<number, string>() }
+  const { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider } = bootFlags.has('nocolliders')
+    ? {
+        hitSurfaceByCollider: new Map<number, Surface>(),
+        rollSurfaceByCollider: new Map<number, Surface>(),
+        floorHitByCollider: new Map<number, string>(),
+      }
     : buildStaticColliders(physics, built);
   const minY = computeMinY(built) - 30;
 
@@ -211,7 +216,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         physics,
         scene,
         ball,
-        registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
+        registerSurface: (handle, surface) => {
+          hitSurfaceByCollider.set(handle, surface);
+          rollSurfaceByCollider.set(handle, surface);
+        },
         attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
         pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
         emit: () => {},
@@ -232,7 +240,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       physics,
       scene,
       ball,
-      registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
+      registerSurface: (handle, surface) => {
+        hitSurfaceByCollider.set(handle, surface);
+        rollSurfaceByCollider.set(handle, surface);
+      },
       attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
       pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
       emit: (ev) => {
@@ -625,7 +636,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       const ballHandle = ball.collider.handle;
       if (h1 !== ballHandle && h2 !== ballHandle) return;
       const other = h1 === ballHandle ? h2 : h1;
-      const surface = surfaceByCollider.get(other) ?? 'stone';
+      const surface = hitSurfaceByCollider.get(other) ?? 'stone';
       audio.hit(ball.kind, surface, relativeSpeed());
     });
 
@@ -738,7 +749,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const contactSurfaces = (): Set<Surface> => {
     touchingSurfaces.clear();
     physics.world.contactPairsWith(ball.collider, (other) => {
-      const s = surfaceByCollider.get(other.handle);
+      const s = rollSurfaceByCollider.get(other.handle);
       if (s) touchingSurfaces.add(s);
     });
     return touchingSurfaces;
@@ -894,40 +905,32 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   };
 }
 
-/** Sound ID groups map entities to their sound surface: 01=stone 02=wood 03=metal. */
-function soundSurfaceLookup(built: BuiltScene): Map<string, Surface> {
-  const bySoundId: Record<string, Surface> = { '01': 'stone', '02': 'wood', '03': 'metal' };
-  const map = new Map<string, Surface>();
-  for (const [id, surface] of Object.entries(bySoundId)) {
-    const group = built.groups.get(`Sound_RollID_${id}`);
-    if (!group) continue;
-    for (const idx of group.memberIndices) {
-      const name = built.file.objects[idx]?.name;
-      if (name) map.set(name, surface);
-    }
-  }
-  return map;
-}
-
 function buildStaticColliders(
   physics: PhysicsWorld,
   built: BuiltScene,
-): { surfaceByCollider: Map<number, Surface>; floorHitByCollider: Map<number, string> } {
-  const surfaceOf = soundSurfaceLookup(built);
-  const surfaceByCollider = new Map<number, Surface>();
+): {
+  hitSurfaceByCollider: Map<number, Surface>;
+  rollSurfaceByCollider: Map<number, Surface>;
+  floorHitByCollider: Map<number, string>;
+} {
+  const hitSurfaceOf = soundSurfaceByName(built.file, built.groups, 'Hit');
+  const rollSurfaceOf = soundSurfaceByName(built.file, built.groups, 'Roll');
+  const hitSurfaceByCollider = new Map<number, Surface>();
+  const rollSurfaceByCollider = new Map<number, Surface>();
   const floorHitByCollider = new Map<number, string>();
   for (const [groupName, def] of Object.entries(FLOOR_GROUPS)) {
     for (const e of groupEntities(built, groupName)) {
       if (e.object instanceof THREE.Mesh) {
         const collider = physics.addStaticMesh(e.object, def.friction, def.elasticity);
         if (collider) {
-          surfaceByCollider.set(collider.handle, surfaceOf.get(e.rec.name) ?? def.surface);
+          hitSurfaceByCollider.set(collider.handle, hitSurfaceOf.get(e.rec.name) ?? def.surface);
+          rollSurfaceByCollider.set(collider.handle, rollSurfaceOf.get(e.rec.name) ?? def.surface);
           if (def.hitSound) floorHitByCollider.set(collider.handle, def.hitSound);
         }
       }
     }
   }
-  return { surfaceByCollider, floorHitByCollider };
+  return { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider };
 }
 
 /** debug: a scene view with no groups, so no moduls get created */

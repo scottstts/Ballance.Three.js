@@ -199,7 +199,11 @@ ballance-web/
    last checkpoint switches only the theme off; its flat loop uses one strict 200-unit
    proximity threshold. The serialized 200/250 exactness range deterministically scales checks
    from 5 to 20 frames; it is neither hysteresis nor randomness. Both Start/End Music fades are 1 s.
-   Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`.
+   Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`. Static level
+   geometry keeps independent `Sound_HitID_01..03` and `Sound_RollID_01..03` maps—21 authored
+   entity assignments differ—so impact-start and continuous-contact detectors must not share a
+   lookup. Menu message players likewise retain their one-66-Hz-tick restart edge and gain 1;
+   the two immediate score-counter players alternate to permit overlapping 37 ms ticks.
 7. **Menus/UI in React.** Main menu (optionally rendering the converted `MenuLevel` 3D tower
    behind it), level select with unlock progression, pause, options, tutorial text from
    `Text/*.txt`, and the original sprite-font HUD (points and lives). The life display uses
