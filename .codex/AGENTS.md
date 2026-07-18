@@ -12,7 +12,7 @@ This is a project porting Ballance game binary to react ts + three.js. Ballance_
 - you may periodcally commit to main to keep meaningful progress
 - after compaction, you MUST re-read this project rules in full before proceeding to task
 - docs/ is the dir for all existing docs for the port and rebuild. you must update/create docs periodically to accurately reflect the current implementation
-- You the main agent (Fable) may spawn as many subagents (must be latest Opus model) as needed for read-only research tasks between the orignal bin and the codebase, to find all existing discrepancies. And you the main agent will solely act upon the research results provided by the subagents, make decisions, edit code. This process is to ensure 100% replication, LEAVE NO STONE UNTURNED!
+- You the main agent (gpt 5.6 Sol) may spawn as many subagents (must be gpt 5.6 Terra xhigh) as needed for read-only research tasks between the orignal bin and the codebase, to find all existing discrepancies. And you the main agent will solely act upon the research results provided by the subagents, make decisions, edit code. This process is to ensure 100% replication, LEAVE NO STONE UNTURNED!
 - Subagents can NOT spawn more agents
 - after you're done with dev server and live browser inspection, you should kill the dev server and close the browser tab instead of leaving them hanging
 
