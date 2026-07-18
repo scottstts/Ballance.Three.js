@@ -4,6 +4,7 @@
  * digits, bottom-right the life balls between the wire hook and end curl.
  */
 import { useGameStore } from '../game/store.ts';
+import { hudRectStyle, LIFE_HUD_SOURCE, lifeBallRects, lifeHookRect } from './hudLayout.ts';
 import { useOgui } from './useOgui.ts';
 
 export default function Hud() {
@@ -20,11 +21,30 @@ export default function Hud() {
         </div>
       </div>
       <div className="hud-lifes">
-        <img className="hud-lives-hook" src={ogui.piece.livesHook} alt="" draggable={false} />
-        {Array.from({ length: Math.min(lives, 8) }, (_, i) => (
-          <img key={i} className="hud-lifeball" src={ogui.piece.lifeBall} alt="" draggable={false} />
+        {lifeBallRects(lives).map((rect, index) => (
+          <img
+            key={index}
+            className="hud-lifeball"
+            style={hudRectStyle(rect)}
+            src={ogui.piece.lifeBall}
+            alt=""
+            draggable={false}
+          />
         ))}
-        <img className="hud-lives-curl" src={ogui.piece.livesCurl} alt="" draggable={false} />
+        <img
+          className="hud-lives-hook"
+          style={hudRectStyle(lifeHookRect(lives))}
+          src={ogui.piece.livesHook}
+          alt=""
+          draggable={false}
+        />
+        <img
+          className="hud-lives-curl"
+          style={hudRectStyle(LIFE_HUD_SOURCE.curl)}
+          src={ogui.piece.livesCurl}
+          alt=""
+          draggable={false}
+        />
       </div>
     </div>
   );

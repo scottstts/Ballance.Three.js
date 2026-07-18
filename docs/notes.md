@@ -233,8 +233,10 @@ corrections — several earlier assumptions were WRONG:
   select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
   slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
   HUD pieces (score plate (105,185,135,44), under-swoosh (82,199,176,52), amber
-  flash variants, life ball (16,134,31,31), lives hook (0,133,16,33), lives curl
-  (46,119,60,63)), Font_1.tga = cp1252 bitmap font in a 16x16 grid of 32px cells
+  flash variants). Life pieces use `Camera.nmo`'s UV endpoints: ball
+  (17,135,29,29), hook (1,134,15,30), curl (47,119,58,61), converted from
+  multiples of 1/255 to inclusive pixels. Font_1.tga = cp1252 bitmap font in a
+  16x16 grid of 32px cells
   (uppercase + small-caps — render mixed-case text and it looks original),
   Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
 - **Audio model (exact original semantics)**: roll loops are created ONCE and play
@@ -303,8 +305,10 @@ corrections — several earlier assumptions were WRONG:
   select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
   slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
   HUD pieces (score plate (105,185,135,44), under-swoosh (82,199,176,52), amber
-  flash variants, life ball (16,134,31,31), lives hook (0,133,16,33), lives curl
-  (46,119,60,63)), Font_1.tga = cp1252 bitmap font in a 16x16 grid of 32px cells
+  flash variants). Life pieces use `Camera.nmo`'s UV endpoints: ball
+  (17,135,29,29), hook (1,134,15,30), curl (47,119,58,61), converted from
+  multiples of 1/255 to inclusive pixels. Font_1.tga = cp1252 bitmap font in a
+  16x16 grid of 32px cells
   (uppercase + small-caps — render mixed-case text and it looks original),
   Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
 - **Audio model (exact original semantics)**: roll loops are created ONCE and play
@@ -858,16 +862,38 @@ options subscreens are simplified (volume only).
   `Music_LastFinal.wav` for level 12. There were zero browser errors; the tab
   and Vite server were closed. The full gate passes with 87 tests plus lint,
   typecheck, and production build (the usual chunk-size warning only).
-## 2026-07-18 open HUD parity finding: life count
+## 2026-07-18 resolved HUD parity finding: life count
 
-- **TODO — life-count HUD is not source-identical yet.** In the user-provided
-  side-by-side, the port shows three silver balls with a wide gap before the
-  outer cradle, while the original shows four tighter balls and nests the last
-  ball inside the cradle opening. Recover the source HUD behavior before fixing:
-  verify whether the display intentionally renders `stored lives + 1`, then
-  match the exact ball spacing, inner-hook position, and cradle overlap from
-  `Button01_special.tga` / the original UI graph. Do not mark HUD parity complete
-  until both the count semantics and layout match.
+- The user-provided comparison exposed three guessed flex-layout errors: the
+  port rendered only the reserve count, left wide gaps, and placed the outer
+  cradle after the balls. Static source recovery resolves all three. In
+  `Camera.nmo`, `Interface_Life_Kugel`, `Interface_Life_Startbogen`, and
+  `Interface_Life_End` serialize their exact screen and atlas rectangles.
+  `Gameplay.nmo/Energy` stores `StartLifes=3`, but `Init Startlifes` preserves
+  the original ball entity and runs a Counter of three copies. The initial HUD
+  therefore intentionally shows four balls.
+- Ball copies begin at X `0.9495999813` and proceed left by
+  `0.03869999945`; the hook X is `0.9287999868 - ActLifes*0.03869999945`
+  (`Calculator` expression `a-(b*c)`). The React HUD now renders those normalized
+  rectangles directly, including the permanent current ball and moving hook,
+  rather than approximating them with flexbox. `Camera.nmo` is byte-identical in
+  source1 and the extracted source2 installer (SHA-256
+  `c9151e50dde9d2c2703a4d35de53be414f65ec01367b1c4d3ad36709cfffe888`).
+- The four-ball display also exposed a gameplay off-by-one. Source
+  `Deactivate Ball` first tests the current `ActLifes` against zero. Its True
+  branch runs the reset/fade sequence and only then subtracts one; its False
+  branch emits Game Over without subtracting. Thus the three stored reserves
+  allow three respawns and the permanent current ball is the fourth attempt.
+  `fallLifeOutcome` now follows that test-before-subtract order instead of
+  ending the game when the last reserve is consumed.
+- `hudLayout.test.ts` locks the implementation to the original CK2dEntity
+  rectangles, `Energy.StartLifes`, and gameplay spacing. At 1024x768, live DOM
+  bounds were the source-projected ball X positions 972.375, 932.75, 893.125,
+  and 853.5; hook X 832.203; cradle X 912. The browser capture is
+  `screenshots/hud-life-source.png`; there were zero errors (only Rapier's known
+  deprecated-init warning), and the tab/server were closed. `lives.test.ts`
+  additionally locks the source Test/Op wiring. The full gate passes with 91
+  tests plus lint, typecheck, and production build (the usual chunk warning).
 
 ## 2026-07-18 source-exact scene light and SkyLayer drift
 

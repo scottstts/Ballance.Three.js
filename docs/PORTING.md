@@ -195,9 +195,12 @@ ballance-web/
    Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`.
 7. **Menus/UI in React.** Main menu (optionally rendering the converted `MenuLevel` 3D tower
    behind it), level select with unlock progression, pause, options, tutorial text from
-   `Text/*.txt`, and the original sprite-font HUD (points and lives). The life display still
-   has an open parity defect: source count semantics and the exact hook/ball/cradle overlap
-   must be recovered; see `docs/notes.md`.
+   `Text/*.txt`, and the original sprite-font HUD (points and lives). The life display uses
+   `Camera.nmo`'s exact normalized CK2dEntity rectangles and `Gameplay.nmo`'s reserve-life
+   construction: one permanent current ball plus `ActLifes` copies at 0.0387 X spacing,
+   with the left hook placed by the source `a-(b*c)` expression. `Deactivate Ball` tests
+   the reserves before subtracting one, so three initial reserves correctly provide four
+   attempts and Game Over occurs only on the next fall from zero.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term

@@ -34,6 +34,7 @@ import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TRAFO_SOURCE, 
 import { prepareBalloonInstance, UfoFinale } from './finale.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
+import { fallLifeOutcome } from './lives.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
 import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/prefabs.ts';
 import { modulFactories } from './moduls/registry.ts';
@@ -429,9 +430,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     pendingTrafo = null;
     audio.play('Misc_Fall.wav', ball.position, 1, scene);
-    const lives = s.lives - 1;
+    const outcome = fallLifeOutcome(s.lives);
     s.set({ whiteFade: true });
-    if (lives <= 0) {
+    if (outcome.gameOver) {
       s.set({ lives: 0 });
       rig.setNavigationActive(false);
       after(BALL_OFF_DELAY, () => {
@@ -449,7 +450,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       s.set({ phase: 'dead' });
       deathTimer = Infinity; // gameover timer takes over
     } else {
-      s.set({ lives, phase: 'dead' });
+      s.set({ lives: outcome.lives, phase: 'dead' });
       deathTimer = BALL_OFF_DELAY;
     }
   };

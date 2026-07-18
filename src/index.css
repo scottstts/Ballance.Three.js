@@ -139,29 +139,22 @@ body,
 
 .hud-lifes {
   position: absolute;
-  right: 2.4vh;
-  bottom: 3.4vh;
-  display: flex;
-  align-items: center;
+  inset: 0;
 }
 
-.hud-lives-hook {
-  height: 3.5vh;
-  margin-right: 0.25vh;
-  align-self: flex-end;
-  margin-bottom: 2vh;
+.hud-lifes img {
+  position: absolute;
+  display: block;
+  object-fit: fill;
 }
 
 .hud-lifeball {
-  height: 3.45vh;
-  margin: 0 0.08vh;
-  align-self: flex-end;
-  margin-bottom: 2.1vh;
+  z-index: 1;
 }
 
+.hud-lives-hook,
 .hud-lives-curl {
-  height: 8.6vh;
-  margin-left: 0.5vh;
+  z-index: 2;
 }
 
 .intro-screen {

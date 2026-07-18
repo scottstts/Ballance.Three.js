@@ -45,9 +45,11 @@ const PIECES: Record<string, PieceDef> = {
   scoreSwoosh: { atlas: 'special', x: 82, y: 199, w: 176, h: 52 },
   scorePlateAmber: { atlas: 'special', x: 130, y: 129, w: 110, h: 36 },
   scoreSwooshAmber: { atlas: 'special', x: 111, y: 142, w: 142, h: 41 },
-  lifeBall: { atlas: 'special', x: 16, y: 134, w: 31, h: 31 },
-  livesHook: { atlas: 'special', x: 0, y: 133, w: 16, h: 33 },
-  livesCurl: { atlas: 'special', x: 46, y: 119, w: 60, h: 63 },
+  // Camera.nmo CK2dEntity UV endpoints, converted from multiples of 1/255
+  // to inclusive atlas pixels.
+  lifeBall: { atlas: 'special', x: 17, y: 135, w: 29, h: 29 },
+  livesHook: { atlas: 'special', x: 1, y: 134, w: 15, h: 30 },
+  livesCurl: { atlas: 'special', x: 47, y: 119, w: 58, h: 61 },
 };
 
 export interface TextImage {
