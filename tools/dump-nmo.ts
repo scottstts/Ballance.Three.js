@@ -1,7 +1,7 @@
 /** CLI: node tools/dump-nmo.ts <file.nmo> [--full] — summarize an NMO file. */
 import { readFileSync } from 'node:fs';
 import { parseNmo } from '../src/formats/ck2/nmo.ts';
-import type { CKRecord, ParameterRec } from '../src/formats/ck2/types.ts';
+import type { CameraRec, CKRecord, ParameterRec } from '../src/formats/ck2/types.ts';
 
 const path = process.argv[2];
 if (!path) {
@@ -159,6 +159,13 @@ if (objects) {
         console.log(`         animations=${o.animationIndices.join(',')}`);
       } else if (o.kind === 'entity') {
         console.log(`         place=${o.placeIndex} parent=${o.parentIndex}`);
+        if ('fieldOfView' in o) {
+          const camera = o as CameraRec;
+          console.log(
+            `         camera projection=${camera.projectionType} fov=${camera.fieldOfView} zoom=${camera.orthographicZoom} ` +
+              `aspect=0x${camera.aspectRatio.toString(16)} planes=${camera.nearPlane},${camera.farPlane} target=${camera.targetIndex}`,
+          );
+        }
         console.log(
           `         matrix=${Array.from(o.worldMatrix)
             .map((value) => Number(value.toFixed(7)))
@@ -202,6 +209,28 @@ if (objects) {
         console.log(
           `         cone=${o.cone.join(',')} distance=${o.minDistance},${o.maxDistance},${o.distanceModel} ` +
             `attached=${o.attachedEntityIndex} position=${o.position.join(',')} direction=${o.direction.join(',')}`,
+        );
+      } else if (o.kind === 'dataArray') {
+        console.log(`         columns=${JSON.stringify(o.columns)}`);
+        console.log(`         rows=${JSON.stringify(o.rows)}`);
+      } else if (o.kind === 'curve') {
+        console.log(
+          `         points=${o.pointIndices.join(',')} open=${o.open} steps=${o.stepCount} fit=${o.fittingCoefficient}`,
+        );
+        console.log(
+          `         matrix=${Array.from(o.entity.worldMatrix)
+            .map((value) => Number(value.toFixed(7)))
+            .join(',')}`,
+        );
+      } else if (o.kind === 'curvePoint') {
+        console.log(
+          `         curve=${o.curveIndex} flags=0x${o.flags.toString(16)} tcb=${o.tension},${o.continuity},${o.bias} ` +
+            `position=${o.curvePosition} incoming=${o.incomingTangent.join(',')} outgoing=${o.outgoingTangent.join(',')}`,
+        );
+        console.log(
+          `         matrix=${Array.from(o.entity.worldMatrix)
+            .map((value) => Number(value.toFixed(7)))
+            .join(',')}`,
         );
       }
     }

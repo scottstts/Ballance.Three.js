@@ -13,6 +13,9 @@ import {
   type EmbeddedBitmap,
   type Entity2dRec,
   type Entity3dRec,
+  type CameraRec,
+  type CurvePointRec,
+  type CurveRec,
   type GroupRec,
   type LightRec,
   type MaterialRec,
@@ -131,6 +134,75 @@ function loadSprite3d(base: ObjectBase, chunk: StateChunk): Sprite3dRec {
     rec.offset = [chunk.f32(), chunk.f32()];
     rec.uvRect = [chunk.f32(), chunk.f32(), chunk.f32(), chunk.f32()];
     rec.materialIndex = chunk.objectRef();
+  }
+  return rec;
+}
+
+function loadCamera(base: ObjectBase, chunk: StateChunk): CameraRec {
+  const rec: CameraRec = {
+    ...loadEntityInto(base, chunk),
+    projectionType: 1,
+    fieldOfView: Math.PI / 3,
+    orthographicZoom: 1,
+    aspectRatio: 0x00030004,
+    nearPlane: 1,
+    farPlane: 4000,
+    targetIndex: -1,
+  };
+  if (chunk.seekIdentifier(Ident.CAMERA_ALL) >= 24) {
+    rec.projectionType = chunk.u32();
+    rec.fieldOfView = chunk.f32();
+    rec.orthographicZoom = chunk.f32();
+    rec.aspectRatio = chunk.u32();
+    rec.nearPlane = chunk.f32();
+    rec.farPlane = chunk.f32();
+  }
+  if (chunk.seekIdentifier(Ident.TARGET_CAMERA_TARGET) >= 4) rec.targetIndex = chunk.objectRef();
+  return rec;
+}
+
+function loadCurvePoint(base: ObjectBase, chunk: StateChunk): CurvePointRec {
+  const rec: CurvePointRec = {
+    ...base,
+    kind: 'curvePoint',
+    entity: loadEntityInto(base, chunk),
+    curveIndex: -1,
+    flags: 0,
+    tension: 0,
+    continuity: 0,
+    bias: 0,
+    curvePosition: 0,
+    incomingTangent: [0, 0, 0],
+    outgoingTangent: [0, 0, 0],
+  };
+  if (chunk.seekIdentifier(Ident.CURVE_POINT_DEFAULT_DATA) >= 48) {
+    rec.curveIndex = chunk.objectRef();
+    rec.flags = chunk.u32();
+    rec.tension = chunk.f32();
+    rec.continuity = chunk.f32();
+    rec.bias = chunk.f32();
+    rec.curvePosition = chunk.f32();
+    rec.incomingTangent = [chunk.f32(), chunk.f32(), chunk.f32()];
+    rec.outgoingTangent = [chunk.f32(), chunk.f32(), chunk.f32()];
+  }
+  return rec;
+}
+
+function loadCurve(base: ObjectBase, chunk: StateChunk): CurveRec {
+  const rec: CurveRec = {
+    ...base,
+    kind: 'curve',
+    entity: loadEntityInto(base, chunk),
+    pointIndices: [],
+    open: true,
+    stepCount: 0,
+    fittingCoefficient: 0,
+  };
+  if (chunk.seekIdentifier(Ident.CURVE_ONLY) >= 16) {
+    rec.pointIndices = chunk.objectRefArray();
+    rec.open = chunk.u32() !== 0;
+    rec.stepCount = chunk.u32();
+    rec.fittingCoefficient = chunk.f32();
   }
   return rec;
 }
@@ -790,9 +862,14 @@ export function loadObjectRecord(
       return loadEntity2d(base, chunk);
     case CKClassId.Entity3d:
     case CKClassId.Object3d:
+      return loadEntityInto(base, chunk);
     case CKClassId.Camera:
     case CKClassId.TargetCamera:
-      return loadEntityInto(base, chunk);
+      return loadCamera(base, chunk);
+    case CKClassId.CurvePoint:
+      return loadCurvePoint(base, chunk);
+    case CKClassId.Curve:
+      return loadCurve(base, chunk);
     case CKClassId.Sprite3d:
       return loadSprite3d(base, chunk);
     case CKClassId.Mesh:

@@ -229,10 +229,12 @@ corrections — several earlier assumptions were WRONG:
   prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
   instantiates the prefabs (PR_Resetpoint has no prefab — hide only). Under the
   old warm lighting the gray dummies passed as "wood" — that hid the bug.
-- **Menu (rebuild MenuLevelCameraControl):** day sky = C, night lightzone = M;
-  warm linear fog #d3c894 100-800; camera ORBITS the dome (I_Dome) at -10 deg/s
-  at the authored radius/height (Cam_MenuLevel at (0,40,-95) LH → r=95 h=40);
-  Menu_atmo.wav is a ONE-SHOT replayed after random 1-10s gaps (not a loop).
+- **Menu (primary-source correction):** day sky = C, night lightzone = M; warm
+  linear fog #d3c894 100-800. `MenuLevel_Init` does not use a constant angular
+  orbit: its 44-second looping Bezier Progression feeds `Position On Curve` on
+  the closed four-point `I_MenuLevel_Curve`, targeting `Cam_MenuLevel_Target`
+  at the origin. `Menu_atmo.wav` is a gain-1 ONE-SHOT replayed after random
+  1-10s gaps (not a loop).
 - **Original menu/HUD UI is fully reproducible from assets**: Button01_deselect/
   select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
   slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
@@ -301,10 +303,12 @@ corrections — several earlier assumptions were WRONG:
   prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
   instantiates the prefabs (PR_Resetpoint has no prefab — hide only). Under the
   old warm lighting the gray dummies passed as "wood" — that hid the bug.
-- **Menu (rebuild MenuLevelCameraControl):** day sky = C, night lightzone = M;
-  warm linear fog #d3c894 100-800; camera ORBITS the dome (I_Dome) at -10 deg/s
-  at the authored radius/height (Cam_MenuLevel at (0,40,-95) LH -> r=95 h=40);
-  Menu_atmo.wav is a ONE-SHOT replayed after random 1-10s gaps (not a loop).
+- **Menu (primary-source correction):** day sky = C, night lightzone = M; warm
+  linear fog #d3c894 100-800. `MenuLevel_Init` does not use a constant angular
+  orbit: its 44-second looping Bezier Progression feeds `Position On Curve` on
+  the closed four-point `I_MenuLevel_Curve`, targeting `Cam_MenuLevel_Target`
+  at the origin. `Menu_atmo.wav` is a gain-1 ONE-SHOT replayed after random
+  1-10s gaps (not a loop).
 - **Original menu/HUD UI is fully reproducible from assets**: Button01_deselect/
   select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
   slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
@@ -1357,3 +1361,20 @@ options subscreens are simplified (volume only).
   adds gravity. `FORCE_SCALE=66` is consequently source semantics, not tuning.
   Pre-contact audio snapshots now predict this same force/gravity phase after
   damping before measuring relative point velocity.
+
+## 2026-07-18 primary-source menu camera recovery
+
+- Static parsing now retains `CKCamera`, `CKTargetCamera`, `CKCurve`, and
+  `CKCurvePoint` records instead of treating their camera/curve payloads as
+  opaque. `Cam_MenuLevel` serializes a perspective FOV of 0.9500215054 radians
+  (54.4322227 degrees), 4:3 aspect, near/far 20/550, and targets the separate
+  identity-position `Cam_MenuLevel_Target` at the origin.
+- `MenuLevel_Init` loops a 44,000 ms two-key identity Bezier Progression into
+  `Position On Curve` with Follow=false and Bank=false. The curve is closed,
+  has four ordered points `[499,500,501,498]`, and the runtime evaluates their
+  saved cubic-Hermite tangents in the curve's transformed referential. This
+  supersedes the earlier complementary-port claim of a hand-authored -10 deg/s
+  orbit around `I_Dome_MF`.
+- `Menu_atmo` is a flat/background, non-looping 15,952 ms CKWaveSound at gain 1
+  and pitch 1. Its graph plays once and waits a random 1-10 seconds after the
+  end event; the settings music volume is the only additional runtime gain.

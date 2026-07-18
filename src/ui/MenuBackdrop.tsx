@@ -6,6 +6,12 @@ import { buildSky } from '../engine/sky.ts';
 import { addLightRig } from '../engine/viewer.ts';
 import { Flame } from '../game/effects.ts';
 import { decodeImageFile } from '../engine/textures.ts';
+import {
+  decodeMenuCameraSource,
+  menuCameraProgress,
+  sampleMenuCameraPath,
+  type MenuCameraSource,
+} from './menuCamera.ts';
 
 /**
  * The original 3D menu scene (MenuLevel.nmo) behind the menu, framed by the
@@ -26,38 +32,35 @@ export default function MenuBackdrop() {
     const scene = new THREE.Scene();
     const fogColor = new THREE.Color(0xbed7e3);
     addLightRig(scene);
-    // original menu camera: orbits the dome at -10 deg/s from the authored
-    // start (0, 40, -95), always looking at the dome
-    const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.6, 4000);
+    const camera = new THREE.PerspectiveCamera(54.4322227, 4 / 3, 20, 550);
     camera.position.set(0, 40, 95);
-    const camTarget = new THREE.Vector3(0, 14, 0);
-    let orbitRadius = 95;
-    let orbitHeight = 40;
+    const camTarget = new THREE.Vector3();
+    let cameraSource: MenuCameraSource | null = null;
+    let cameraElapsed = 0;
 
     const flames: Flame[] = [];
     void (async () => {
-      const built = await buildScene(await loadNmo('3D Entities/MenuLevel.nmo'));
+      const file = await loadNmo('3D Entities/MenuLevel.nmo');
+      const decodedCamera = decodeMenuCameraSource(file);
+      const built = await buildScene(file);
       if (disposed) return;
       scene.add(built.root);
       built.root.updateMatrixWorld(true);
+      cameraSource = decodedCamera;
+      camera.fov = decodedCamera.fieldOfViewDegrees;
+      camera.aspect = decodedCamera.aspectRatio;
+      camera.near = decodedCamera.nearPlane;
+      camera.far = decodedCamera.farPlane;
+      camera.updateProjectionMatrix();
+      camTarget.copy(decodedCamera.target);
+      sampleMenuCameraPath(decodedCamera, 0, camera.position);
+      camera.lookAt(camTarget);
       // the original day menu uses the C sky with warm linear fog 100-800
       const sky = await buildSky('C', fogColor);
       if (disposed) return;
       scene.add(sky.group);
       scene.fog = new THREE.Fog(0xd3c894, 100, 800);
       renderer.setClearColor(sky.horizonColor);
-
-      // the orbit centers on the dome, like the original camera controller
-      const dome = built.entities.get('I_Dome_MF') ?? built.entities.get('Cam_MenuLevel_Target');
-      if (dome) {
-        camTarget.setFromMatrixPosition(dome.object.matrixWorld);
-        const cam = built.entities.get('Cam_MenuLevel');
-        if (cam) {
-          const camPos = new THREE.Vector3().setFromMatrixPosition(cam.object.matrixWorld);
-          orbitRadius = Math.hypot(camPos.x - camTarget.x, camPos.z - camTarget.z);
-          orbitHeight = camPos.y;
-        }
-      }
 
       // the four decorative flames on the menu checkpoint platform
       const tex = await decodeImageFile('Textures/Particle_Flames.bmp').then((img) => {
@@ -82,20 +85,18 @@ export default function MenuBackdrop() {
 
     let last = performance.now();
     let raf = 0;
-    let t = Math.PI; // authored start: behind the dome at (0, 40, -95) in LH
     const frame = () => {
       if (disposed) return;
       raf = requestAnimationFrame(frame);
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
-      // original: RotateAround(dome, up, -10 deg/s)
-      t -= dt * (10 * Math.PI) / 180;
-      camera.position.set(
-        camTarget.x + Math.sin(t) * orbitRadius,
-        orbitHeight,
-        camTarget.z + Math.cos(t) * orbitRadius,
-      );
+      // MenuLevel_Init loops a 44-second Bezier Progression into Position On
+      // Curve, targeting Cam_MenuLevel without follow or bank.
+      if (cameraSource) {
+        cameraElapsed += dt;
+        sampleMenuCameraPath(cameraSource, menuCameraProgress(cameraSource, cameraElapsed), camera.position);
+      }
       camera.lookAt(camTarget);
       for (const obj of scene.children) {
         if (obj.name === 'sky') obj.position.copy(camera.position);
@@ -105,17 +106,9 @@ export default function MenuBackdrop() {
       renderer.render(scene, camera);
     };
     frame();
-    if (import.meta.env.DEV) {
-      (window as unknown as Record<string, unknown>).__menuCam = (r: number, h: number, ty: number, tt?: number) => {
-        orbitRadius = r;
-        orbitHeight = h;
-        camTarget.y = ty;
-        if (tt !== undefined) t = tt;
-      };
-    }
     const onResize = () => {
       renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.aspect = cameraSource?.aspectRatio ?? 4 / 3;
       camera.updateProjectionMatrix();
     };
     window.addEventListener('resize', onResize);

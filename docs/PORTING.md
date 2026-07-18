@@ -40,7 +40,7 @@ Neither the dev server nor the production build serves `Ballance_bin` directly.
 | `3D Entities/Level/Level_01..12.NMO` (~1–2 MB each) | Per-level scenes: floor/rail/wall meshes, materials, modul placements (as `PH` placeholder objects), and Virtools **groups** carrying semantics (`Sector_XX`, `Phys_Floors`, `Phys_FloorRails`, checkpoints…) | **Primary conversion target** |
 | `3D Entities/PH/*.nmo` | Prefabs: 3 balls, 3 trafos, checkpoint (`PC_TwoFlames`), start point (`PS_FourFlames`), end balloon (`PE_Balloon`), extra life/point, dome, box, and 13 `P_Modul_XX` mechanical elements | Convert each to a GLB prefab |
 | `3D Entities/Balls.nmo` | Ball meshes + materials (paper/wood/stone + lightning spheres) | Convert |
-| `3D Entities/Menu.nmo`, `MenuLevel.nmo` | 3D main-menu scene (the menu tower) | Convert (later milestone) |
+| `3D Entities/Menu.nmo`, `MenuLevel.nmo` | 3D main-menu scene, source-authored curve camera, menus, credits, and score flow | Converted and runtime-decoded; remaining records stay in the fidelity audit |
 | `3D Entities/Gameplay.nmo`, `Levelinit.nmo`, `Sound.nmo`, `Camera.nmo`, `Tutorial.nmo`, `AnimTrafo.nmo`, `Intro.nmo`, `Language.nmo`, `Musicfiles.nmo` | Framework data (camera params, sound mappings, trafo animation, language) | Reference / partial conversion |
 | `Textures/` (200 BMP/TGA images) | All surface textures + UI | BMP → lossless PNG; TGA byte-exact |
 | `Textures/sky/` (60 files) | 12 skyboxes (A–L) × **5 faces** — Back/Down/Front/Left/Right. Ballance skyboxes have **no top face**; the fog color closes the dome | Convert; special-case the missing +Y face |

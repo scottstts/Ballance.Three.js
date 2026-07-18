@@ -45,7 +45,7 @@ class MenuAudio {
         if (!buffer || !this.atmoWanted) return;
         const ctx = this.ensureCtx();
         const gain = ctx.createGain();
-        gain.gain.value = 0.5 * gameStore.getState().settings.musicVolume;
+        gain.gain.value = gameStore.getState().settings.musicVolume;
         gain.connect(ctx.destination);
         const src = ctx.createBufferSource();
         src.buffer = buffer;
@@ -80,7 +80,7 @@ class MenuAudio {
   }
 
   setMusicVolume(volume: number): void {
-    if (this.atmo) this.atmo.gain.gain.value = 0.5 * volume;
+    if (this.atmo) this.atmo.gain.gain.value = volume;
   }
 
   private oneShot(name: string, volume = 1, music = false, playbackRate = 1): void {

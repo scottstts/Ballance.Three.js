@@ -36,6 +36,7 @@ export const CKClassId = {
   Entity3d: 33,
   Camera: 34,
   TargetCamera: 35,
+  CurvePoint: 36,
   Sprite3d: 37,
   Light: 38,
   TargetLight: 39,
@@ -101,7 +102,11 @@ export const Ident = {
   ENTITY2D_MATERIAL: 0x00200000,
   ENTITY2D_HIERARCHY: 0x00400000,
   // CKCamera
-  CAMERA_ALL: 0x000fffff,
+  CAMERA_ALL: 0x0fc00000,
+  TARGET_CAMERA_TARGET: 0x10000000,
+  // CKCurve / CKCurvePoint
+  CURVE_ONLY: 0xffc00000,
+  CURVE_POINT_DEFAULT_DATA: 0x10000000,
   // CKDataArray
   DATAARRAY_FORMAT: 0x00001000,
   DATAARRAY_DATA: 0x00002000,
@@ -221,6 +226,39 @@ export interface Sprite3dRec extends ObjectBase {
   offset: [number, number];
   uvRect: [number, number, number, number];
   materialIndex: number;
+}
+
+/** CKCamera fields layered over the shared CK3dEntity record. */
+export interface CameraRec extends Entity3dRec {
+  projectionType: number;
+  fieldOfView: number;
+  orthographicZoom: number;
+  aspectRatio: number;
+  nearPlane: number;
+  farPlane: number;
+  targetIndex: number;
+}
+
+export interface CurvePointRec extends ObjectBase {
+  kind: 'curvePoint';
+  entity: Entity3dRec;
+  curveIndex: number;
+  flags: number;
+  tension: number;
+  continuity: number;
+  bias: number;
+  curvePosition: number;
+  incomingTangent: [number, number, number];
+  outgoingTangent: [number, number, number];
+}
+
+export interface CurveRec extends ObjectBase {
+  kind: 'curve';
+  entity: Entity3dRec;
+  pointIndices: number[];
+  open: boolean;
+  stepCount: number;
+  fittingCoefficient: number;
 }
 
 export type Entity3dLikeRec = Entity3dRec | Sprite3dRec;
@@ -440,6 +478,8 @@ export interface OtherRec extends ObjectBase {
 
 export type CKRecord =
   | Entity3dRec
+  | CurvePointRec
+  | CurveRec
   | Sprite3dRec
   | Entity2dRec
   | MeshRec
