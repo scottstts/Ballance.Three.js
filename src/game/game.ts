@@ -13,7 +13,7 @@ import { BalloonPhysics } from './balloon.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TrafoAnim } from './effects.ts';
+import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TRAFO_SOURCE, TrafoAnim } from './effects.ts';
 import { prepareBalloonInstance, UfoFinale } from './finale.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
@@ -68,7 +68,6 @@ const bootStage = (s: string): void => {
 
 const DEATH_DELAY = 2.0; // fall (~1s) + white fade before respawn
 const POINT_TICK = 0.5; // seconds per -1 point
-const TRAFO_TIME = 2.3; // original transformation animation length
 const BIRTH_TIME = 1.0; // spawn lightning; control + countdown start after
 const LIFE_BONUS = 200; // original: each remaining life is worth 200 points
 
@@ -143,7 +142,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   await flames.init(built, scene);
   const lightning = new LightningSphere();
   await lightning.init();
-  scene.add(lightning.mesh);
+  scene.add(lightning.group);
   const trafoAnim = new TrafoAnim();
   await trafoAnim.init();
   scene.add(trafoAnim.group);
@@ -214,16 +213,28 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           case 'extraLife':
             s.set({ lives: gameStore.getState().lives + 1 });
             break;
-          case 'trafo':
-            // original: the ball snaps above the transformer, control locks,
-            // the ring cage spins 2.3s, then the old ball bursts
-            trafoAnim.start();
+          case 'trafo': {
+            if (pendingTrafo) break;
+            // The source unphysicalizes the old ball and TT Set Dynamic
+            // Position pulls it toward (Trafo - Offset), with Offset Y=-3.
+            ev.sourceMain.updateWorldMatrix(true, false);
+            const pullTarget = new THREE.Vector3(
+              -TRAFO_SOURCE.pullOffset[0],
+              -TRAFO_SOURCE.pullOffset[1],
+              TRAFO_SOURCE.pullOffset[2],
+            ).applyMatrix4(ev.sourceMain.matrixWorld);
+            trafoAnim.start(ev.ball, ev.sourceMain, ev.sourceShadow);
+            ball.collider.setEnabled(false);
+            ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
             pendingTrafo = {
               ball: ev.ball,
-              timer: TRAFO_TIME,
-              hold: ev.position.clone().add(new THREE.Vector3(0, 2, 0)),
+              elapsed: 0,
+              target: pullTarget,
+              previous: ball.position,
+              exploded: false,
             };
             break;
+          }
           case 'sound':
             audio.play(ev.name, ev.position, ev.volume ?? 1, scene);
             break;
@@ -274,7 +285,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let pointTimer = 0;
   let birthTimer = 0;
   let flapCooldown = 0;
-  let pendingTrafo: { ball: BallKind; timer: number; hold: THREE.Vector3 } | null = null;
+  let pendingTrafo: {
+    ball: BallKind;
+    elapsed: number;
+    target: THREE.Vector3;
+    previous: THREE.Vector3;
+    exploded: boolean;
+  } | null = null;
   // simple sim-time one-shot timer queue
   const timers: { t: number; fn: () => void }[] = [];
   const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
@@ -345,6 +362,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     // the screen fades white, then the ball is reborn at the reset point
     trafoAnim.stop();
     lightning.stop();
+    if (pendingTrafo) {
+      ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+      ball.collider.setEnabled(true);
+      ball.visual.visible = true;
+    }
     pendingTrafo = null;
     audio.play('Misc_Fall.wav', ball.position, 1, scene);
     const lives = s.lives - 1;
@@ -421,20 +443,36 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       return;
     }
 
-    // pending ball transformation: the ball is held centered above the
-    // transformer while the ring cage spins, then the old ball bursts
+    // Gameplay.nmo's trafo sequence: the unphysicalized old ball follows the
+    // TT Set Dynamic Position spring for 1350 ms, bursts at 2350 ms, then the
+    // new ball is physicalized 150 ms later. AnimTrafo closes independently.
     if (pendingTrafo) {
-      pendingTrafo.timer -= SIM_DT;
-      ball.body.setTranslation({ x: pendingTrafo.hold.x, y: pendingTrafo.hold.y, z: pendingTrafo.hold.z }, true);
+      pendingTrafo.elapsed += SIM_DT;
+      if (pendingTrafo.elapsed <= TRAFO_SOURCE.pullDuration) {
+        const current = ball.position;
+        const next = current
+          .clone()
+          .addScaledVector(pendingTrafo.target.clone().sub(current), TRAFO_SOURCE.pullForce * SIM_DT)
+          .addScaledVector(current.clone().sub(pendingTrafo.previous), TRAFO_SOURCE.pullDamping);
+        pendingTrafo.previous.copy(current);
+        ball.body.setTranslation({ x: next.x, y: next.y, z: next.z }, true);
+      }
       ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
       ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-      if (pendingTrafo.timer <= 0) {
+      if (!pendingTrafo.exploded && pendingTrafo.elapsed >= TRAFO_SOURCE.explosionTime) {
         const oldKind = ball.kind;
         shatter.burst(oldKind, ball.position);
         audio.play(`Pieces_${oldKind[0].toUpperCase()}${oldKind.slice(1)}.wav`, ball.position, 1, scene);
+        ball.visual.visible = false;
+        pendingTrafo.exploded = true;
+      }
+      if (pendingTrafo.elapsed >= TRAFO_SOURCE.newBallTime) {
+        const position = ball.position;
         ball.setKind(pendingTrafo.ball);
+        ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+        ball.collider.setEnabled(true);
+        ball.teleport(position);
         s.set({ ballKind: pendingTrafo.ball });
-        trafoAnim.stop();
         pendingTrafo = null;
       }
     }
@@ -443,7 +481,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     if (birthTimer > 0 || pendingTrafo) {
       if (birthTimer > 0) {
         birthTimer -= SIM_DT;
-        if (birthTimer <= 0) lightning.stop();
       }
       pushDir.set(0, 0, 0);
     } else {
@@ -589,8 +626,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const flameScale = renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360));
     flames.update(frameDt, flameScale);
     pickups.update(frameDt, flameScale);
-    lightning.update(frameDt, ball.position);
-    trafoAnim.update(frameDt, ball.position);
+    lightning.update(frameDt, ball.position, flameScale);
+    trafoAnim.update(frameDt);
     shatter.update();
     {
       const bp = ball.position;

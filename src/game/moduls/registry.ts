@@ -5,6 +5,7 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
+import { TRAFO_SOURCE } from '../effects.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
 import type { ModulFactory } from './manager.ts';
 import type { PrefabInstance } from './prefabs.ts';
@@ -233,15 +234,19 @@ class TrafoModul extends Modul {
   }
 
   override update(): void {
-    const root = this.instance.root.position;
+    const prefix = `P_Trafo_${this.target[0].toUpperCase()}${this.target.slice(1)}`;
+    const sourceMain = this.part(`${prefix}_MF`) ?? this.instance.root;
+    const sourceShadow = this.part(`${prefix}_Shadow`) ?? null;
+    sourceMain.updateWorldMatrix(true, false);
+    const position = sourceMain.getWorldPosition(new THREE.Vector3());
     if (this.triggered) {
-      if (!nearPoint(this.ctx.ball.position, root, 7, 7)) this.triggered = false;
+      if (this.ctx.ball.position.distanceTo(position) >= TRAFO_SOURCE.triggerDistance) this.triggered = false;
       return;
     }
-    if (this.ctx.ball.kind !== this.target && nearPoint(this.ctx.ball.position, root, 4.5, 5)) {
+    if (this.ctx.ball.kind !== this.target && this.ctx.ball.position.distanceTo(position) < TRAFO_SOURCE.triggerDistance) {
       this.triggered = true;
-      this.ctx.emit({ kind: 'trafo', ball: this.target, position: root.clone() });
-      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: root.clone() });
+      this.ctx.emit({ kind: 'trafo', ball: this.target, position, sourceMain, sourceShadow });
+      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: position.clone() });
     }
   }
 

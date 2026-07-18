@@ -618,3 +618,58 @@ options subscreens are simplified (volume only).
   delay, Life Extra reappearance after death, and zero console errors. Only
   Rapier's known deprecated-init warning remains; the tab and server were
   closed afterward.
+
+## 2026-07-18 source-exact flames and ball-birth effect
+
+- `PS_FourFlames.nmo` and `PC_TwoFlames.nmo` now provide both the emitter
+  transforms and Point Particle parameters. The start uses four small emitters;
+  the checkpoint uses its centered big emitter plus two small emitters. Their
+  source-alpha/one blending, 20 ms cadence, lifespan/speed/size variances, and
+  linear color/size evolution replace the former complementary-port values and
+  guessed axis offsets.
+- `Balls.nmo`'s ball-birth graph owns a real `Ball_LightningSphere` mesh, its
+  three source textures, a 66 Hz texture sequence, 2*pi rad/s rotation, a
+  1500 ms decoded CK2dCurve scale-up, a 3000 ms sphere lifetime, and a point
+  light at local Y=9. The original 28-key 2500 ms blue flicker and two-key
+  1500 ms white fade curves are decoded at runtime rather than approximated.
+- The graph enables `BallParticle_Frame script` after 2500 ms. Its spherical
+  frame, six source emission frames, 60-particle cap, 1600+/-1000 ms life,
+  1+/-0.5 speed, 2->3 size, grey-to-transparent color, and additive
+  `Particle_Smoke.bmp` sprites are reproduced. Birth no longer stops when the
+  one-second control lock ends; each visual component follows its own authored
+  lifetime.
+- `effects.test.ts` parses the read-only source files and locks the flame and
+  birth values to the serialized graphs. Live Level 2 validation confirmed
+  burner alignment, near-zero initial sphere scale, the delayed 60-particle
+  smoke phase, final sphere/light/group cleanup, and zero browser errors. The
+  full gate passes with 55 tests plus lint, typecheck, and production build.
+
+## 2026-07-18 source-exact transformer sequence
+
+- `AnimTrafo.nmo` disproves the old procedural counter-rotation/scale effect.
+  After one source frame, all four ring pieces translate along their authored
+  frame diagonals by local `(-.5,0,-.5)` over a 350 ms three-key CK2dCurve.
+  The bars hierarchy then follows `(0,0,0)->(0,5.2,0)` over a four-key 2000 ms
+  curve which rises, holds, and returns. The rings close over the final 200 ms
+  two-key curve. The animation copies the active transformer's complete world
+  matrix and material-list element 1 color, hides only its main mesh, and
+  restores it at exit.
+- `FlashAnim` is not a rotating/sine-opacity field. Its source one/one additive
+  material retains alpha `0.6470588`; a sequencer applies alternating `+.5`
+  and `-.5` horizontal texture scrolls every 50 ms. It is visible only during
+  the 2000 ms bar phase. That same phase drives the transformer's shadow
+  diffuse alpha `1 -> .19607845 -> 1`; because its progression returns to zero,
+  the full-alpha shadow is restored before the close phase.
+- `Gameplay.nmo`'s Trafo Manager uses a Euclidean `4.30000019` trigger. It
+  unphysicalizes the old ball and runs the shipped `TT Set Dynamic Position`
+  spring for 1350 ms with per-axis force 2, damping .7, and transformer-local
+  offset `(0,-3,0)`, so the ball converges on local Y=+3. After another 1000 ms
+  the old ball's source pieces burst; 150 ms later the new ball is shown and
+  physicalized. This is separate from the cage's 2550 ms graph.
+- The port now makes the ball kinematic/non-colliding during the source's
+  unphysicalized interval, implements the DLL's damped positional recurrence,
+  hides the old visual at the burst, and restores a dynamic source-defined
+  collider at replacement. Live Level 2 validation covered ring/bar/flash
+  phases, convergence to the target, 16 wood pieces, wood-to-stone replacement,
+  source mesh restoration, final shadow alpha, texture offset, and zero errors.
+  Source-backed trafo regressions bring the suite to 57 tests.

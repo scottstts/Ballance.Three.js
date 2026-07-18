@@ -20,7 +20,13 @@ game rules** on Three.js + a physics engine, with React as the UI shell.
 
 ---
 
-## 1. Inventory of `Ballance_bin/Ballance`
+## 1. Inventory of the original payload
+
+`Ballance_bin/source1/Ballance` is the directly inspectable installed tree;
+`Ballance_bin/source2` is a complementary original disc payload. Static extraction proved
+that every gameplay input shared by them is byte-identical. The original payload remains
+the sole authority; external ports are only discovery aids whose claims must be confirmed
+against these files.
 
 | Path | What it is | Port relevance |
 |---|---|---|
@@ -161,7 +167,8 @@ ballance-web/
    next sector's activate/reset. Death resets the active sector's moduls. End = touch the
    balloon (`PE_Balloon`) → fly-off animation → score tally.
 4. **Trafos.** `P_Trafo_{Paper,Wood,Stone}` transform the ball type on contact, with the
-   `AnimTrafo` animation and lightning-sphere effect.
+   `AnimTrafo` ring animation and old-ball piece burst. The lightning sphere belongs only
+   to ball birth/respawn.
 5. **Scoring/lives.** Level point budget counts down at the original two points/second;
    remaining points bank at level end. `P_Extra_Life` uses its source 2-second CK2dCurve
    bob/squash animation, awards one life after 317 ms, and reappears when the active section
@@ -215,9 +222,9 @@ Ship levels progressively — a deployed build with Level 1 fully playable beats
 
 1. **Physics feel — the make-or-break.** The original uses an Ipion/early-Havok-era engine
    whose ball-on-rail contact (two parallel curved rails) has a very particular feel, and the
-   speedrun community will notice everything. Mitigations: dedicated rail-tuning test scene;
-   consider a rail-assist (detect dual-rail contact, damp lateral velocity); CCD on the ball;
-   fixed 120 Hz step. Accept "faithful, not identical."
+   speedrun community will notice everything. Mitigations: source-derived body/contact values,
+   dedicated deterministic regression scenes, CCD on the ball, and fixed 120 Hz stepping.
+   Approximation is tracked as an open defect rather than accepted as a final state.
 2. **Group/attribute completeness.** If BBP's export misses some semantic data (per-object
    attributes beyond groups), fall back to PyBMap for a targeted extractor. Validate against
    nmo2escn's output early.

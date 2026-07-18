@@ -163,6 +163,16 @@ if (objects) {
             .map((value) => Number(value.toFixed(7)))
             .join(',')}`,
         );
+      } else if (o.kind === 'light') {
+        console.log(
+          `         parent=${o.entity.parentIndex} type=${o.lightType} active=${o.active} specular=${o.specularFlag} color=${o.color.join(',')} ` +
+            `attenuation=${o.constAttenuation},${o.linearAttenuation},${o.quadAttenuation} range=${o.range} power=${o.lightPower}`,
+        );
+        console.log(
+          `         matrix=${Array.from(o.entity.worldMatrix)
+            .map((value) => Number(value.toFixed(7)))
+            .join(',')}`,
+        );
       } else if (o.kind === 'entity2d') {
         console.log(
           `         flags=0x${o.flags.toString(16)} rect=${o.rect.join(',')} relative=${o.relativeRect.join(',')} ` +
