@@ -2,9 +2,10 @@
  * Source-authored in-game HUD geometry.
  *
  * Camera.nmo stores CK2dEntity rectangles in normalized screen coordinates.
- * Gameplay.nmo keeps one permanent Interface_Life_Kugel at `ball.left`, then
- * creates `ActLifes` copies at one `ballOffsetX` step farther left. The small
- * Interface_Life_End hook follows the leftmost reserve ball.
+ * Camera.nmo's Interface_Life_Kugel is a hidden copy template. Gameplay.nmo
+ * subtracts one `ballOffsetX` step before placing the first visible copy, then
+ * continues left for the current attempt plus every reserve. The small
+ * Interface_Life_End hook follows the leftmost visible ball.
  *
  * The score frame and its glow are complete atlas regions, not separately
  * positioned plate/wire fragments. Gameplay_Energy renders the point string
@@ -84,16 +85,16 @@ function moveRectX(rect: HudRect, left: number): HudRect {
   return [left, rect[1], left + rect[2] - rect[0], rect[3]];
 }
 
-/** The permanent current ball plus each stored reserve life, right to left. */
+/** The hidden template's copies: current attempt plus each reserve, right to left. */
 export function lifeBallRects(lives: number): HudRect[] {
   return Array.from({ length: reserveCount(lives) + 1 }, (_, index) =>
-    moveRectX(LIFE_HUD_SOURCE.ball, LIFE_HUD_SOURCE.ball[0] - index * LIFE_HUD_SOURCE.ballOffsetX),
+    moveRectX(LIFE_HUD_SOURCE.ball, LIFE_HUD_SOURCE.ball[0] - (index + 1) * LIFE_HUD_SOURCE.ballOffsetX),
   );
 }
 
-/** Gameplay.nmo Calculator expression: `a-(b*c)`. */
+/** The hook follows the inclusive Counter's final copy, one step beyond the reserve count. */
 export function lifeHookRect(lives: number): HudRect {
-  const left = LIFE_HUD_SOURCE.hook[0] - reserveCount(lives) * LIFE_HUD_SOURCE.ballOffsetX;
+  const left = LIFE_HUD_SOURCE.hook[0] - (reserveCount(lives) + 1) * LIFE_HUD_SOURCE.ballOffsetX;
   return moveRectX(LIFE_HUD_SOURCE.hook, left);
 }
 

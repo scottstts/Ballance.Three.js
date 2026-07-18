@@ -88,9 +88,11 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('source-au
   const gameplay = parseNmo(readFileSync(gameplayPath));
 
   it('uses every Camera.nmo CK2dEntity rectangle verbatim', () => {
-    expect(LIFE_HUD_SOURCE.ball).toEqual(entity2d(camera, 'Interface_Life_Kugel').rect);
+    const ballTemplate = entity2d(camera, 'Interface_Life_Kugel');
+    expect(LIFE_HUD_SOURCE.ball).toEqual(ballTemplate.rect);
     expect(LIFE_HUD_SOURCE.curl).toEqual(entity2d(camera, 'Interface_Life_Startbogen').rect);
     expect(LIFE_HUD_SOURCE.hook).toEqual(entity2d(camera, 'Interface_Life_End').rect);
+    expect(ballTemplate.visible).toBe(false);
   });
 
   it('uses Gameplay.nmo reserve count, spacing, and hook formula', () => {
@@ -103,12 +105,12 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('source-au
     expect(LIFE_HUD_SOURCE.ballOffsetX).toBe(floatValue(parameter(gameplay, 'Offset LifeBalls x')));
     expect(lifeBallRects(startLives)).toHaveLength(4);
     expect(lifeBallRects(startLives).map((rect) => rect[0])).toEqual([
-      0.9495999813079834,
       0.9108999818563461,
       0.8721999824047089,
       0.8334999829530716,
+      0.7947999835014343,
     ]);
-    expect(lifeHookRect(startLives)[0]).toBeCloseTo(0.8126999884843826, 12);
+    expect(lifeHookRect(startLives)[0]).toBeCloseTo(0.7739999890327454, 12);
   });
 });
 

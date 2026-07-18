@@ -916,14 +916,17 @@ options subscreens are simplified (volume only).
   cradle after the balls. Static source recovery resolves all three. In
   `Camera.nmo`, `Interface_Life_Kugel`, `Interface_Life_Startbogen`, and
   `Interface_Life_End` serialize their exact screen and atlas rectangles.
-  `Gameplay.nmo/Energy` stores `StartLifes=3`, but `Init Startlifes` preserves
-  the original ball entity and runs a Counter of three copies. The initial HUD
-  therefore intentionally shows four balls.
-- Ball copies begin at X `0.9495999813` and proceed left by
-  `0.03869999945`; the hook X is `0.9287999868 - ActLifes*0.03869999945`
-  (`Calculator` expression `a-(b*c)`). The React HUD now renders those normalized
-  rectangles directly, including the permanent current ball and moving hook,
-  rather than approximating them with flexbox. `Camera.nmo` is byte-identical in
+  `Gameplay.nmo/Energy` stores `StartLifes=3`; `Init Startlifes` uses the hidden
+  entity as a template and its inclusive Counter creates the current attempt
+  plus those three reserves. The initial HUD therefore intentionally shows
+  four balls.
+- A later direct screenshot comparison corrected the initial interpretation:
+  `Interface_Life_Kugel` is serialized hidden and serves as the copy template,
+  not an on-screen permanent sphere. The first visible copy is placed after the
+  loop subtracts one `0.03869999945` X step, so three reserves render at X
+  `0.9108999819`, `0.8721999824`, `0.8334999830`, and `0.7947999835`; the hook
+  follows at X `0.7739999890`. This keeps the rightmost sphere inside the outer
+  cradle exactly as in `ref_images/2.jpg`. `Camera.nmo` is byte-identical in
   source1 and the extracted source2 installer (SHA-256
   `c9151e50dde9d2c2703a4d35de53be414f65ec01367b1c4d3ad36709cfffe888`).
 - The four-ball display also exposed a gameplay off-by-one. Source
@@ -1213,3 +1216,25 @@ options subscreens are simplified (volume only).
   now distinct runtime events. Binary-backed tests lock all 41 sound records,
   flat-instance flags/volumes, direct-player restart edges, UFO targets,
   distance inputs, speed range, and calculator expression.
+
+## 2026-07-18 ambient blitz and life-HUD template correction
+
+- `Gameplay.nmo/Gameplay_Blitz` is an independent ambient system, not part of
+  the ball-birth lightning. Its initially hidden, non-specular directional
+  `Light_Blitz` waits 4000 ms, then repeats after a newly sampled uniform
+  10000..90000 ms interval. Each flash shows the light for a decoded eight-key
+  200 ms double-pulse curve; `Donner` reaches `All_Sound` after 150 ms.
+  `Sound.nmo/Donner` stops the dynamically loaded flat
+  `Sounds/Music_thunder.wav` immediately and starts it one behavior tick later.
+- `BlitzSystem` follows those timelines on the fixed simulation clock, uses the
+  source transform/power, and freezes only for the three pause-menu phases,
+  matching the graph's Pause/Unpause Level binary memory. Live deterministic
+  validation covered initial delay, both pulse lobes, thunder HTTP 200, exact
+  hide, repeat scheduling, and a one-second pause hold with zero browser errors.
+- A second life-HUD screenshot exposed that the earlier source interpretation
+  still placed the hidden `Interface_Life_Kugel` template itself on screen.
+  `Init Startlifes` subtracts the 0.0387 X step before positioning the first
+  visible copy. At 1280x960, four-ball live bounds now match the original:
+  left edges 1166, 1116, 1067, 1017; hook 991; cradle 1140..1256. The rightmost
+  ball ends at 1222 instead of protruding past the cradle. Captures remain in
+  `screenshots/`/`.playwright-mcp/`; the browser and server were closed.

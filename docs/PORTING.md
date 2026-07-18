@@ -204,8 +204,9 @@ ballance-web/
    behind it), level select with unlock progression, pause, options, tutorial text from
    `Text/*.txt`, and the original sprite-font HUD (points and lives). The life display uses
    `Camera.nmo`'s exact normalized CK2dEntity rectangles and `Gameplay.nmo`'s reserve-life
-   construction: one permanent current ball plus `ActLifes` copies at 0.0387 X spacing,
-   with the left hook placed by the source `a-(b*c)` expression. `Deactivate Ball` tests
+   construction: the hidden source template is copied for the current attempt plus every
+   reserve, beginning one 0.0387 X step to the left, with the hook following the leftmost
+   copy. `Deactivate Ball` tests
    the reserves before subtracting one, so three initial reserves correctly provide four
    attempts and Game Over occurs only on the next fall from zero. The points display likewise
    uses `Camera.nmo`'s complete background/glow atlas regions and exact screen rectangles;

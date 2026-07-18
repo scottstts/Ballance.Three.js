@@ -16,6 +16,7 @@ import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
 import { BALLOON_WAKE_PROXIMITY_SOURCE, BalloonPhysics } from './balloon.ts';
+import { BlitzSystem } from './blitz.ts';
 import { CamRig } from './camera.ts';
 import {
   BALL_BIRTH_DELAY,
@@ -185,6 +186,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
+  const blitz = new BlitzSystem(scene, () => audio.restartFlat('Music_thunder.wav', 1));
   shatter.setSoundPlayer((name, volume) => audio.playFlat(name, volume));
   let skyLayerRef: THREE.Object3D | null = null;
   const applyVolumes = () => {
@@ -471,6 +473,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const simStep = () => {
     const s = gameStore.getState();
     audio.updateSimulation(SIM_DT);
+    // Gameplay_Blitz listens to Pause/Unpause Level independently of the main
+    // gameplay phase and otherwise remains live through death/finish screens.
+    if (s.phase !== 'paused' && s.phase !== 'pauseOptions' && s.phase !== 'pauseHighscore') blitz.update(SIM_DT);
     const previousLastStageProximityDelay = lastStageProximityDelay;
     lastStageProximityDelay = Math.max(0, lastStageProximityDelay - SIM_DT);
     if (previousLastStageProximityDelay > 0 && lastStageProximityDelay === 0) {
@@ -864,6 +869,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         moduls: moduls.debugState(),
         balloonAwake: balloonPhysics?.isAwake() ?? false,
         balloonWakeProximityActive,
+        blitz: blitz.debugState(),
       }),
     };
   }
@@ -875,6 +881,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       clearInterval(hiddenDriver);
       unsubscribeSettings();
       audio.dispose();
+      blitz.dispose();
       shatter.clear();
       ballShadow.dispose();
       balloonPhysics?.dispose();
