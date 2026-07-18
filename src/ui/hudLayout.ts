@@ -13,6 +13,9 @@
 
 export type HudRect = readonly [left: number, top: number, right: number, bottom: number];
 
+/** Camera.nmo's authored render aspect; HUD pixels are projected inside it. */
+export const HUD_SOURCE_ASPECT = 4 / 3;
+
 export const LIFE_HUD_SOURCE = {
   ball: [0.9495999813079834, 0.885418176651001, 0.9933501482009888, 0.9437516331672668] as HudRect,
   curl: [0.8906251192092896, 0.850002110004425, 0.9812502264976501, 0.977086067199707] as HudRect,
@@ -34,6 +37,8 @@ export const POINTS_HUD_SOURCE = {
   ] as HudRect,
   font: {
     cellPixels: 32,
+    texturePixels: [512, 512] as const,
+    screenProportional: true,
     space: [1.5, 1] as const,
     scale: [0.800000011920929, 0.8999999761581421] as const,
     color: [1, 1, 1, 1] as const,

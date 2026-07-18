@@ -5,6 +5,7 @@ import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, Entity2dRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import {
   atlasCropFromUv,
+  HUD_SOURCE_ASPECT,
   LIFE_HUD_SOURCE,
   lifeBallRects,
   lifeHookRect,
@@ -149,9 +150,17 @@ describe.skipIf(
       expect(POINTS_HUD_SOURCE.font.shadowSize).toEqual(floatValues(behaviorParameter(gameplay, font, 'Shadow Size')));
       expect(POINTS_HUD_SOURCE.font.alignment).toBe(intValue(behaviorParameter(gameplay, text, 'Alignment')));
       expect(POINTS_HUD_SOURCE.font.margins).toEqual(floatValues(behaviorParameter(gameplay, text, 'Margins')));
+      expect(POINTS_HUD_SOURCE.font.screenProportional).toBe(
+        (intValue(behaviorParameter(gameplay, text, 'Text Properties')) & 1) !== 0,
+      );
 
       const fontTexture = readFileSync(fontPath);
       expect(POINTS_HUD_SOURCE.font.cellPixels).toBe(fontTexture.readUInt16LE(12) / 16);
+      expect(POINTS_HUD_SOURCE.font.texturePixels).toEqual([
+        fontTexture.readUInt16LE(12),
+        fontTexture.readUInt16LE(14),
+      ]);
+      expect(HUD_SOURCE_ASPECT).toBe(4 / 3);
 
       const dll = readFileSync(interfacePath);
       expect(dll.includes(Buffer.from('Top-Left=5,Top=4,Top-Right=6,Left=1,Center=0,Right=2'))).toBe(true);

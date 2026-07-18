@@ -7,8 +7,8 @@ import * as THREE from 'three';
 import { loadNmo } from '../engine/assets.ts';
 import { vxPositionToThree } from '../engine/convert.ts';
 import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
-import { decodeImageFile } from '../engine/textures.ts';
-import type { BehaviorRec, LightRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import { decodeImageFile, loadCkTexture } from '../engine/textures.ts';
+import type { BehaviorRec, LightRec, NmoFile, ParameterRec, TextureRec } from '../formats/ck2/types.ts';
 import { localVertices } from './moduls/base.ts';
 import { FORCE_SCALE, type BallKind } from './constants.ts';
 import { decodeCk2dCurve, evalCurve, type CurveKey } from './curve.ts';
@@ -762,7 +762,6 @@ class BirthSmoke {
   private velocity = new Float32Array(MAX_SMOKE_PARTICLES * 3);
   private alive = new Array<boolean>(MAX_SMOKE_PARTICLES).fill(false);
   private framesRemaining = 0;
-  private frameTime = 0;
 
   constructor(texture: THREE.Texture | null) {
     const geometry = new THREE.BufferGeometry();
@@ -791,19 +790,18 @@ class BirthSmoke {
     this.alphas.fill(0);
     this.sizes.fill(0);
     this.framesRemaining = 0;
-    this.frameTime = 0;
   }
 
   start(): void {
     this.framesRemaining = LIGHTNING_SOURCE.smokeFrames;
-    this.frameTime = 1 / SOURCE_EFFECT_RATE;
   }
 
   update(dt: number, uScale: number): void {
     (this.points.material as THREE.ShaderMaterial).uniforms.uScale.value = uScale;
-    this.frameTime += dt;
-    while (this.framesRemaining > 0 && this.frameTime >= 1 / SOURCE_EFFECT_RATE) {
-      this.frameTime -= 1 / SOURCE_EFFECT_RATE;
+    // Exit On -> Off carries an activation delay of six behavior frames. The
+    // system emits once per active behavior tick; it is not a serialized 66 Hz
+    // clock, so advance exactly one source frame per rendered game frame.
+    if (this.framesRemaining > 0) {
       this.framesRemaining--;
       this.emitBurst();
     }
@@ -838,6 +836,10 @@ class BirthSmoke {
     geometry.getAttribute('aColor').needsUpdate = true;
     geometry.getAttribute('aAlpha').needsUpdate = true;
     geometry.getAttribute('aSize').needsUpdate = true;
+  }
+
+  get done(): boolean {
+    return this.framesRemaining <= 0 && !this.alive.includes(true);
   }
 
   private emitBurst(): void {
@@ -893,8 +895,7 @@ export class LightningSphere {
     [1, 0, -1],
   ];
   private t = 0;
-  private textureTime = 0;
-  private textureFrame = 2;
+  private textureFrame = 0;
   private smokeStarted = false;
   active = false;
 
@@ -919,12 +920,16 @@ export class LightningSphere {
       this.group.add(this.mesh);
     }
 
-    this.textures = await Promise.all([
-      spriteTexture('Textures/Ball_LightningSphere1.bmp'),
-      spriteTexture('Textures/Ball_LightningSphere2.bmp'),
-      spriteTexture('Textures/Ball_LightningSphere3.bmp'),
-    ]);
-    this.applyTexture(2);
+    this.textures = await Promise.all(
+      ['Ball_LightningSphere1', 'Ball_LightningSphere2', 'Ball_LightningSphere3'].map(async (name) => {
+        const record = file.byName
+          .get(name)
+          ?.find((candidate): candidate is TextureRec => candidate.kind === 'texture');
+        const texture = record ? loadCkTexture(record) : null;
+        return texture ? texture.catch(() => null) : null;
+      }),
+    );
+    this.applyTexture(0);
 
     const lightRecord = file.objects.find(
       (record): record is LightRec => record.kind === 'light' && record.name === 'Ball_Lightning_PointLight',
@@ -958,8 +963,7 @@ export class LightningSphere {
   start(): void {
     this.active = true;
     this.t = 0;
-    this.textureTime = 0;
-    this.textureFrame = 2;
+    this.textureFrame = 0;
     this.smokeStarted = false;
     this.group.visible = true;
     if (this.mesh) {
@@ -972,7 +976,7 @@ export class LightningSphere {
       this.light.color.setRGB(0, 0, 0);
     }
     this.smoke?.reset();
-    this.applyTexture(2);
+    this.applyTexture(0);
   }
 
   stop(): void {
@@ -994,12 +998,9 @@ export class LightningSphere {
           : 1;
       this.mesh.scale.setScalar(scale);
       if (this.t >= LIGHTNING_SOURCE.sphereDuration) this.mesh.visible = false;
-      this.textureTime += dt;
-      while (this.textureTime >= 1 / SOURCE_EFFECT_RATE) {
-        this.textureTime -= 1 / SOURCE_EFFECT_RATE;
-        this.textureFrame = (this.textureFrame + 1) % this.textures.length;
-        this.applyTexture(this.textureFrame);
-      }
+      // Timer Loop Out drives the three-way Sequencer once per behavior frame.
+      this.textureFrame = (this.textureFrame + 1) % this.textures.length;
+      this.applyTexture(this.textureFrame);
     }
 
     if (this.light) {
@@ -1021,13 +1022,7 @@ export class LightningSphere {
       this.smoke?.start();
     }
     this.smoke?.update(dt, uScale);
-    if (
-      this.t >=
-      LIGHTNING_SOURCE.smokeDelay +
-        LIGHTNING_SOURCE.smokeFrames / SOURCE_EFFECT_RATE +
-        LIGHTNING_SOURCE.smoke.life +
-        LIGHTNING_SOURCE.smoke.lifeVariance
-    ) {
+    if (this.smokeStarted && this.smoke?.done) {
       this.stop();
     }
   }

@@ -60,8 +60,11 @@ export interface TextRenderOptions {
   /** independent TT font Scale multipliers relative to the requested cell */
   scaleX?: number;
   scaleY?: number;
-  /** extra horizontal advance in source texture pixels */
+  /** literal extra horizontal advance in render-target pixels */
   spaceX?: number;
+  /** Interface.dll Text Properties bit 1: scale font UVs by the render target. */
+  screenWidth?: number;
+  screenHeight?: number;
 }
 
 export interface Ogui {
@@ -140,22 +143,26 @@ class FontRenderer {
   }
 
   text(str: string, px: number, color = '#ffffff', endColor?: string, options: TextRenderOptions = {}): TextImage {
-    const scaleX = (px / CELL) * (options.scaleX ?? 1);
-    const scaleY = (px / CELL) * (options.scaleY ?? 1);
+    const scaleX =
+      (options.screenWidth === undefined ? px / CELL : options.screenWidth / this.canvas.width) *
+      (options.scaleX ?? 1);
+    const scaleY =
+      (options.screenHeight === undefined ? px / CELL : options.screenHeight / this.canvas.height) *
+      (options.scaleY ?? 1);
     const spaceX = options.spaceX ?? 0;
     const key = `${str}|${px}|${color}|${endColor ?? ''}|${scaleX}|${scaleY}|${spaceX}`;
     const hit = this.cache.get(key);
     if (hit) return hit;
     const characters = [...str];
-    let wCells = 0;
-    for (const [index, ch] of characters.entries()) {
+    let width = 0;
+    for (const ch of characters) {
       const code = ch.codePointAt(0) ?? 32;
       const metric = this.metrics[code] ?? this.metrics[32];
-      wCells += metric.pre + metric.width + metric.post;
-      if (index < characters.length - 1) wCells += spaceX;
+      width += (metric.pre + metric.width + metric.post) * scaleX;
     }
+    width += Math.max(0, characters.length - 1) * spaceX;
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.ceil(wCells * scaleX));
+    c.width = Math.max(1, Math.ceil(width));
     // Preserve the menu renderer's small descender pad; the HUD path supplies
     // an authored Y scale and therefore uses the exact scaled cell height.
     c.height = Math.max(1, Math.ceil(options.scaleY === undefined ? px * 1.05 : CELL * scaleY));
@@ -180,7 +187,8 @@ class FontRenderer {
             metric.height * scaleY,
           );
         }
-        x += (metric.width + metric.post + (index < characters.length - 1 ? spaceX : 0)) * scaleX;
+        x += (metric.width + metric.post) * scaleX;
+        if (index < characters.length - 1) x += spaceX;
       }
       if (color !== '#ffffff' || endColor) {
         ctx.globalCompositeOperation = 'source-in';

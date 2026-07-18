@@ -646,10 +646,11 @@ options subscreens are simplified (volume only).
   linear color/size evolution replace the former complementary-port values and
   guessed axis offsets.
 - `Balls.nmo`'s ball-birth graph owns a real `Ball_LightningSphere` mesh, its
-  three source textures, a 66 Hz texture sequence, 2*pi rad/s rotation, a
-  1500 ms decoded CK2dCurve scale-up, a 3000 ms sphere lifetime, and a point
-  light at local Y=9. The original 28-key 2500 ms blue flicker and two-key
-  1500 ms white fade curves are decoded at runtime rather than approximated.
+  three source textures, one texture change per behavior frame, 2*pi rad/s
+  rotation, a 1500 ms decoded CK2dCurve scale-up, a 3000 ms sphere lifetime,
+  and a point light at local Y=9. The original 28-key 2500 ms blue flicker and
+  two-key 1500 ms white fade curves are decoded at runtime rather than
+  approximated.
 - The graph enables `BallParticle_Frame script` after 2500 ms. Its spherical
   frame, six source emission frames, 60-particle cap, 1600+/-1000 ms life,
   1+/-0.5 speed, 2->3 size, grey-to-transparent color, and additive
@@ -1098,3 +1099,47 @@ options subscreens are simplified (volume only).
   `screenshots/fan-source-particles.png` and
   `screenshots/fan-source-particles-exact.png`, and the browser/server were
   closed.
+
+## 2026-07-18 corrected source HUD rasterization and lightning addressing
+
+- The original-vs-port footage exposed that merely selecting the three source
+  lightning bitmaps was insufficient. `Ball_LightningSphere_Mesh` serializes
+  UVs from U `1..2` and V `-1..-.25`; its material serializes texture address
+  mode 1, min/mag mode 2, black diffuse/ambient, white emissive, `ONE/ONE`
+  blending, and disabled Z-write. Replacing the CK texture with the generic
+  sprite loader had silently restored Three's clamp addressing, stretching edge
+  pixels across the sphere and producing the smooth purple shell. The birth
+  mesh now loads its NMO `TextureRec` objects through `loadCkTexture`, retaining
+  the authored repeat wrap and displaying the black-background branching
+  white-violet arcs. A source-lock test checks the out-of-range UVs and all
+  relevant material modes.
+- `Balls.nmo/Ball_LightningSphere` wires its looping timer directly to a
+  three-output sequencer. No frequency parameter is serialized: the texture
+  changes once per behavior tick, starting at texture 1. The delayed smoke
+  graph similarly emits across six active behavior frames, not a guessed
+  66 Hz texture clock. Rotation remains `2*pi` rad/s, sphere scale remains the
+  source 0-to-1 curve over 1500 ms, and the sphere hides at 3000 ms. The smoke
+  effect now owns completion, so it ends only after its six bursts and all live
+  particles have expired.
+- The score rectangle was source-correct but its glyph rasterization was not.
+  `Gameplay.nmo/Gameplay_Energy/2D Text` stores `Text Properties=1`.
+  `Interface.dll` names bit 1 `Screen Proportionnal`; static recovery of the
+  draw path at `0x25391bf0` shows normalized glyph U metrics multiplied by the
+  active render width and V metrics by its height, followed by the authored
+  `.8/.9` font scale. The `(1.5,1)` Space X value is then added as a literal
+  render-target-pixel advance. The port had instead scaled 512x512 atlas pixels
+  from a fixed 32-pixel cell, making the timer much too small.
+- HUD text now scales from the active, centered 4:3 game frame while retaining
+  `Camera.nmo`'s normalized entity bounds, right alignment, two-pixel clipping
+  margins, gradient, and shadow. At 1280x960 the live digit cell is 54 pixels
+  high and a four-digit score is about 165 pixels wide, matching the original
+  `ref_images/2.jpg` frame; the prior fixed-cell path was about half that size.
+  Captures are `.playwright-mcp/lightning-1280x960.png`,
+  `.playwright-mcp/hud-source-text-1280x960.png`, and
+  `.playwright-mcp/lightning-hud-2048x1152.png`. The latter confirms that a
+  2048x1152 viewport projects the HUD inside a centered 1536x1152 source frame.
+  Visual inspection showed branching lightning and the corrected HUD with zero
+  browser errors; only Rapier's known deprecated-init warning appeared. The
+  browser tab and dev server were closed afterward. The full gate passes with
+  129 tests plus lint, typecheck, and production build; only Vite's established
+  chunk-size warning remains.

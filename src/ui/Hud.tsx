@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../game/store.ts';
 import {
+  HUD_SOURCE_ASPECT,
   hudRectStyle,
   LIFE_HUD_SOURCE,
   lifeBallRects,
@@ -15,11 +16,28 @@ import {
 } from './hudLayout.ts';
 import { useOgui } from './useOgui.ts';
 
+function sourceHudSize(): readonly [width: number, height: number] {
+  if (typeof window === 'undefined') return [0, 0];
+  const width = Math.min(window.innerWidth, window.innerHeight * HUD_SOURCE_ASPECT);
+  return [width, width / HUD_SOURCE_ASPECT];
+}
+
+function useSourceHudSize(): readonly [width: number, height: number] {
+  const [size, setSize] = useState(sourceHudSize);
+  useEffect(() => {
+    const update = () => setSize(sourceHudSize());
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return size;
+}
+
 export default function Hud() {
   const { lives, points } = useGameStore();
   const ogui = useOgui();
   const previousPoints = useRef(points);
   const [pointGlow, setPointGlow] = useState(0);
+  const [hudWidth, hudHeight] = useSourceHudSize();
 
   useEffect(() => {
     if (points > previousPoints.current) setPointGlow((value) => value + 1);
@@ -31,6 +49,8 @@ export default function Hud() {
     scaleX: POINTS_HUD_SOURCE.font.scale[0],
     scaleY: POINTS_HUD_SOURCE.font.scale[1],
     spaceX: POINTS_HUD_SOURCE.font.space[0],
+    screenWidth: POINTS_HUD_SOURCE.font.screenProportional ? hudWidth : undefined,
+    screenHeight: POINTS_HUD_SOURCE.font.screenProportional ? hudHeight : undefined,
   });
   const [shadowX, shadowY] = pointShadowOffset();
   const shadowAlpha = POINTS_HUD_SOURCE.font.shadowColor[3] * 100;

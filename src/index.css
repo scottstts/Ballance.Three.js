@@ -106,9 +106,16 @@ body,
   z-index: 10;
 }
 
-.hud-score {
+.hud-score,
+.hud-lifes {
   position: absolute;
-  inset: 0;
+  bottom: 0;
+  width: min(100%, 133.333333333vh);
+  height: min(100%, 75vw);
+}
+
+.hud-score {
+  left: 0;
 }
 
 .hud-score-background,
@@ -139,6 +146,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  overflow: hidden;
   z-index: 3;
 }
 
@@ -148,8 +156,7 @@ body,
 }
 
 .hud-lifes {
-  position: absolute;
-  inset: 0;
+  right: 0;
 }
 
 .hud-lifes img {

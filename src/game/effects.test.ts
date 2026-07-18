@@ -210,6 +210,17 @@ describe.skipIf(!existsSync(ballsPath))('source-backed ball birth effect', () =>
       expect(material.sourceBlend).toBe(2);
       expect(material.destBlend).toBe(2);
       expect(material.zWrite).toBe(false);
+      expect(material.textureAddressMode).toBe(1);
+      expect(material.textureMinMode).toBe(2);
+      expect(material.textureMagMode).toBe(2);
+    }
+    const mesh = file.byName.get('Ball_LightningSphere_Mesh')?.find((record) => record.kind === 'mesh');
+    expect(mesh?.kind).toBe('mesh');
+    if (mesh?.kind === 'mesh') {
+      // These authored UVs sit outside 0..1 and therefore require the material's
+      // wrapped address mode. Clamping them produces the uniform purple sphere.
+      expect(Math.min(...mesh.uvs)).toBe(-1);
+      expect(Math.max(...mesh.uvs)).toBe(2);
     }
     for (const suffix of [1, 2, 3]) {
       expect(file.byName.get(`Ball_LightningSphere${suffix}`)?.some((record) => record.kind === 'texture')).toBe(true);

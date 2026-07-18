@@ -183,7 +183,10 @@ ballance-web/
    can skip only that post-fade wait. `base.cmo` routes `End Level` to `Menu_Score`.
 4. **Trafos.** `P_Trafo_{Paper,Wood,Stone}` transform the ball type on contact, with the
    `AnimTrafo` ring animation and old-ball piece burst. The lightning sphere belongs only
-   to ball birth/respawn.
+   to ball birth/respawn. Its mesh deliberately uses out-of-range UVs with the serialized
+   repeat address mode, `ONE/ONE` additive blending, and three black-background source
+   bitmaps to form the branching white-violet arcs; clamping those UVs creates an incorrect
+   smooth purple shell.
 5. **Scoring/lives.** Level point budget counts down at the original two points/second;
    remaining points bank at level end. `P_Extra_Life` uses its source 2-second CK2dCurve
    bob/squash animation, is shown only inside its 60-unit XY proximity gate, collects inside
@@ -213,7 +216,10 @@ ballance-web/
    attempts and Game Over occurs only on the next fall from zero. The points display likewise
    uses `Camera.nmo`'s complete background/glow atlas regions and exact screen rectangles;
    `Gameplay_Energy` supplies right alignment, two-pixel margins, `.8/.9` font scale,
-   white-to-black color, down-right shadow, and the 500 ms `Extrapoint` glow fade.
+   white-to-black color, down-right shadow, and the 500 ms `Extrapoint` glow fade. Its
+   `Text Properties=1` enables `Screen Proportionnal` rasterization: normalized glyph metrics
+   scale against the active centered 4:3 render target, while Space X remains a literal pixel
+   advance. Fixed 512x512-atlas cell sizing is therefore not source-equivalent.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term
