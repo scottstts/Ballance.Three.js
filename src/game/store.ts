@@ -96,6 +96,8 @@ function persist(progress: Progress, settings: Settings): void {
 
 export interface GameState {
   phase: GamePhase;
+  /** increments for every authored Load/Reset/Next Level message */
+  runId: number;
   level: number;
   lives: number;
   points: number;
@@ -112,6 +114,7 @@ export interface GameState {
   progress: Progress;
   settings: Settings;
   set: (partial: Partial<GameState>) => void;
+  loadLevel: (level: number) => void;
   completeLevel: (level: number, score: number) => void;
   /** insert a named entry into the level's top-10 (original leaderboard) */
   submitScore: (level: number, name: string, score: number) => void;
@@ -122,6 +125,7 @@ const initial = loadSave();
 
 export const useGameStore = create<GameState>((set, get) => ({
   phase: 'intro',
+  runId: 0,
   level: 1,
   lives: 3,
   points: 1000,
@@ -135,6 +139,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   progress: initial.progress,
   settings: initial.settings,
   set: (partial) => set(partial),
+  loadLevel: (level) =>
+    set((state) => ({
+      phase: 'loading',
+      level: Math.max(1, Math.min(12, Math.trunc(level))),
+      runId: state.runId + 1,
+    })),
   completeLevel: (level, score) => {
     const { progress, settings } = get();
     const next: Progress = {

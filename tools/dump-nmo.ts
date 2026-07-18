@@ -181,6 +181,13 @@ if (objects) {
             .map((value) => Number(value.toFixed(7)))
             .join(',')}`,
         );
+      } else if (o.kind === 'material') {
+        const texture = o.textureIndex >= 0 ? file.objects[o.textureIndex] : null;
+        console.log(
+          `         texture=[${o.textureIndex}]${JSON.stringify(texture?.name ?? '')} ` +
+            `blend=${o.sourceBlend}/${o.destBlend} alpha=${o.alphaBlend}/${o.alphaTest} ` +
+            `address=${o.textureAddressMode} diffuse=${o.diffuse.join(',')}`,
+        );
       } else if (o.kind === 'entity2d') {
         console.log(
           `         flags=0x${o.flags.toString(16)} rect=${o.rect.join(',')} relative=${o.relativeRect.join(',')} ` +

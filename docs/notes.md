@@ -1258,3 +1258,35 @@ options subscreens are simplified (volume only).
   four 56-pixel spheres, with the hook at x=990.719 and the right sphere ending at
   x=1221.945 inside the cradle. No browser errors were present (only Rapier's known
   deprecated-init warning).
+
+## 2026-07-18 source-authored menu and end-level flow
+
+- `Menu.nmo` authors every screen in normalized 4:3 coordinates. `M_BlackScreen`
+  is x=.30..70 at alpha 155/255; main/pause/end capsules are x=.35..65 and use
+  atlas UV y=.51372..74510. Level select is one column of twelve x=.4031..5969
+  fields at .06 Y intervals, not a two-column web grid. Highscore has two small
+  level arrows, ten fixed rows, and one context-sensitive bottom capsule (`Back`
+  normally, `Next` after a new score), never simultaneous Next and Back buttons.
+- Main graph button edges are Start, Highscore, Options, Credits, Exit. Pause is
+  Restart Level, Highscore, Options, Exit Level, Back. `Menu_Dead` exposes Restart
+  Level and Home. `Menu_End` exposes Restart Level, Highscore, Options, Home, and
+  Next Level (inactive on level 12). Confirmation uses the two serialized small
+  Yes/No fields rather than generic OK/Back capsules.
+- `base.cmo/Highscore` proves the finish chain is `Menu_Score`, optional
+  `Menu_HighscoreEntry`, context-Next `Menu_Highscore`, then `Menu_End`. The old
+  port skipped/reordered those screens. `Menu_Score` fades in for 200 ms, waits
+  one second per stage, counts Time Points using accumulated-value thresholds
+  80/500/9999 and steps 1/5/25, removes one remaining reserve every 610 ms for
+  200 points, waits up to four seconds, and fades out for 200 ms. Escape, Enter,
+  and Space invoke its fast path. The life removal now drives the existing source
+  HUD transition rather than merely computing a bonus.
+- `M_Button_Up`, `M_Button_Over`, and `M_Button_Inactive` use the deselect, select,
+  and special atlases respectively. Disabled controls must therefore use their
+  serialized special-atlas crop, not CSS opacity. `M_Score_Highlight` is a
+  (251,255,0) alpha-masked texture at 89/255 opacity; `M_Score_Line` is an
+  untextured white entity. Options root/graphics/controls/sound and credits now
+  use their serialized rectangles. Credits are sequential Text Fader pages with
+  the graph's `length*50+1500 ms` timing, not a continuous vertical roll.
+- A same-level restart previously retained `GameCanvas` because its React key was
+  only the level number. The store now increments a run id for each Load/Reset/
+  Next Level action so every authored load message creates a fresh engine.

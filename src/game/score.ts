@@ -5,6 +5,10 @@ export const SCORE_COUNT_SPEED: readonly { limit: number; step: number }[] = [
   { limit: 9999, step: 25 },
 ];
 
-export function scoreCountStep(remaining: number): number {
-  return SCORE_COUNT_SPEED.find(({ limit }) => remaining <= limit)?.step ?? SCORE_COUNT_SPEED.at(-1)?.step ?? 1;
+/**
+ * Serialized graph input is the accumulated displayed value, not the amount
+ * left to count. The original counter therefore accelerates at 80 and 500.
+ */
+export function scoreCountStep(displayed: number): number {
+  return SCORE_COUNT_SPEED.find(({ limit }) => displayed <= limit)?.step ?? SCORE_COUNT_SPEED.at(-1)?.step ?? 1;
 }

@@ -6,6 +6,7 @@
 import { decodeImageFile, decodeTga } from '../engine/textures.ts';
 import { fetchGameBuffer, loadNmo } from '../engine/assets.ts';
 import { atlasCropFromUv, POINTS_HUD_SOURCE } from './hudLayout.ts';
+import { MENU_ATLAS_UV_SOURCE } from './menuLayout.ts';
 
 interface Decoded {
   rgba: Uint8ClampedArray;
@@ -31,8 +32,41 @@ interface PieceDef extends Rect {
 /** piece rectangles inside the Button01 atlases */
 const PIECES: Record<string, PieceDef> = {
   // menu capsules (deselect = silver, select = amber hover)
-  buttonLarge: { atlas: 'deselect', x: 2, y: 1, w: 252, h: 62, hover: true },
-  buttonMedium: { atlas: 'deselect', x: 60, y: 191, w: 164, h: 63, hover: true },
+  buttonLarge: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.buttonLarge), hover: true },
+  buttonLargeDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.buttonLarge) },
+  buttonMedium: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.buttonMedium), hover: true },
+  buttonMediumDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.buttonMedium) },
+  levelButton: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.levelButton), hover: true },
+  levelButtonDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.levelButton) },
+  highscoreRow: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreRow) },
+  highscorePrevious: {
+    atlas: 'deselect',
+    ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscorePrevious),
+    hover: true,
+  },
+  highscorePreviousDisabled: {
+    atlas: 'special',
+    ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscorePrevious),
+  },
+  highscoreNext: {
+    atlas: 'deselect',
+    ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreNext),
+    hover: true,
+  },
+  highscoreNextDisabled: {
+    atlas: 'special',
+    ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreNext),
+  },
+  confirmSmall: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.confirmSmall), hover: true },
+  confirmSmallDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.confirmSmall) },
+  optionField: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.optionField), hover: true },
+  keyField: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.keyField), hover: true },
+  arrowLeft: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.arrowLeft), hover: true },
+  arrowLeftDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.arrowLeft) },
+  arrowRight: { atlas: 'deselect', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.arrowRight), hover: true },
+  arrowRightDisabled: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.arrowRight) },
+  scoreHighlight: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.scoreHighlight) },
+  scoreLine: { atlas: 'special', ...atlasCropFromUv(MENU_ATLAS_UV_SOURCE.scoreLine) },
   optionRow: { atlas: 'deselect', x: 3, y: 64, w: 159, h: 29, hover: true },
   slider: { atlas: 'deselect', x: 2, y: 102, w: 252, h: 28, hover: true },
   // the slider bar minus its center handle, split for clean list rows

@@ -30,15 +30,17 @@ const IN_GAME = new Set([
 export default function App() {
   const phase = useGameStore((s) => s.phase);
   const level = useGameStore((s) => s.level);
+  const runId = useGameStore((s) => s.runId);
   const whiteFade = useGameStore((s) => s.whiteFade);
   const winScreen = useGameStore((s) => s.winScreen);
   const set = useGameStore((s) => s.set);
+  const loadLevel = useGameStore((s) => s.loadLevel);
 
   // dev shortcut: ?level=N boots straight into a level
   useEffect(() => {
     const n = Number(new URLSearchParams(window.location.search).get('level'));
-    if (n >= 1 && n <= 12) set({ phase: 'loading', level: n });
-  }, [set]);
+    if (n >= 1 && n <= 12) loadLevel(n);
+  }, [loadLevel]);
 
   // Esc toggles pause while in-game
   useEffect(() => {
@@ -57,7 +59,7 @@ export default function App() {
   const inMenus = ['menu', 'levelselect', 'highscore', 'options', 'credits'].includes(phase);
   return (
     <div className="game-frame">
-      {inGame && <GameCanvas key={`level-${level}`} level={level} />}
+      {inGame && <GameCanvas key={`level-${level}-run-${runId}`} level={level} />}
       {inGame && phase !== 'loading' && <Hud />}
       {inGame && <TutorialOverlay />}
       {inMenus && <MenuBackdrop />}

@@ -218,7 +218,13 @@ ballance-web/
    white-to-black color, down-right shadow, and the 500 ms `Extrapoint` glow fade. Its
    `Text Properties=1` enables `Screen Proportionnal` rasterization: normalized glyph metrics
    scale against the active centered 4:3 render target, while Space X remains a literal pixel
-   advance. Fixed 512x512-atlas cell sizing is therefore not source-equivalent.
+   advance. Fixed 512x512-atlas cell sizing is therefore not source-equivalent. Menu screens
+   likewise use `Menu.nmo`'s exact 4:3 rectangles and material-specific atlas UVs: a 40%-wide
+   center band, one-column 12-level selector, fixed highscore/options fields, inactive-state
+   special-atlas sprites, and sequential credit pages. End Level follows the serialized
+   Score → optional name entry → context-Next highscore → End menu chain. Score timing and
+   reserve conversion are behavior-driven, including the 200 ms fades, 1/5/25 accumulated
+   counter steps, 610 ms life subtraction cadence, and three authored skip keys.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term

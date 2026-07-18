@@ -4,23 +4,28 @@
  * the original screen set (Start/Highscore/Options+subscreens/Credits, the
  * pause and win/fail flows with their exact English strings).
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react';
 import { CONTROL_ROWS, SCREEN_MODES, displayKey, type ControlSetting, type Settings } from '../game/settings.ts';
 import { scoreCountStep } from '../game/score.ts';
 import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
+import {
+  CONFIRM_RECTS,
+  CREDITS_RECTS,
+  HIGHSCORE_ENTRY_RECTS,
+  HIGHSCORE_RECTS,
+  LARGE_MENU_BUTTON_RECTS,
+  LEVEL_BUTTON_RECTS,
+  MENU_BACK_RECT,
+  OPTIONS_RECTS,
+  SCORE_RECTS,
+  menuBandRectStyle,
+  type MenuRect,
+} from './menuLayout.ts';
 import { useOgui } from './useOgui.ts';
 import type { Ogui } from './ogui.ts';
 
-/** clean list-row bar: the slider sprite's two halves, without its handle */
-function barStyle(ogui: Ogui): CSSProperties {
-  return {
-    backgroundImage: `url(${ogui.piece.sliderR}), url(${ogui.piece.sliderL})`,
-    backgroundPosition: 'right, left',
-    backgroundSize: '50.5% 100%, 50.5% 100%',
-    backgroundRepeat: 'no-repeat',
-  };
-}
+type ButtonPiece = 'buttonLarge' | 'buttonMedium' | 'levelButton' | 'confirmSmall';
 
 /** capsule button built from the original atlas piece + bitmap-font label */
 export function MenuButton({
@@ -29,17 +34,22 @@ export function MenuButton({
   onClick,
   disabled,
   medium,
+  piece: requestedPiece,
+  style,
 }: {
   ogui: Ogui;
   label: string;
   onClick: () => void;
   disabled?: boolean;
   medium?: boolean;
+  piece?: ButtonPiece;
+  style?: CSSProperties;
 }) {
   const [hover, setHover] = useState(false);
-  const piece = medium ? 'buttonMedium' : 'buttonLarge';
-  const img = ogui.piece[hover && !disabled ? `${piece}Hover` : piece];
-  const text = ogui.text(label, medium ? 22 : 26);
+  const piece = requestedPiece ?? (medium ? 'buttonMedium' : 'buttonLarge');
+  const compact = medium || piece !== 'buttonLarge';
+  const img = ogui.piece[disabled ? `${piece}Disabled` : hover ? `${piece}Hover` : piece] ?? ogui.piece[piece];
+  const text = ogui.text(label, compact ? 22 : 26);
   const activate = () => {
     if (disabled) return;
     menuAudio.click();
@@ -51,8 +61,8 @@ export function MenuButton({
       aria-label={label}
       aria-disabled={disabled || undefined}
       tabIndex={disabled ? -1 : 0}
-      className={`og-button${medium ? ' og-button-medium' : ''}${disabled ? ' og-disabled' : ''}`}
-      style={{ backgroundImage: `url(${img})` }}
+      className={`og-button${compact ? ' og-button-medium' : ''}${disabled ? ' og-disabled' : ''}`}
+      style={{ backgroundImage: `url(${img})`, ...style }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={activate}
@@ -60,13 +70,23 @@ export function MenuButton({
         if (event.key === 'Enter' || event.key === ' ') activate();
       }}
     >
-      <img className="og-button-label" src={text.url} style={{ height: medium ? '45%' : '42%' }} alt="" draggable={false} />
+      <img className="og-button-label" src={text.url} style={{ height: compact ? '45%' : '42%' }} alt="" draggable={false} />
     </div>
   );
 }
 
 /** the original center band over the 3D menu scene */
-export function MenuBand({ ogui, children, style }: { ogui: Ogui; children: ReactNode; style?: CSSProperties }) {
+export function MenuBand({
+  ogui,
+  children,
+  style,
+  transparent = false,
+}: {
+  ogui: Ogui;
+  children: ReactNode;
+  style?: CSSProperties;
+  transparent?: boolean;
+}) {
   useEffect(() => {
     menuAudio.startAtmo();
     return () => {
@@ -76,8 +96,61 @@ export function MenuBand({ ogui, children, style }: { ogui: Ogui; children: Reac
   }, []);
   return (
     <div className="og-screen" style={{ cursor: `url(${ogui.cursor}) 1 1, auto`, ...style }}>
-      <div className="og-band">{children}</div>
+      <div className="og-source-stage">
+        <div className={`og-band${transparent ? ' og-band-transparent' : ''}`}>{children}</div>
+      </div>
     </div>
+  );
+}
+
+function SourceButton({
+  rect,
+  ...props
+}: Omit<ComponentProps<typeof MenuButton>, 'style'> & { rect: MenuRect }) {
+  return <MenuButton {...props} style={menuBandRectStyle(rect)} />;
+}
+
+function SpriteButton({
+  ogui,
+  piece,
+  rect,
+  label,
+  onClick,
+  disabled,
+}: {
+  ogui: Ogui;
+  piece: 'highscorePrevious' | 'highscoreNext' | 'arrowLeft' | 'arrowRight';
+  rect: MenuRect;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+  const activate = () => {
+    if (disabled) return;
+    menuAudio.click();
+    onClick();
+  };
+  return (
+    <div
+      role="button"
+      aria-label={label}
+      aria-disabled={disabled || undefined}
+      tabIndex={disabled ? -1 : 0}
+      className={`og-sprite-button${disabled ? ' og-disabled' : ''}`}
+      style={{
+        ...menuBandRectStyle(rect),
+        backgroundImage: `url(${
+          ogui.piece[disabled ? `${piece}Disabled` : hover ? `${piece}Hover` : piece] ?? ogui.piece[piece]
+        })`,
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={activate}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') activate();
+      }}
+    />
   );
 }
 
@@ -98,88 +171,111 @@ export function MainMenu() {
   }
   return (
     <MenuBand ogui={ogui}>
-      <div className="og-stack">
-        <MenuButton ogui={ogui} label="Start" onClick={() => set({ phase: 'levelselect' })} />
-        <MenuButton
+      {[
+        <SourceButton key="start" rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Start" onClick={() => set({ phase: 'levelselect' })} />,
+        <SourceButton
+          key="highscore"
+          rect={LARGE_MENU_BUTTON_RECTS[1]}
           ogui={ogui}
           label="Highscore"
           onClick={() => {
             menuAudio.dong();
             set({ phase: 'highscore' });
           }}
-        />
-        <MenuButton ogui={ogui} label="Options" onClick={() => set({ phase: 'options' })} />
-        <MenuButton ogui={ogui} label="Credits" onClick={() => set({ phase: 'credits' })} />
-        <MenuButton ogui={ogui} label="Exit" onClick={() => setConfirmExit(true)} />
-      </div>
+        />,
+        <SourceButton key="options" rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => set({ phase: 'options' })} />,
+        <SourceButton key="credits" rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Credits" onClick={() => set({ phase: 'credits' })} />,
+        <SourceButton key="exit" rect={LARGE_MENU_BUTTON_RECTS[4]} ogui={ogui} label="Exit" onClick={() => setConfirmExit(true)} />,
+      ]}
     </MenuBand>
   );
 }
 
 export function LevelSelect() {
-  const { progress, set } = useGameStore();
+  const { progress, loadLevel, set } = useGameStore();
   const ogui = useOgui();
   if (!ogui) return null;
   return (
     <MenuBand ogui={ogui}>
-      <div className="og-level-grid">
-        {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-          <MenuButton
+      {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+          <SourceButton
             key={n}
+            rect={LEVEL_BUTTON_RECTS[n - 1]}
             ogui={ogui}
-            medium
+            piece="levelButton"
             label={`Level ${n}`}
             disabled={n > progress.unlocked}
             onClick={() => {
               menuAudio.levelLoad();
-              set({ phase: 'loading', level: n });
+              loadLevel(n);
             }}
           />
         ))}
-      </div>
-      <div className="og-bottom">
-        <MenuButton ogui={ogui} label="Back" onClick={() => set({ phase: 'menu' })} />
-      </div>
+      <SourceButton rect={MENU_BACK_RECT} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );
 }
 
 /** original: paged per-level top-10 tables (rank, name, points) */
-export function HighscoreScreen({ backPhase = 'menu' }: { backPhase?: GamePhase }) {
+export function HighscoreScreen({
+  backPhase = 'menu',
+  initialLevel = 1,
+  exitLabel = 'Back',
+  onExit,
+}: {
+  backPhase?: GamePhase;
+  initialLevel?: number;
+  exitLabel?: 'Back' | 'Next';
+  onExit?: () => void;
+}) {
   const { progress, set } = useGameStore();
-  const [level, setLevel] = useState(1);
+  const maxLevel = Math.max(1, progress.unlocked);
+  const [level, setLevel] = useState(Math.min(maxLevel, Math.max(1, initialLevel)));
   const ogui = useOgui();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code === 'ArrowLeft') setLevel((current) => Math.max(1, current - 1));
+      if (event.code === 'ArrowRight') setLevel((current) => Math.min(maxLevel, current + 1));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [maxLevel]);
   if (!ogui) return null;
   const table = progress.tables[level] ?? defaultTable(level);
   return (
     <MenuBand ogui={ogui}>
-      <div className="og-title">
+      <div className="og-source-title" style={menuBandRectStyle(HIGHSCORE_RECTS.title)}>
         <img src={ogui.text(`Highscore Level ${level}`, 28).url} alt="" draggable={false} />
       </div>
-      <div className="og-score-list">
-        {table.map((e, i) => (
-          <div key={i} className="og-score-row" style={barStyle(ogui)}>
+      <SpriteButton ogui={ogui} piece="highscorePrevious" rect={HIGHSCORE_RECTS.previous} label="Previous level" disabled={level <= 1} onClick={() => setLevel(level - 1)} />
+      <SpriteButton ogui={ogui} piece="highscoreNext" rect={HIGHSCORE_RECTS.next} label="Next level" disabled={level >= maxLevel} onClick={() => setLevel(level + 1)} />
+      {table.map((e, i) => (
+          <div
+            key={i}
+            className="og-source-score-row"
+            style={{
+              ...menuBandRectStyle(HIGHSCORE_RECTS.rows[i]),
+              backgroundImage: `url(${ogui.piece.highscoreRow})`,
+            }}
+          >
             <img src={ogui.text(String(i + 1), 18).url} alt="" draggable={false} />
             <img className="og-score-name" src={ogui.text(e.name, 18).url} alt="" draggable={false} />
             <img src={ogui.text(String(e.score), 18).url} alt="" draggable={false} />
           </div>
         ))}
-      </div>
-      <div className="og-bottom og-bottom-row">
-        <MenuButton
-          ogui={ogui}
-          medium
-          label="Next"
-          onClick={() => setLevel(level >= Math.max(1, progress.unlocked) ? 1 : level + 1)}
-        />
-        <MenuButton ogui={ogui} medium label="Back" onClick={() => set({ phase: backPhase })} />
-      </div>
+      <SourceButton
+        rect={HIGHSCORE_RECTS.exit}
+        ogui={ogui}
+        piece="buttonMedium"
+        label={exitLabel}
+        onClick={() => (onExit ? onExit() : set({ phase: backPhase }))}
+      />
     </MenuBand>
   );
 }
 
 /** original Options: Graphics / Controls / Sound subscreens */
-export function OptionsScreen({ backPhase = 'menu' }: { backPhase?: GamePhase }) {
+export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: GamePhase; onExit?: () => void }) {
   const { settings, updateSettings, set } = useGameStore();
   const [page, setPage] = useState<'root' | 'graphics' | 'controls' | 'sound'>('root');
   const [listening, setListening] = useState<ControlSetting | null>(null);
@@ -204,151 +300,120 @@ export function OptionsScreen({ backPhase = 'menu' }: { backPhase?: GamePhase })
   }, [settings.musicVolume]);
 
   if (!ogui) return null;
-
-  const yesNoRow = (label: string, value: boolean, apply: (v: boolean) => void) => (
-    <div className="og-option-row">
-      <img src={ogui.text(label, 22).url} alt="" draggable={false} />
-      <div className="og-option-controls">
-        <div
-          role="button"
-          aria-label={`${label}: ${value ? 'Yes' : 'No'}`}
-          tabIndex={0}
-          className="og-yesno"
-          style={{ backgroundImage: `url(${ogui.piece[value ? 'optionRowHover' : 'optionRow']})` }}
-          onClick={() => {
-            menuAudio.click();
-            apply(!value);
-          }}
-        >
-          <img src={ogui.text(value ? 'Yes' : 'No', 18).url} alt="" draggable={false} />
-        </div>
-      </div>
-    </div>
-  );
-
-  const keyRow = (setting: ControlSetting, action: string) => (
+  const title = page === 'root' ? 'Options' : page === 'graphics' ? 'Graphics' : page === 'controls' ? 'Controls' : 'Sound';
+  const field = (rect: MenuRect, label: string, active = false) => (
     <div
-      role="button"
-      aria-label={`${action}: ${listening === setting ? 'Press Key' : displayKey(settings[setting])}`}
-      tabIndex={0}
-      className={`og-key-row${listening === setting ? ' og-key-listening' : ''}`}
-      style={barStyle(ogui)}
-      onClick={() => {
-        menuAudio.click();
-        setListening(setting);
+      className="og-source-option-field"
+      style={{
+        ...menuBandRectStyle(rect),
+        backgroundImage: `url(${ogui.piece[active ? 'optionFieldHover' : 'optionField']})`,
       }}
     >
-      <img src={ogui.text(action, 18).url} alt="" draggable={false} />
-      <img src={ogui.text(listening === setting ? 'Press Key' : displayKey(settings[setting]), 18).url} alt="" draggable={false} />
+      <img src={ogui.text(label, 20).url} alt="" draggable={false} />
     </div>
   );
-
+  const choice = (rect: MenuRect, label: 'Yes' | 'No', selected: boolean, apply: () => void) => (
+    <SourceButton rect={rect} ogui={ogui} piece="confirmSmall" label={label} disabled={selected} onClick={apply} />
+  );
+  const leave = () => (page === 'root' ? (onExit ? onExit() : set({ phase: backPhase })) : setPage('root'));
   return (
     <MenuBand ogui={ogui}>
-      <div className="og-title">
-        <img
-          src={
-            ogui.text(page === 'root' ? 'Options' : page === 'graphics' ? 'Graphics' : page === 'controls' ? 'Controls' : 'Sound', 30)
-              .url
-          }
-          alt=""
-          draggable={false}
-        />
+      <div className="og-source-title" style={menuBandRectStyle(OPTIONS_RECTS.title)}>
+        <img src={ogui.text(title, 30).url} alt="" draggable={false} />
       </div>
       {page === 'root' && (
-        <div className="og-stack og-stack-tight">
-          <MenuButton ogui={ogui} label="Graphics" onClick={() => setPage('graphics')} />
-          <MenuButton ogui={ogui} label="Controls" onClick={() => setPage('controls')} />
-          <MenuButton ogui={ogui} label="Sound" onClick={() => setPage('sound')} />
-        </div>
+        <>
+          <SourceButton rect={OPTIONS_RECTS.rootButtons[0]} ogui={ogui} label="Graphics" onClick={() => setPage('graphics')} />
+          <SourceButton rect={OPTIONS_RECTS.rootButtons[1]} ogui={ogui} label="Controls" onClick={() => setPage('controls')} />
+          <SourceButton rect={OPTIONS_RECTS.rootButtons[2]} ogui={ogui} label="Sound" onClick={() => setPage('sound')} />
+        </>
       )}
       {page === 'graphics' && (
-        <div className="og-stack og-options">
-          <div className="og-option-row">
-            <img src={ogui.text('Screen Resolution', 22).url} alt="" draggable={false} />
-            <div className="og-option-controls">
-              <div
-                role="button"
-                aria-label="Previous screen resolution"
-                tabIndex={0}
-                className="og-round"
-                style={{ backgroundImage: `url(${ogui.piece.roundA})` }}
-                onClick={() => {
-                  menuAudio.click();
-                  updateSettings({ screenMode: Math.max(0, settings.screenMode - 1) });
-                }}
-              />
-              <div className="og-resolution" style={barStyle(ogui)}>
-                <img
-                  src={ogui.text(`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`, 18).url}
-                  alt=""
-                  draggable={false}
-                />
-              </div>
-              <div
-                role="button"
-                aria-label="Next screen resolution"
-                tabIndex={0}
-                className="og-round"
-                style={{ backgroundImage: `url(${ogui.piece.roundB})` }}
-                onClick={() => {
-                  menuAudio.click();
-                  updateSettings({ screenMode: Math.min(SCREEN_MODES.length - 1, settings.screenMode + 1) });
-                }}
-              />
-            </div>
+        <>
+          {field(OPTIONS_RECTS.graphics.resolutionField, 'Screen Resolution', true)}
+          <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.graphics.resolutionText)}>
+            <img
+              src={ogui.text(`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`, 18).url}
+              alt=""
+              draggable={false}
+            />
           </div>
-          {yesNoRow('Synch to Screen?', settings.syncToScreen, (value) => updateSettings({ syncToScreen: value }))}
-          {yesNoRow('Clouds?', settings.clouds, (value) => updateSettings({ clouds: value }))}
-        </div>
+          <SpriteButton
+            ogui={ogui}
+            piece="arrowLeft"
+            rect={OPTIONS_RECTS.graphics.resolutionLeft}
+            label="Previous screen resolution"
+            disabled={settings.screenMode <= 0}
+            onClick={() => updateSettings({ screenMode: settings.screenMode - 1 })}
+          />
+          <SpriteButton
+            ogui={ogui}
+            piece="arrowRight"
+            rect={OPTIONS_RECTS.graphics.resolutionRight}
+            label="Next screen resolution"
+            disabled={settings.screenMode >= SCREEN_MODES.length - 1}
+            onClick={() => updateSettings({ screenMode: settings.screenMode + 1 })}
+          />
+          {field(OPTIONS_RECTS.graphics.syncField, 'Synch to Screen?')}
+          {choice(OPTIONS_RECTS.graphics.syncYes, 'Yes', settings.syncToScreen, () => updateSettings({ syncToScreen: true }))}
+          {choice(OPTIONS_RECTS.graphics.syncNo, 'No', !settings.syncToScreen, () => updateSettings({ syncToScreen: false }))}
+          {field(OPTIONS_RECTS.graphics.cloudsField, 'Clouds?')}
+          {choice(OPTIONS_RECTS.graphics.cloudsYes, 'Yes', settings.clouds, () => updateSettings({ clouds: true }))}
+          {choice(OPTIONS_RECTS.graphics.cloudsNo, 'No', !settings.clouds, () => updateSettings({ clouds: false }))}
+        </>
       )}
       {page === 'controls' && (
-        <div className="og-score-list og-controls-list">
-          {CONTROL_ROWS.map(({ setting, label }) => (
-            <div key={setting}>{keyRow(setting, label)}</div>
+        <>
+          {CONTROL_ROWS.map(({ setting, label }, index) => (
+            <div
+              key={setting}
+              role="button"
+              aria-label={`${label}: ${listening === setting ? 'Press Key' : displayKey(settings[setting])}`}
+              tabIndex={0}
+              className={`og-source-key-field${listening === setting ? ' og-key-listening' : ''}`}
+              style={{
+                ...menuBandRectStyle(OPTIONS_RECTS.controls.fields[index]),
+                backgroundImage: `url(${ogui.piece[listening === setting ? 'keyFieldHover' : 'keyField']})`,
+              }}
+              onClick={() => {
+                menuAudio.click();
+                setListening(setting);
+              }}
+            >
+              <img src={ogui.text(label, 18).url} alt="" draggable={false} />
+              <img src={ogui.text(listening === setting ? 'Press Key' : displayKey(settings[setting]), 18).url} alt="" draggable={false} />
+            </div>
           ))}
-          {yesNoRow('Invert Rotation?', settings.invertCameraRotation, (value) =>
-            updateSettings({ invertCameraRotation: value }),
-          )}
-        </div>
+          {field(OPTIONS_RECTS.controls.invertField, 'Invert Rotation?')}
+          {choice(OPTIONS_RECTS.controls.invertYes, 'Yes', settings.invertCameraRotation, () => updateSettings({ invertCameraRotation: true }))}
+          {choice(OPTIONS_RECTS.controls.invertNo, 'No', !settings.invertCameraRotation, () => updateSettings({ invertCameraRotation: false }))}
+        </>
       )}
       {page === 'sound' && (
-        <div className="og-stack og-options">
-          <div className="og-option-row">
-            <img src={ogui.text('Music Volume', 22).url} alt="" draggable={false} />
-            <div className="og-option-controls">
-              <div
-                role="button"
-                aria-label="Decrease music volume"
-                tabIndex={0}
-                className="og-round"
-                style={{ backgroundImage: `url(${ogui.piece.roundA})` }}
-                onClick={() => {
-                  menuAudio.click();
-                  updateSettings({ musicVolume: Math.max(0, Math.round((settings.musicVolume - 0.1) * 10) / 10) });
-                }}
-              />
-              <div className="og-vol-bar" style={{ backgroundImage: `url(${ogui.piece.slider})` }}>
-                <div className="og-vol-fill" style={{ width: `${settings.musicVolume * 100}%` }} />
-              </div>
-              <div
-                role="button"
-                aria-label="Increase music volume"
-                tabIndex={0}
-                className="og-round"
-                style={{ backgroundImage: `url(${ogui.piece.roundB})` }}
-                onClick={() => {
-                  menuAudio.click();
-                  updateSettings({ musicVolume: Math.min(1, Math.round((settings.musicVolume + 0.1) * 10) / 10) });
-                }}
-              />
-            </div>
+        <>
+          {field(OPTIONS_RECTS.sound.field, 'Music Volume', true)}
+          <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.sound.text)}>
+            <img src={ogui.text(String(Math.round(settings.musicVolume * 100)), 18).url} alt="" draggable={false} />
           </div>
-        </div>
+          <SpriteButton
+            ogui={ogui}
+            piece="arrowLeft"
+            rect={OPTIONS_RECTS.sound.left}
+            label="Decrease music volume"
+            disabled={settings.musicVolume <= 0}
+            onClick={() => updateSettings({ musicVolume: Math.max(0, Math.round((settings.musicVolume - 0.1) * 10) / 10) })}
+          />
+          <SpriteButton
+            ogui={ogui}
+            piece="arrowRight"
+            rect={OPTIONS_RECTS.sound.right}
+            label="Increase music volume"
+            disabled={settings.musicVolume >= 1}
+            onClick={() => updateSettings({ musicVolume: Math.min(1, Math.round((settings.musicVolume + 0.1) * 10) / 10) })}
+          />
+        </>
       )}
-      <div className="og-bottom">
-        <MenuButton ogui={ogui} label="Back" onClick={() => (page === 'root' ? set({ phase: backPhase }) : setPage('root'))} />
-      </div>
+      <SourceButton rect={OPTIONS_RECTS.back} ogui={ogui} piece="buttonMedium" label="Back" onClick={leave} />
     </MenuBand>
   );
 }
@@ -365,14 +430,12 @@ function ConfirmScreen({
   onCancel: () => void;
 }) {
   return (
-    <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.3)' }}>
-      <div className="og-confirm-question">
+    <MenuBand ogui={ogui}>
+      <div className="og-source-confirm-question" style={menuBandRectStyle(CONFIRM_RECTS.question)}>
         <img src={ogui.text(question, 20).url} alt={question} draggable={false} />
       </div>
-      <div className="og-stack og-stack-tight">
-        <MenuButton ogui={ogui} label="OK" onClick={onConfirm} />
-        <MenuButton ogui={ogui} label="Back" onClick={onCancel} />
-      </div>
+      <SourceButton rect={CONFIRM_RECTS.yes} ogui={ogui} piece="confirmSmall" label="Yes" onClick={onConfirm} />
+      <SourceButton rect={CONFIRM_RECTS.no} ogui={ogui} piece="confirmSmall" label="No" onClick={onCancel} />
     </MenuBand>
   );
 }
@@ -428,40 +491,48 @@ function wrapCredit(text: string, limit = 45): string[] {
 export function CreditsScreen() {
   const set = useGameStore((s) => s.set);
   const ogui = useOgui();
+  const [creditIndex, setCreditIndex] = useState(0);
+  useEffect(() => {
+    const [title, copy] = CREDIT_BLOCKS[creditIndex];
+    const timer = window.setTimeout(
+      () => setCreditIndex((current) => (current + 1) % CREDIT_BLOCKS.length),
+      1500 + (title.length + copy.length) * 50,
+    );
+    return () => window.clearTimeout(timer);
+  }, [creditIndex]);
   if (!ogui) return null;
+  const [title, copy] = CREDIT_BLOCKS[creditIndex];
+  const creditDuration = 1500 + (title.length + copy.length) * 50;
   return (
     <MenuBand ogui={ogui}>
-      <div className="og-credits-viewport">
-        <div className="og-credits-roll">
-          {CREDIT_BLOCKS.map(([title, copy], blockIndex) => (
-            <div className="og-credit-block" key={blockIndex}>
-              {wrapCredit(title).map((line, lineIndex) =>
-                line === '' ? (
-                  <div className="og-credit-gap" key={`title-${lineIndex}`} />
-                ) : (
-                  <img className="og-credit-title" key={`title-${lineIndex}`} src={ogui.text(line, 20).url} alt={line} draggable={false} />
-                ),
-              )}
-              {wrapCredit(copy).map((line, lineIndex) =>
-                line === '' ? (
-                  <div className="og-credit-gap" key={`copy-${lineIndex}`} />
-                ) : (
-                  <img className="og-credit-copy" key={`copy-${lineIndex}`} src={ogui.text(line, 14).url} alt={line} draggable={false} />
-                ),
-              )}
-            </div>
-          ))}
-        </div>
+      <div
+        key={creditIndex}
+        className="og-source-credit"
+        style={{ ...menuBandRectStyle(CREDITS_RECTS.text), animationDuration: `${creditDuration}ms` }}
+      >
+        {wrapCredit(title).map((line, lineIndex) =>
+          line === '' ? (
+            <div className="og-credit-gap" key={`title-${lineIndex}`} />
+          ) : (
+            <img className="og-credit-title" key={`title-${lineIndex}`} src={ogui.text(line, 20).url} alt={line} draggable={false} />
+          ),
+        )}
+        {wrapCredit(copy).map((line, lineIndex) =>
+          line === '' ? (
+            <div className="og-credit-gap" key={`copy-${lineIndex}`} />
+          ) : (
+            <img className="og-credit-copy" key={`copy-${lineIndex}`} src={ogui.text(line, 14).url} alt={line} draggable={false} />
+          ),
+        )}
       </div>
-      <div className="og-bottom">
-        <MenuButton ogui={ogui} label="Back" onClick={() => set({ phase: 'menu' })} />
-      </div>
+      <SourceButton rect={CREDITS_RECTS.back} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );
 }
 
 export function PauseOverlay() {
   const set = useGameStore((s) => s.set);
+  const loadLevel = useGameStore((s) => s.loadLevel);
   const level = useGameStore((s) => s.level);
   const [confirm, setConfirm] = useState<'restart' | 'exit' | null>(null);
   const ogui = useOgui();
@@ -471,141 +542,293 @@ export function PauseOverlay() {
       <ConfirmScreen
         ogui={ogui}
         question={confirm === 'restart' ? 'Do you want to restart the level?' : 'Do you want to exit the level?'}
-        onConfirm={() => set({ phase: confirm === 'restart' ? 'loading' : 'menu', level })}
+        onConfirm={() => (confirm === 'restart' ? loadLevel(level) : set({ phase: 'menu', level }))}
         onCancel={() => setConfirm(null)}
       />
     );
   }
   return (
-    <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.25)' }}>
-      <div className="og-stack og-pause-stack">
-        <MenuButton ogui={ogui} label="Options" onClick={() => set({ phase: 'pauseOptions' })} />
-        <MenuButton ogui={ogui} label="Restart Level" onClick={() => setConfirm('restart')} />
-        <MenuButton ogui={ogui} label="Highscore" onClick={() => set({ phase: 'pauseHighscore' })} />
-        <MenuButton ogui={ogui} label="Exit Level" onClick={() => setConfirm('exit')} />
-        <MenuButton ogui={ogui} label="Back" onClick={() => set({ phase: 'playing' })} />
+    <MenuBand ogui={ogui}>
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Restart Level" onClick={() => setConfirm('restart')} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Highscore" onClick={() => set({ phase: 'pauseHighscore' })} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => set({ phase: 'pauseOptions' })} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Exit Level" onClick={() => setConfirm('exit')} />
+      <SourceButton rect={MENU_BACK_RECT} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'playing' })} />
+    </MenuBand>
+  );
+}
+
+const SCORE_LABELS = ['Level Bonus', 'Time Points', 'Extra Lives', 'Score'] as const;
+
+function waitFor(ms: number, cancelled: () => boolean, interrupted?: () => boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    const started = performance.now();
+    const tick = () => {
+      if (cancelled()) return resolve(false);
+      if (interrupted?.()) return resolve(true);
+      if (performance.now() - started >= ms) return resolve(false);
+      window.setTimeout(tick, Math.min(25, ms));
+    };
+    tick();
+  });
+}
+
+function SourceScorePanel({
+  ogui,
+  level,
+  points,
+  initialLives,
+  onDone,
+}: {
+  ogui: Ogui;
+  level: number;
+  points: number;
+  initialLives: number;
+  onDone: () => void;
+}) {
+  const setStore = useGameStore((state) => state.set);
+  const levelBonus = level * 100;
+  const lifeBonus = initialLives * 200;
+  const total = levelBonus + points + lifeBonus;
+  const [values, setValues] = useState<readonly number[]>([0, 0, 0, 0]);
+  const [highlight, setHighlight] = useState(0);
+  const [opacity, setOpacity] = useState(0);
+  const fastRequested = useRef(false);
+  const waitSkipRequested = useRef(false);
+  const phase = useRef<'tally' | 'wait'>('tally');
+  const done = useRef(onDone);
+
+  useEffect(() => {
+    done.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!['Escape', 'Enter', 'Space'].includes(event.code)) return;
+      if (phase.current === 'tally') fastRequested.current = true;
+      else waitSkipRequested.current = true;
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+    const shouldFast = () => fastRequested.current;
+    const run = async () => {
+      setOpacity(1);
+      if (await waitFor(200, isCancelled, shouldFast)) return fastFinish();
+      if (await waitFor(1000, isCancelled, shouldFast)) return fastFinish();
+      setValues([levelBonus, 0, 0, 0]);
+      menuAudio.dong();
+      if (await waitFor(1000, isCancelled, shouldFast)) return fastFinish();
+
+      setHighlight(1);
+      let displayedPoints = 0;
+      while (displayedPoints < points && !cancelled) {
+        if (fastRequested.current) return fastFinish();
+        displayedPoints = Math.min(points, displayedPoints + scoreCountStep(displayedPoints));
+        const current = displayedPoints;
+        setValues([levelBonus, current, 0, 0]);
+        menuAudio.counter();
+        await waitFor(1000 / 60, isCancelled);
+      }
+      if (cancelled) return;
+      menuAudio.dong();
+      if (await waitFor(1000, isCancelled, shouldFast)) return fastFinish();
+
+      setHighlight(2);
+      for (let remaining = initialLives; remaining > 0; remaining--) {
+        if (await waitFor(610, isCancelled, shouldFast)) return fastFinish();
+        if (cancelled) return;
+        const counted = initialLives - remaining + 1;
+        setValues([levelBonus, points, counted * 200, 0]);
+        setStore({ lives: remaining - 1 });
+        menuAudio.dong();
+      }
+      if (await waitFor(1000, isCancelled, shouldFast)) return fastFinish();
+
+      setHighlight(3);
+      setValues([levelBonus, points, lifeBonus, total]);
+      menuAudio.dong();
+      await finishWait();
+    };
+
+    const fastFinish = async () => {
+      if (cancelled) return;
+      fastRequested.current = false;
+      setHighlight(3);
+      setValues([levelBonus, points, lifeBonus, total]);
+      setStore({ lives: 0 });
+      menuAudio.dong();
+      await finishWait();
+    };
+
+    const finishWait = async () => {
+      if (cancelled) return;
+      phase.current = 'wait';
+      waitSkipRequested.current = false;
+      await waitFor(4000, isCancelled, () => waitSkipRequested.current);
+      if (cancelled) return;
+      setOpacity(0);
+      await waitFor(200, isCancelled);
+      if (!cancelled) done.current();
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLives, levelBonus, lifeBonus, points, setStore, total]);
+
+  const highlightHeight = SCORE_RECTS.highlight[3] - SCORE_RECTS.highlight[1];
+  const highlightRect: MenuRect = [
+    SCORE_RECTS.highlight[0],
+    SCORE_RECTS.highlightPositions[highlight][1],
+    SCORE_RECTS.highlight[2],
+    SCORE_RECTS.highlightPositions[highlight][1] + highlightHeight,
+  ];
+  return (
+    <MenuBand ogui={ogui} transparent>
+      <div className="og-source-score" style={{ opacity }}>
+        <div className="og-source-score-field" style={menuBandRectStyle(SCORE_RECTS.field)} />
+        <div
+          className="og-source-score-highlight"
+          style={{
+            ...menuBandRectStyle(highlightRect),
+            WebkitMaskImage: `url(${ogui.piece.scoreHighlight})`,
+            maskImage: `url(${ogui.piece.scoreHighlight})`,
+          }}
+        />
+        <div className="og-source-score-line" style={menuBandRectStyle(SCORE_RECTS.line)} />
+        {SCORE_LABELS.map((label, index) => (
+          <div key={label} className="og-source-score-text og-source-score-label" style={menuBandRectStyle(SCORE_RECTS.labels[index])}>
+            <img src={ogui.text(label, index === 3 ? 22 : 20).url} alt="" draggable={false} />
+          </div>
+        ))}
+        {values.map((value, index) => (
+          <div key={index} className="og-source-score-text og-source-score-value" style={menuBandRectStyle(SCORE_RECTS.values[index])}>
+            <img src={ogui.text(String(value), index === 3 ? 22 : 20).url} alt="" draggable={false} />
+          </div>
+        ))}
       </div>
+    </MenuBand>
+  );
+}
+
+function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: number; total: number; onDone: () => void }) {
+  const submitScore = useGameStore((state) => state.submitScore);
+  const [name, setName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    menuAudio.highscoreMusic();
+    inputRef.current?.focus();
+  }, []);
+  const submit = () => {
+    submitScore(level, name, total);
+    menuAudio.dong();
+    onDone();
+  };
+  return (
+    <MenuBand ogui={ogui}>
+      <div className="og-source-entry-title" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.title)}>
+        <img src={ogui.text('New highscore entry!', 22).url} alt="" draggable={false} />
+      </div>
+      <input
+        ref={inputRef}
+        aria-label="Highscore name"
+        className="og-source-entry-input"
+        style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.name)}
+        value={name}
+        maxLength={16}
+        onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === 'Enter') submit();
+        }}
+      />
+      <SourceButton rect={HIGHSCORE_ENTRY_RECTS.confirm} ogui={ogui} piece="buttonMedium" label="OK" onClick={submit} />
+    </MenuBand>
+  );
+}
+
+function EndMenu({ ogui, level }: { ogui: Ogui; level: number }) {
+  const set = useGameStore((state) => state.set);
+  const loadLevel = useGameStore((state) => state.loadLevel);
+  const [subscreen, setSubscreen] = useState<'menu' | 'highscore' | 'options'>('menu');
+  if (subscreen === 'highscore') {
+    return <HighscoreScreen initialLevel={level} onExit={() => setSubscreen('menu')} />;
+  }
+  if (subscreen === 'options') {
+    return <OptionsScreen onExit={() => setSubscreen('menu')} />;
+  }
+  return (
+    <MenuBand ogui={ogui}>
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Restart Level" onClick={() => loadLevel(level)} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Highscore" onClick={() => setSubscreen('highscore')} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => setSubscreen('options')} />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
+      <SourceButton
+        rect={LARGE_MENU_BUTTON_RECTS[4]}
+        ogui={ogui}
+        label="Next Level"
+        disabled={level >= 12}
+        onClick={() => loadLevel(level + 1)}
+      />
     </MenuBand>
   );
 }
 
 export function FinishedOverlay() {
-  const { level, points, lives, progress, submitScore, set } = useGameStore();
+  const { level, points, lives, progress } = useGameStore();
   const ogui = useOgui();
-  // original win screen: Level Bonus / Time Points / Extra Lives tally into
-  // the total (Score:), then the highscore name entry if the table is beaten
-  const levelBonus = level * 100;
-  const lifeBonus = lives * 200;
-  const total = levelBonus + points + lifeBonus;
-  const [shown, setShown] = useState(0);
-  const [entryDone, setEntryDone] = useState(false);
-  const [name, setName] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-  const table = progress.tables[level] ?? defaultTable(level);
-  const qualifies = total > table[table.length - 1].score;
-  const tallyDone = shown >= total;
-  useEffect(() => {
-    let current = 0;
-    const timer = setInterval(() => {
-      current = Math.min(total, current + scoreCountStep(total - current));
-      setShown(current);
-      menuAudio.counter();
-      if (current >= total) {
-        clearInterval(timer);
-        menuAudio.dong();
-      }
-    }, 1000 / 60);
-    return () => clearInterval(timer);
-  }, [total, level]);
-  useEffect(() => {
-    if (tallyDone && qualifies) menuAudio.highscoreMusic();
-  }, [tallyDone, qualifies]);
-  useEffect(() => {
-    if (tallyDone && qualifies && !entryDone) inputRef.current?.focus();
-  }, [tallyDone, qualifies, entryDone]);
+  const [score] = useState(() => {
+    const total = level * 100 + points + lives * 200;
+    return {
+      initialLives: lives,
+      total,
+      qualifies: total > (progress.tables[level] ?? defaultTable(level)).at(-1)!.score,
+    };
+  });
+  const [flow, setFlow] = useState<'score' | 'entry' | 'highscore' | 'end'>('score');
   if (!ogui) return null;
-  const nextUnlocked = level < 12 && progress.unlocked > level;
-  const row = (label: string, value: number) => (
-    <div className="og-tally-row" style={barStyle(ogui)}>
-      <img src={ogui.text(label, 20).url} alt="" draggable={false} />
-      <img src={ogui.text(String(value), 20).url} alt="" draggable={false} />
-    </div>
-  );
-  return (
-    <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.25)' }}>
-      <div className="og-score-list og-score-list-win">
-        {row('Level Bonus:', levelBonus)}
-        {row('Time Points:', points)}
-        {row('Extra Lives:', lifeBonus)}
-        <div className="og-tally-row og-tally-total" style={barStyle(ogui)}>
-          <img src={ogui.text('Score:', 22).url} alt="" draggable={false} />
-          <img src={ogui.text(String(shown), 22).url} alt="" draggable={false} />
-        </div>
-      </div>
-      {tallyDone && qualifies && !entryDone && (
-        <div className="og-entry">
-          <img src={ogui.text('New highscore entry!', 22).url} alt="" draggable={false} />
-          <input
-            ref={inputRef}
-            className="og-entry-input"
-            value={name}
-            maxLength={16}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') {
-                submitScore(level, name, total);
-                setEntryDone(true);
-                menuAudio.dong();
-              }
-            }}
-          />
-        </div>
-      )}
-      {(tallyDone && (!qualifies || entryDone)) && (
-        <div className="og-stack og-stack-tight">
-          {nextUnlocked && (
-            <MenuButton
-              ogui={ogui}
-              label="Next Level"
-              onClick={() => {
-                menuAudio.levelLoad();
-                set({ phase: 'loading', level: level + 1 });
-              }}
-            />
-          )}
-          <MenuButton
-            ogui={ogui}
-            label="Restart Level"
-            onClick={() => {
-              menuAudio.levelLoad();
-              set({ phase: 'loading', level });
-            }}
-          />
-          <MenuButton ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
-        </div>
-      )}
-    </MenuBand>
-  );
+  if (flow === 'score') {
+    return (
+      <SourceScorePanel
+        ogui={ogui}
+        level={level}
+        points={points}
+        initialLives={score.initialLives}
+        onDone={() => setFlow(score.qualifies ? 'entry' : 'end')}
+      />
+    );
+  }
+  if (flow === 'entry') {
+    return <HighscoreEntry ogui={ogui} level={level} total={score.total} onDone={() => setFlow('highscore')} />;
+  }
+  if (flow === 'highscore') {
+    return <HighscoreScreen initialLevel={level} exitLabel="Next" onExit={() => setFlow('end')} />;
+  }
+  return <EndMenu ogui={ogui} level={level} />;
 }
 
 export function GameOverOverlay() {
-  const { level, set } = useGameStore();
+  const { level, loadLevel, set } = useGameStore();
   const ogui = useOgui();
   if (!ogui) return null;
   return (
-    <MenuBand ogui={ogui} style={{ background: 'rgba(0, 0, 0, 0.35)' }}>
-      <div className="og-stack" style={{ marginTop: '28vh' }}>
-        <MenuButton
-          ogui={ogui}
-          label="Restart Level"
-          onClick={() => {
-            menuAudio.levelLoad();
-            set({ phase: 'loading', level });
-          }}
-        />
-        <MenuButton ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
-      </div>
+    <MenuBand ogui={ogui}>
+      <SourceButton
+        rect={LARGE_MENU_BUTTON_RECTS[0]}
+        ogui={ogui}
+        label="Restart Level"
+        onClick={() => {
+          menuAudio.levelLoad();
+          loadLevel(level);
+        }}
+      />
+      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );
 }
