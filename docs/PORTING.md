@@ -200,7 +200,10 @@ ballance-web/
    construction: one permanent current ball plus `ActLifes` copies at 0.0387 X spacing,
    with the left hook placed by the source `a-(b*c)` expression. `Deactivate Ball` tests
    the reserves before subtracting one, so three initial reserves correctly provide four
-   attempts and Game Over occurs only on the next fall from zero.
+   attempts and Game Over occurs only on the next fall from zero. The points display likewise
+   uses `Camera.nmo`'s complete background/glow atlas regions and exact screen rectangles;
+   `Gameplay_Energy` supplies right alignment, two-pixel margins, `.8/.9` font scale,
+   white-to-black color, down-right shadow, and the 500 ms `Extrapoint` glow fade.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term

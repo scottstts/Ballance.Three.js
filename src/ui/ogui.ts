@@ -5,6 +5,7 @@
  */
 import { decodeImageFile, decodeTga } from '../engine/textures.ts';
 import { fetchGameBuffer, loadNmo } from '../engine/assets.ts';
+import { atlasCropFromUv, POINTS_HUD_SOURCE } from './hudLayout.ts';
 
 interface Decoded {
   rgba: Uint8ClampedArray;
@@ -39,12 +40,9 @@ const PIECES: Record<string, PieceDef> = {
   sliderR: { atlas: 'deselect', x: 142, y: 102, w: 112, h: 28 },
   roundA: { atlas: 'deselect', x: 226, y: 198, w: 22, h: 23, hover: true },
   roundB: { atlas: 'deselect', x: 226, y: 226, w: 22, h: 23, hover: true },
-  // in-game HUD (special atlas): score plate + its under-swoosh, both with
-  // amber flash variants, and the lives wire pieces + silver ball
-  scorePlate: { atlas: 'special', x: 105, y: 185, w: 135, h: 44 },
-  scoreSwoosh: { atlas: 'special', x: 82, y: 199, w: 176, h: 52 },
-  scorePlateAmber: { atlas: 'special', x: 130, y: 129, w: 110, h: 36 },
-  scoreSwooshAmber: { atlas: 'special', x: 111, y: 142, w: 142, h: 41 },
+  // Complete score layers recovered from Camera.nmo's CK2dEntity UVs.
+  scoreBackground: { atlas: 'special', ...atlasCropFromUv(POINTS_HUD_SOURCE.backgroundUv) },
+  scoreGlow: { atlas: 'special', ...atlasCropFromUv(POINTS_HUD_SOURCE.glowUv) },
   // Camera.nmo CK2dEntity UV endpoints, converted from multiples of 1/255
   // to inclusive atlas pixels.
   lifeBall: { atlas: 'special', x: 17, y: 135, w: 29, h: 29 },
@@ -58,12 +56,20 @@ export interface TextImage {
   h: number;
 }
 
+export interface TextRenderOptions {
+  /** independent TT font Scale multipliers relative to the requested cell */
+  scaleX?: number;
+  scaleY?: number;
+  /** extra horizontal advance in source texture pixels */
+  spaceX?: number;
+}
+
 export interface Ogui {
   /** data-URLs for atlas pieces, keyed `${piece}` and `${piece}Hover` */
   piece: Record<string, string>;
   cursor: string;
   /** render text in the original bitmap font at a given pixel height */
-  text(text: string, px: number, color?: string, endColor?: string): TextImage;
+  text(text: string, px: number, color?: string, endColor?: string, options?: TextRenderOptions): TextImage;
 }
 
 function toCanvas(img: Decoded): HTMLCanvasElement {
@@ -133,28 +139,34 @@ class FontRenderer {
     }
   }
 
-  text(str: string, px: number, color = '#ffffff', endColor?: string): TextImage {
-    const key = `${str}|${px}|${color}|${endColor ?? ''}`;
+  text(str: string, px: number, color = '#ffffff', endColor?: string, options: TextRenderOptions = {}): TextImage {
+    const scaleX = (px / CELL) * (options.scaleX ?? 1);
+    const scaleY = (px / CELL) * (options.scaleY ?? 1);
+    const spaceX = options.spaceX ?? 0;
+    const key = `${str}|${px}|${color}|${endColor ?? ''}|${scaleX}|${scaleY}|${spaceX}`;
     const hit = this.cache.get(key);
     if (hit) return hit;
-    const scale = px / CELL;
+    const characters = [...str];
     let wCells = 0;
-    for (const ch of str) {
+    for (const [index, ch] of characters.entries()) {
       const code = ch.codePointAt(0) ?? 32;
       const metric = this.metrics[code] ?? this.metrics[32];
       wCells += metric.pre + metric.width + metric.post;
+      if (index < characters.length - 1) wCells += spaceX;
     }
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.ceil(wCells * scale));
-    c.height = Math.ceil(px * 1.05);
+    c.width = Math.max(1, Math.ceil(wCells * scaleX));
+    // Preserve the menu renderer's small descender pad; the HUD path supplies
+    // an authored Y scale and therefore uses the exact scaled cell height.
+    c.height = Math.max(1, Math.ceil(options.scaleY === undefined ? px * 1.05 : CELL * scaleY));
     const ctx = c.getContext('2d');
     if (ctx) {
       ctx.imageSmoothingEnabled = true;
       let x = 0;
-      for (const ch of str) {
+      for (const [index, ch] of characters.entries()) {
         const code = ch.codePointAt(0) ?? 32;
         const metric = this.metrics[code] ?? this.metrics[32];
-        x += metric.pre * scale;
+        x += metric.pre * scaleX;
         if (metric.width > 0) {
           ctx.drawImage(
             this.canvas,
@@ -164,11 +176,11 @@ class FontRenderer {
             metric.height,
             x,
             0,
-            metric.width * scale,
-            metric.height * scale,
+            metric.width * scaleX,
+            metric.height * scaleY,
           );
         }
-        x += (metric.width + metric.post) * scale;
+        x += (metric.width + metric.post + (index < characters.length - 1 ? spaceX : 0)) * scaleX;
       }
       if (color !== '#ffffff' || endColor) {
         ctx.globalCompositeOperation = 'source-in';
@@ -218,7 +230,7 @@ export function loadOgui(): Promise<Ogui> {
     return {
       piece,
       cursor: cursorCanvas.toDataURL('image/png'),
-      text: (t, px, color, endColor) => fontRenderer.text(t, px, color, endColor),
+      text: (t, px, color, endColor, options) => fontRenderer.text(t, px, color, endColor, options),
     };
   })();
   return oguiPromise;

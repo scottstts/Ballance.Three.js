@@ -1,10 +1,14 @@
 /**
- * Source-authored life HUD geometry.
+ * Source-authored in-game HUD geometry.
  *
  * Camera.nmo stores CK2dEntity rectangles in normalized screen coordinates.
  * Gameplay.nmo keeps one permanent Interface_Life_Kugel at `ball.left`, then
  * creates `ActLifes` copies at one `ballOffsetX` step farther left. The small
  * Interface_Life_End hook follows the leftmost reserve ball.
+ *
+ * The score frame and its glow are complete atlas regions, not separately
+ * positioned plate/wire fragments. Gameplay_Energy renders the point string
+ * right-aligned inside `digits` with the exact TT font properties below.
  */
 
 export type HudRect = readonly [left: number, top: number, right: number, bottom: number];
@@ -15,6 +19,57 @@ export const LIFE_HUD_SOURCE = {
   hook: [0.9287999868392944, 0.881252110004425, 0.9522379040718079, 0.9437525272369385] as HudRect,
   ballOffsetX: 0.03869999945163727,
 } as const;
+
+export const POINTS_HUD_SOURCE = {
+  background: [
+    0.014999999664723873, 0.8700007796287537, 0.23500002920627594, 0.9800010323524475,
+  ] as HudRect,
+  backgroundUv: [0.3255000114440918, 0.7300000190734863, 1, 0.980400025844574] as HudRect,
+  glow: [
+    0.014999999664723873, 0.8700007796287537, 0.23499995470046997, 0.980000913143158,
+  ] as HudRect,
+  glowUv: [0.4350000023841858, 0.5080000162124634, 0.9950000047683716, 0.7129999995231628] as HudRect,
+  digits: [
+    0.04999997839331627, 0.8841684460639954, 0.20374992489814758, 0.9341685771942139,
+  ] as HudRect,
+  font: {
+    cellPixels: 32,
+    space: [1.5, 1] as const,
+    scale: [0.800000011920929, 0.8999999761581421] as const,
+    color: [1, 1, 1, 1] as const,
+    endColor: [0, 0, 0, 1] as const,
+    shadowColor: [0, 0, 0, 0.3921568989753723] as const,
+    shadowAngle: 2.356194496154785,
+    shadowDistance: 2,
+    shadowSize: [0.800000011920929, 0.8999999761581421] as const,
+    alignment: 2,
+    margins: [2, 2, 2, 2] as const,
+  },
+  glowDurationMs: 500,
+} as const;
+
+export interface AtlasCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** CK texture UVs address pixel centres from 0 through `size - 1`. */
+export function atlasCropFromUv(uv: HudRect, size = 256): AtlasCrop {
+  const lastPixel = size - 1;
+  const left = Math.round(uv[0] * lastPixel);
+  const top = Math.round(uv[1] * lastPixel);
+  const right = Math.round(uv[2] * lastPixel);
+  const bottom = Math.round(uv[3] * lastPixel);
+  return { x: left, y: top, w: right - left + 1, h: bottom - top + 1 };
+}
+
+/** Interface.dll computes the TT shadow as (-cos(angle), sin(angle)) * distance. */
+export function pointShadowOffset(): readonly [x: number, y: number] {
+  const { shadowAngle, shadowDistance } = POINTS_HUD_SOURCE.font;
+  return [-Math.cos(shadowAngle) * shadowDistance, Math.sin(shadowAngle) * shadowDistance];
+}
 
 function reserveCount(lives: number): number {
   return Math.max(0, Math.trunc(lives));

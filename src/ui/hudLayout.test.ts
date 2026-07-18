@@ -2,12 +2,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
-import type { Entity2dRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
-import { LIFE_HUD_SOURCE, lifeBallRects, lifeHookRect } from './hudLayout.ts';
+import type { BehaviorRec, Entity2dRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import {
+  atlasCropFromUv,
+  LIFE_HUD_SOURCE,
+  lifeBallRects,
+  lifeHookRect,
+  POINTS_HUD_SOURCE,
+  pointShadowOffset,
+} from './hudLayout.ts';
 
 const GAME_DIR = fileURLToPath(new URL('../../Ballance_bin/source1/Ballance', import.meta.url));
 const cameraPath = `${GAME_DIR}/3D Entities/Camera.nmo`;
 const gameplayPath = `${GAME_DIR}/3D Entities/Gameplay.nmo`;
+const interfacePath = `${GAME_DIR}/BuildingBlocks/Interface.dll`;
+const fontPath = `${GAME_DIR}/Textures/Font_1.tga`;
 
 function entity2d(file: NmoFile, name: string): Entity2dRec {
   const record = file.byName.get(name)?.find((candidate): candidate is Entity2dRec => candidate.kind === 'entity2d');
@@ -26,6 +35,51 @@ function floatValue(record: ParameterRec): number {
     0,
     true,
   );
+}
+
+function intValue(record: ParameterRec): number {
+  return new DataView(record.valueBytes.buffer, record.valueBytes.byteOffset, record.valueBytes.byteLength).getInt32(
+    0,
+    true,
+  );
+}
+
+function floatValues(record: ParameterRec): number[] {
+  const view = new DataView(record.valueBytes.buffer, record.valueBytes.byteOffset, record.valueBytes.byteLength);
+  return Array.from({ length: record.valueBytes.byteLength / 4 }, (_, index) => view.getFloat32(index * 4, true));
+}
+
+function behavior(file: NmoFile, name: string): BehaviorRec {
+  const record = file.byName.get(name)?.find((candidate): candidate is BehaviorRec => candidate.kind === 'behavior');
+  if (!record) throw new Error(`missing source behavior ${name}`);
+  return record;
+}
+
+function childBehavior(file: NmoFile, parent: BehaviorRec, name: string): BehaviorRec {
+  const record = parent.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .find((candidate): candidate is BehaviorRec => candidate?.kind === 'behavior' && candidate.name === name);
+  if (!record) throw new Error(`missing source behavior ${parent.name}/${name}`);
+  return record;
+}
+
+function behaviorParameter(file: NmoFile, owner: BehaviorRec, name: string): ParameterRec {
+  const record = owner.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .find((candidate): candidate is ParameterRec => candidate?.kind === 'parameter' && candidate.name === name);
+  if (!record) throw new Error(`missing source parameter ${owner.name}/${name}`);
+  let resolved = record;
+  const seen = new Set([resolved.index]);
+  while (resolved.sourceIndex >= 0 || resolved.sharedIndex >= 0) {
+    const nextIndex = resolved.sourceIndex >= 0 ? resolved.sourceIndex : resolved.sharedIndex;
+    const next = file.objects[nextIndex];
+    if (next?.kind !== 'parameter' || seen.has(next.index)) break;
+    seen.add(next.index);
+    resolved = next;
+  }
+  return resolved;
 }
 
 describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('source-authored life HUD', () => {
@@ -56,3 +110,57 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('source-au
     expect(lifeHookRect(startLives)[0]).toBeCloseTo(0.8126999884843826, 12);
   });
 });
+
+describe.skipIf(
+  !existsSync(cameraPath) || !existsSync(gameplayPath) || !existsSync(interfacePath) || !existsSync(fontPath),
+)(
+  'source-authored points HUD',
+  () => {
+    const camera = parseNmo(readFileSync(cameraPath));
+    const gameplay = parseNmo(readFileSync(gameplayPath));
+    const energy = behavior(gameplay, 'Gameplay_Energy');
+    const init = childBehavior(gameplay, energy, 'Init');
+    const font = childBehavior(gameplay, init, 'Set Font Properties');
+    const text = childBehavior(gameplay, energy, '2D Text');
+    const glow = childBehavior(gameplay, energy, 'Bezier Progression');
+
+    it('uses all Camera.nmo score rectangles and UVs verbatim', () => {
+      const background = entity2d(camera, 'Interface_Points_bg');
+      const sourceGlow = entity2d(camera, 'Interface_Points_glow');
+      const digits = entity2d(camera, 'Interface_Points_digits');
+
+      expect(POINTS_HUD_SOURCE.background).toEqual(background.rect);
+      expect(POINTS_HUD_SOURCE.backgroundUv).toEqual(background.relativeRect);
+      expect(POINTS_HUD_SOURCE.glow).toEqual(sourceGlow.rect);
+      expect(POINTS_HUD_SOURCE.glowUv).toEqual(sourceGlow.relativeRect);
+      expect(POINTS_HUD_SOURCE.digits).toEqual(digits.rect);
+      expect(atlasCropFromUv(background.relativeRect)).toEqual({ x: 83, y: 186, w: 173, h: 65 });
+      expect(atlasCropFromUv(sourceGlow.relativeRect)).toEqual({ x: 111, y: 130, w: 144, h: 53 });
+    });
+
+    it('uses Gameplay.nmo point-font scale, spacing, colors, shadow, alignment, and margins', () => {
+      expect(POINTS_HUD_SOURCE.font.space).toEqual(floatValues(behaviorParameter(gameplay, font, 'Space')));
+      expect(POINTS_HUD_SOURCE.font.scale).toEqual(floatValues(behaviorParameter(gameplay, font, 'Scale')));
+      expect(POINTS_HUD_SOURCE.font.color).toEqual(floatValues(behaviorParameter(gameplay, font, 'Color')));
+      expect(POINTS_HUD_SOURCE.font.endColor).toEqual(floatValues(behaviorParameter(gameplay, font, 'End Color')));
+      expect(POINTS_HUD_SOURCE.font.shadowColor).toEqual(floatValues(behaviorParameter(gameplay, font, 'Shadow Color')));
+      expect(POINTS_HUD_SOURCE.font.shadowAngle).toBe(floatValue(behaviorParameter(gameplay, font, 'Shadow Angle')));
+      expect(POINTS_HUD_SOURCE.font.shadowDistance).toBe(floatValue(behaviorParameter(gameplay, font, 'Shadow Distance')));
+      expect(POINTS_HUD_SOURCE.font.shadowSize).toEqual(floatValues(behaviorParameter(gameplay, font, 'Shadow Size')));
+      expect(POINTS_HUD_SOURCE.font.alignment).toBe(intValue(behaviorParameter(gameplay, text, 'Alignment')));
+      expect(POINTS_HUD_SOURCE.font.margins).toEqual(floatValues(behaviorParameter(gameplay, text, 'Margins')));
+
+      const fontTexture = readFileSync(fontPath);
+      expect(POINTS_HUD_SOURCE.font.cellPixels).toBe(fontTexture.readUInt16LE(12) / 16);
+
+      const dll = readFileSync(interfacePath);
+      expect(dll.includes(Buffer.from('Top-Left=5,Top=4,Top-Right=6,Left=1,Center=0,Right=2'))).toBe(true);
+      expect(pointShadowOffset()[0]).toBeCloseTo(Math.SQRT2, 6);
+      expect(pointShadowOffset()[1]).toBeCloseTo(Math.SQRT2, 6);
+    });
+
+    it('uses the Extrapoint glow duration', () => {
+      expect(POINTS_HUD_SOURCE.glowDurationMs).toBe(floatValue(behaviorParameter(gameplay, glow, 'Duration')));
+    });
+  },
+);

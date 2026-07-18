@@ -922,3 +922,33 @@ options subscreens are simplified (volume only).
   ~(.020,.020) over 2 s; Level 12 measured ~(.020,.080), with only the #969696
   directional light. Captures are `screenshots/lighting-level{1,12}-source.png`;
   the browser tab and Vite server were closed after validation.
+
+## 2026-07-18 source-exact points HUD
+
+- The former score HUD split `Button01_special.tga` into four guessed plate/swoosh
+  crops and positioned them with a `vh` box. `Camera.nmo` instead serializes two
+  complete, coincident score layers: `Interface_Points_bg` at normalized screen
+  rect `(0.0150000,0.8700008)-(0.2350000,0.9800010)` with inclusive atlas crop
+  `(83,186,173,65)`, and `Interface_Points_glow` at the same screen bounds with
+  crop `(111,130,144,53)`. The digits entity occupies
+  `(0.04999998,0.88416845)-(0.20374992,0.93416858)`.
+- `Gameplay_Energy/Init` creates `Font_1` from `M_FontData_01`, then supplies
+  Space `(1.5,1)`, Scale `(.8,.9)`, white-to-black color, shadow RGBA
+  `(0,0,0,100/255)`, angle `2.3561945`, distance 2, and shadow size `(.8,.9)`.
+  Static `Interface.dll` recovery confirms the 2D Text alignment enum maps value
+  2 to Right and computes shadow displacement as
+  `(-cos(angle),sin(angle))*distance`, hence `(+sqrt(2),+sqrt(2))` pixels. The
+  text rectangle also carries exact two-pixel margins.
+- The port now derives both complete atlas crops from the serialized UVs, uses
+  every source screen rect directly, renders the independent X/Y font scale and
+  right alignment, and flashes only on point increases. `Wait Message
+  Extrapoint -> Show -> Bezier Progression` supplies the exact 500 ms linear
+  alpha fade from one to zero.
+- `hudLayout.test.ts` parses `Camera.nmo`, `Gameplay.nmo`, `Font_1.tga`, and
+  `Interface.dll` to lock the geometry, crops, font properties, alignment
+  meaning, shadow, and fade. At 1024x768, browser bounds matched source
+  projection exactly: background `(15.359,668.156,225.273,84.477)`, digits
+  `(51.195,679.039,157.438,38.398)`. Live glow samples were opacity
+  `1 -> .502 -> 0`; there were zero errors (only Rapier's known deprecated-init
+  warning). Capture: `screenshots/hud-score-source.png`. The tab and Vite server
+  were closed afterward.

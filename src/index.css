@@ -108,33 +108,43 @@ body,
 
 .hud-score {
   position: absolute;
-  left: 2vh;
-  bottom: 3vh;
-  width: 26vh;
-  height: 9.6vh;
+  inset: 0;
 }
 
-.hud-score-swoosh {
+.hud-score-background,
+.hud-score-glow {
   position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 100%;
+  display: block;
+  object-fit: fill;
 }
 
-.hud-score-plate {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 85.5%;
-  height: 62%;
-  background-size: 100% 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.hud-score-background {
+  z-index: 1;
+}
+
+.hud-score-glow {
+  z-index: 2;
+  animation: hud-score-glow 500ms linear forwards;
+}
+
+@keyframes hud-score-glow {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .hud-score-digits {
-  height: 58%;
+  position: absolute;
+  box-sizing: border-box;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  z-index: 3;
+}
+
+.hud-score-digits img {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .hud-lifes {
