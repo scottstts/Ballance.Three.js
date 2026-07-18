@@ -230,10 +230,12 @@ pillars, breakaway/trapdoor floors, dome cage, etc.), plus the singletons: `P_Ba
 `P_Trafo_*`, `PC_TwoFlames`, `PS_FourFlames`, `PE_Balloon`, `P_Extra_Life`,
 `P_Extra_Point`, `P_Box`, `P_Dome`.
 
-Don't guess behaviors from names — for each modul, read the corresponding Unity Rebuild
-implementation and/or observe the original, then write the TS class: constructor builds
-bodies/joints from the prefab GLB, `activate() / deactivate() / reset()` hooks for the
-sector system, collision handlers for sound.
+Don't guess behaviors from names. The matching original `PH/*.nmo` behavior
+graph and shipped runtime DLL are the primary authority for every modul.
+External rebuilds may explain an opaque enum or supply a complementary asset,
+but cannot override the original binary. Each TS class builds source-authored
+bodies/joints and implements its serialized `activate() / deactivate() /
+reset()` sector lifecycle and sound/control graph.
 
 Implement in level order of appearance — Level 1 needs only a handful.
 

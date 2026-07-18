@@ -490,6 +490,41 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
 
 /** fan updraft: per-PSI force applied to the ball while inside the wind volume */
 export const MODUL18_FORCE = 0.1;
+export const MODUL18_PROXIMITY_SOURCE = {
+  outer: {
+    distance: 80,
+    exactnessMinDistance: 85,
+    exactnessMaxDistance: 100,
+    minimumFrameDelay: 10,
+    maximumFrameDelay: 60,
+    initialFrameDelay: 2,
+    axes: 5,
+    squaredDistance: true,
+  },
+  force: {
+    distance: 7,
+    exactnessMinDistance: 12,
+    exactnessMaxDistance: 20,
+    minimumFrameDelay: 1,
+    maximumFrameDelay: 10,
+    initialFrameDelay: 2,
+    axes: 5,
+    squaredDistance: true,
+  },
+  sound: {
+    distance: 25,
+    exactnessMinDistance: 25,
+    exactnessMaxDistance: 30,
+    minimumFrameDelay: 1,
+    maximumFrameDelay: 10,
+    initialFrameDelay: 2,
+    axes: 7,
+    squaredDistance: true,
+  },
+} as const;
+/** Source -15 rad/s in Virtools LH space becomes +15 in Three RH space. */
+export const MODUL18_ROTOR_SPEED = 15;
+export const MODUL18_SOUND_RANGE = { near: 2, far: 25 } as const;
 /** P_Modul_29's source-authored outer wake and stone-only break gates. */
 export const MODUL29_WAKE_PROXIMITY = {
   distance: 80,

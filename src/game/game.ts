@@ -211,6 +211,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         ball,
         registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
         attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
+        pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
         emit: () => {},
       })
     : null;
@@ -231,6 +232,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       ball,
       registerSurface: (handle, surface) => surfaceByCollider.set(handle, surface),
       attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
+      pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
       emit: (ev) => {
         const s = gameStore.getState();
         switch (ev.kind) {

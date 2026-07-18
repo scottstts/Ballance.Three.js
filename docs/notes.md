@@ -131,13 +131,13 @@ Append-only scratchpad of things learned during the port. Read this first when r
 - Level 12 ends with UFO (endWithUFO) — the UFO geometry, materials, animation,
   behavior, and hyperspace graph are embedded in `PE_Balloon.nmo`; Misc_UFO
   sounds are separate. The authored finale behavior is not yet implemented.
-- Flames (PS/PC), Extra Point orbit + fly-to-HUD animation, Extra Life bob/spin, trafo
-  ring animation (2.3s, colors wood #ff9300 stone #00ff1d paper #0091ff), death Pieces_*
-  shatter effects, fan particles: cosmetic systems still to build.
+- Flames (PS/PC), Extra Point, Extra Life, trafo, death pieces, and fan
+  particles are now source-backed; do not reintroduce the former replacement
+  effects listed here.
 - Rails render flat white: need spherical env-map (Rail_Environment.bmp) material path.
 - Ball trafo swap is instant; original swaps after the 2.3s trafo animation.
-- Modul_29 stays broken on sector reset (original re-links only on level restart) — OK,
-  but verify against original edge case.
+- Modul_29 repairs HingeFrame07 on every active-sector reset, as required by
+  the source reset graph and deterministic fall validation.
 - Feel pass vs original: ball accel/top speed close (14 u/s after 3s push) but rail-feel,
   camera angle (Y30/Z17 lookAt-ball vs original framing) and fog color/distances need
   side-by-side comparison. Rebuild alt ball constants (P_Ball_Wood mass 2 f0.6 e0.2 d0.6)
@@ -199,8 +199,9 @@ Append-only scratchpad of things learned during the port. Read this first when r
 - Checkpoint flames now follow original states: big flame only on the ARMED (next)
   checkpoint, two small flames on future ones, none once crossed. flames.arm() at boot for
   PC_TwoFlames_01 and after each crossing for the next.
-- Fan modul loops Misc_Ventilator.wav via AudioManager.createLoop (positional, bound to the
-  instance root; active only with the sector). ModulContext.attachLoop is the hook.
+- Fan modul loops Misc_Ventilator.wav through its independent 25-unit source
+  sampler and the authored linear 2..25 attenuation range. The enclosing
+  80-unit gate, not sector ownership alone, controls the effect.
 - Extra Point collect: spheres rise ~0.35s then chase the camera and shrink (original
   fly-to-HUD approximation), then hide.
 - BOOT ORDER MATTERS: AudioManager must be constructed BEFORE ModulManager.create (fan
@@ -1053,3 +1054,47 @@ options subscreens are simplified (volume only).
   init warning), and the tab/server were closed. The full gate passes with 127
   tests plus lint, typecheck, and production build; only Vite's established
   chunk-size warning remains.
+
+## 2026-07-18 source-exact P_Modul_18 fan stack
+
+- `P_Modul_18_MF Script` owns three separate `TT Scaleable Proximity`
+  samplers. The outer particle-frame gate is strict 80-unit XZ with exactness
+  85..100, delay 10..60, and initial delay 2. The force gate is strict 7-unit
+  XZ with exactness 12..20 and delay 1..10. The sound gate is strict 25-unit
+  XYZ with exactness 25..30 and delay 1..10. All use squared distance; the two
+  inner samplers restart only when the outer gate enters.
+- The updraft is the source constant `SetPhysicsForce` direction `(0,1,0)`,
+  value `.1`, created only on `InRange` when the ball's bounding box intersects
+  the authored hidden `P_Modul_18_Kollisionsquader`. The former guessed wind
+  volume was removed. `Misc_Ventilator.wav` uses its serialized linear
+  `TT ProximityVolumeControl` range 2..25, and the rotor's source -15 rad/s
+  becomes +15 rad/s after the Virtools-LH to Three-RH conversion.
+- The particle script is two simultaneous `PlanarParticleSystem` nodes on the
+  exact emitter frame. Rendering mode 2 is an untextured Line layer: 100 cap,
+  3 particles per behavior tick, 400+/-10 ms life, speed
+  39.9999991059, white alpha .235294 to transparent. Static decompilation of
+  the original DLL's exact mode-2 callback (`0x2508df80`) proves each segment
+  runs from the previous particle position to its current position plus the
+  authored Spreading multiplier; P_Modul_18 authors Spreading 0. Its serialized
+  initial size 4 and ending size .1 are not read by the Line renderer.
+  `Evolutions=2` therefore evolves color only. Rendering mode 3
+  is a `Particle_Smoke.bmp` Sprite layer: 40 cap, 20 ms cadence, emission
+  1+/-1, 800+/-10 ms life, speed 35.9999984503, size 2.3 to 3, white alpha
+  .117647 to transparent. Both use source-alpha/one blending.
+- The original runtime emits before advancing live particles for the current
+  behavior tick, then renders. The port uses that same order; line endpoint
+  colors are the prior and current evolved colors, matching the runtime rather
+  than applying one current color to both ends.
+- The prefab frame's exact matrix converts local -Z to world +Y while its
+  local XY unit plane spreads the plume across the fan opening. Live Level 2
+  validation after the exact emit-before-advance correction reached steady
+  densities of 78 line particles and 38 smoke sprites. At the fixed 66 Hz game
+  step every line segment is exactly `39.9999991059 / 66 = .6060600` units,
+  and the live line plume extent was approximately 1x15.76x1.
+  Crossing the 80-unit boundary cleared/hid both buffers and stopped sound,
+  force, and rotation. The 7-unit gate plus collision box changed a paper ball
+  from -4.97 to +3.23 vertical velocity only inside the actual wind volume.
+  There were zero browser errors; captures are
+  `screenshots/fan-source-particles.png` and
+  `screenshots/fan-source-particles-exact.png`, and the browser/server were
+  closed.

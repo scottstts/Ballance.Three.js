@@ -19,7 +19,13 @@ export interface ModulContext {
   /** register a modul collider's sound surface */
   registerSurface: (colliderHandle: number, surface: Surface) => void;
   /** looping positional sound bound to an object */
-  attachLoop: (name: string, target: THREE.Object3D, volume?: number) => { setActive(on: boolean): void; dispose(): void };
+  attachLoop: (
+    name: string,
+    target: THREE.Object3D,
+    volume?: number,
+  ) => { setActive(on: boolean): void; setDistanceRange(near: number, far: number): void; dispose(): void };
+  /** perspective point-size scale used by source particle sprites */
+  pointScale: () => number;
   /** fires gameplay events upward (pickups, trafo, checkpoints...) */
   emit: (event: ModulEvent) => void;
 }

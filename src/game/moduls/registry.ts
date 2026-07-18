@@ -4,14 +4,19 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
+import { loadCkTexture } from '../../engine/textures.ts';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
 import { TRAFO_SOURCE } from '../effects.ts';
 import { ScaleableProximity } from '../proximity.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
+import { FanParticles } from './fanParticles.ts';
 import type { ModulFactory } from './manager.ts';
 import type { PrefabInstance } from './prefabs.ts';
 import {
   MODUL18_FORCE,
+  MODUL18_PROXIMITY_SOURCE,
+  MODUL18_ROTOR_SPEED,
+  MODUL18_SOUND_RANGE,
   MODUL29_BREAK_JOINT_INDEX,
   MODUL29_BREAK_PROXIMITY,
   MODUL29_TRIGGER_PLATE,
@@ -225,11 +230,28 @@ class BridgeModul extends PhysicsModul {
 class FanModul extends Modul {
   private windBox: THREE.Box3 | null = null;
   private rotor: THREE.Object3D | undefined;
-  private loop: { setActive(on: boolean): void; dispose(): void };
+  private particleTarget: THREE.Object3D;
+  private effectActive = false;
+  private forceActive = false;
+  private soundActive = false;
+  private outerProximity = new ScaleableProximity(MODUL18_PROXIMITY_SOURCE.outer);
+  private forceProximity = new ScaleableProximity(MODUL18_PROXIMITY_SOURCE.force);
+  private soundProximity = new ScaleableProximity(MODUL18_PROXIMITY_SOURCE.sound);
+  private loop: ReturnType<ModulContext['attachLoop']>;
+  private particles: FanParticles;
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext) {
     super(name, sector, instance, ctx);
+    this.particleTarget = this.part('_Particle') ?? instance.root;
+    this.particles = new FanParticles(ctx.scene, this.particleTarget);
+    const smokeTexture = instance.file.byName
+      .get('Particle_Smoke')
+      ?.find((record) => record.kind === 'texture');
+    if (smokeTexture?.kind === 'texture') {
+      void loadCkTexture(smokeTexture)?.then((texture) => this.particles.setSmokeTexture(texture));
+    }
     this.loop = ctx.attachLoop('Misc_Ventilator.wav', instance.root, 0.7);
+    this.loop.setDistanceRange(MODUL18_SOUND_RANGE.near, MODUL18_SOUND_RANGE.far);
     for (const [partName, obj] of instance.parts) {
       if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
         obj.updateWorldMatrix(true, false);
@@ -242,43 +264,112 @@ class FanModul extends Modul {
         this.makeFixedPart(obj, { suffix: partName, fixed: true, friction: 0.7, elasticity: 0.4, surface: 'metal' });
       }
     }
-    if (!this.windBox) {
-      const p = instance.root.position;
-      this.windBox = new THREE.Box3(
-        new THREE.Vector3(p.x - 4, p.y - 1, p.z - 4),
-        new THREE.Vector3(p.x + 4, p.y + 25, p.z + 4),
-      );
-    }
   }
 
   override activate(): void {
     super.activate();
-    this.loop.setActive(true);
+    this.effectActive = false;
+    this.forceActive = false;
+    this.soundActive = false;
+    this.outerProximity.reset();
+    this.forceProximity.reset();
+    this.soundProximity.reset();
+    this.loop.setActive(false);
+    this.particles.setActive(false);
   }
 
   override deactivate(): void {
     super.deactivate();
+    this.effectActive = false;
+    this.forceActive = false;
+    this.soundActive = false;
     this.loop.setActive(false);
+    this.particles.setActive(false);
   }
 
   override update(dt: number): void {
+    if (!this.active) return;
+    const particlePosition = this.particleTarget.getWorldPosition(new THREE.Vector3());
+    const outer = this.outerProximity.updatePositions(this.ctx.ball.position, particlePosition);
+    if (outer === 'enterRange') {
+      this.effectActive = true;
+      this.particles.setActive(true);
+      this.forceActive = false;
+      this.forceProximity.reset();
+      this.soundProximity.reset();
+    } else if (outer === 'exitRange') {
+      this.effectActive = false;
+      this.forceActive = false;
+      this.soundActive = false;
+      this.loop.setActive(false);
+      this.particles.setActive(false);
+    }
+    if (!this.effectActive) return;
+
     if (this.rotor) {
-      this.rotor.rotation.y += dt * Math.PI * 2;
+      this.rotor.rotation.y += dt * MODUL18_ROTOR_SPEED;
       this.rotor.updateMatrix();
     }
-    if (!this.active || !this.windBox) return;
-    if (this.windBox.containsPoint(this.ctx.ball.position)) {
+    this.particles.update(dt, this.ctx.pointScale());
+
+    const soundPosition = this.instance.root.getWorldPosition(new THREE.Vector3());
+    const sound = this.soundProximity.updatePositions(this.ctx.ball.position, soundPosition);
+    if (sound === 'enterRange') this.soundActive = true;
+    else if (sound === 'exitRange') this.soundActive = false;
+    if (sound === 'enterRange' || sound === 'exitRange') this.loop.setActive(this.soundActive);
+
+    const force = this.forceProximity.updatePositions(this.ctx.ball.position, particlePosition);
+    if (force === 'enterRange') this.forceActive = false;
+    else if (force === 'inRange' && this.windBox) {
+      const position = this.ctx.ball.position;
+      const radius = this.ctx.ball.def.radius;
+      const ballBox = new THREE.Box3(
+        new THREE.Vector3(position.x - radius, position.y - radius, position.z - radius),
+        new THREE.Vector3(position.x + radius, position.y + radius, position.z + radius),
+      );
+      this.forceActive = this.windBox.intersectsBox(ballBox);
+    }
+    if (this.forceActive) {
       const up = localDirToWorld(this.instance, [0, 1, 0]);
       const f = MODUL18_FORCE * FORCE_SCALE;
       this.ctx.ball.body.addForce({ x: up.x * f, y: up.y * f, z: up.z * f }, true);
     }
   }
 
-  override reset(): void {}
+  override reset(): void {
+    this.effectActive = false;
+    this.forceActive = false;
+    this.soundActive = false;
+    this.outerProximity.reset();
+    this.forceProximity.reset();
+    this.soundProximity.reset();
+    this.loop.setActive(false);
+    this.particles.setActive(false);
+  }
+
+  override debugState(): Record<string, unknown> {
+    return {
+      ...super.debugState(),
+      effectActive: this.effectActive,
+      forceActive: this.forceActive,
+      soundActive: this.soundActive,
+      proximityFrames: {
+        outer: this.outerProximity.remainingFrames(),
+        force: this.forceProximity.remainingFrames(),
+        sound: this.soundProximity.remainingFrames(),
+      },
+      particlePosition: this.particleTarget.getWorldPosition(new THREE.Vector3()).toArray(),
+      soundPosition: this.instance.root.getWorldPosition(new THREE.Vector3()).toArray(),
+      rotorRotationY: this.rotor?.rotation.y ?? null,
+      particles: this.particles.debugState(),
+      windBox: this.windBox ? { min: this.windBox.min.toArray(), max: this.windBox.max.toArray() } : null,
+    };
+  }
 
   override dispose(): void {
     super.dispose();
     this.loop.dispose();
+    this.particles.dispose();
   }
 }
 

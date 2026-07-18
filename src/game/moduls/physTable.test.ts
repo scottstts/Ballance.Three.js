@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../../formats/ck2/types.ts';
+import { MODUL18_PARTICLE_SOURCE } from './fanParticles.ts';
 import {
+  MODUL18_FORCE,
+  MODUL18_PROXIMITY_SOURCE,
+  MODUL18_ROTOR_SPEED,
+  MODUL18_SOUND_RANGE,
   MODUL29_BREAK_JOINT_INDEX,
   MODUL29_BREAK_PROXIMITY,
   MODUL29_TRIGGER_PLATE,
@@ -90,6 +95,12 @@ function vectorValue(parameter: ParameterRec | undefined): [number, number, numb
   return [view.getFloat32(0, true), view.getFloat32(4, true), view.getFloat32(8, true)];
 }
 
+function colorValue(parameter: ParameterRec | undefined): [number, number, number, number] {
+  if (!parameter || parameter.valueBytes.length < 16) return [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
+  const view = new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset);
+  return [0, 4, 8, 12].map((offset) => view.getFloat32(offset, true)) as [number, number, number, number];
+}
+
 describe.skipIf(!hasGame)('source-backed module physics table', () => {
   for (const moduleName of MODULES) {
     it(`${moduleName} matches original Physicalize bodies and collision hulls`, () => {
@@ -170,6 +181,104 @@ describe.skipIf(!hasGame)('source-backed module physics table', () => {
       }
     });
   }
+
+  it('P_Modul_18 matches its activation, updraft, rotor, and sound gates', () => {
+    const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/PH/P_Modul_18.nmo')));
+    const proximities = file.objects.filter(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'TT Scaleable Proximity',
+    );
+    for (const [name, definition] of Object.entries(MODUL18_PROXIMITY_SOURCE)) {
+      const node = proximities.find(
+        (candidate) => floatValue(behaviorParameters(file, candidate).get('Distance')) === definition.distance,
+      );
+      expect(node, `missing fan ${name} proximity`).toBeDefined();
+      if (!node) continue;
+      const source = behaviorParameters(file, node);
+      expect(floatValue(source.get('Exactness min. Distance'))).toBe(definition.exactnessMinDistance);
+      expect(floatValue(source.get('Exactness max. Distance'))).toBe(definition.exactnessMaxDistance);
+      expect(intValue(source.get('Minimum Framedelay'))).toBe(definition.minimumFrameDelay);
+      expect(intValue(source.get('Maximum Framedelay'))).toBe(definition.maximumFrameDelay);
+      expect(intValue(source.get(''))).toBe(definition.initialFrameDelay);
+      expect(intValue(source.get('Check Axis:'))).toBe(definition.axes);
+      expect(boolValue(source.get('Squared Distance?'))).toBe(definition.squaredDistance);
+      const target = objectValue(file, source.get('ObjectB'));
+      expect(target?.name.endsWith(name === 'sound' ? '_MF' : '_Particle')).toBe(true);
+    }
+
+    const force = file.objects.find(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'SetPhysicsForce',
+    );
+    expect(floatValue(force ? behaviorParameters(file, force).get('Force Value') : undefined)).toBeCloseTo(
+      MODUL18_FORCE,
+      7,
+    );
+    const perSecond = file.objects.find(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'Per Second',
+    );
+    expect(floatValue(perSecond ? behaviorParameters(file, perSecond).get('X') : undefined)).toBe(-MODUL18_ROTOR_SPEED);
+    const volume = file.objects.find(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'TT ProximityVolumeControl',
+    );
+    const volumeParameters = volume ? behaviorParameters(file, volume) : new Map<string, ParameterRec>();
+    expect(floatValue(volumeParameters.get('Near-Distance'))).toBe(MODUL18_SOUND_RANGE.near);
+    expect(floatValue(volumeParameters.get('Far-Distance'))).toBe(MODUL18_SOUND_RANGE.far);
+    expect(
+      file.byName.get('P_Modul_18_Kollisionsquader')?.some((record) => record.kind === 'entity'),
+    ).toBe(true);
+  });
+
+  it('P_Modul_18 matches both source planar particle layers', () => {
+    const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/PH/P_Modul_18.nmo')));
+    const nodes = file.objects.filter(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'PlanarParticleSystem',
+    );
+    expect(nodes).toHaveLength(2);
+    for (const spec of Object.values(MODUL18_PARTICLE_SOURCE)) {
+      const node = nodes.find(
+        (candidate) => intValue(behaviorParameters(file, candidate).get('Maximum Number')) === spec.maxParticles,
+      );
+      expect(node, `missing ${spec.rendering} fan particles`).toBeDefined();
+      if (!node) continue;
+      const source = behaviorParameters(file, node);
+      expect(floatValue(source.get('Emission Delay')) / 1000).toBeCloseTo(spec.emissionDelay, 8);
+      expect(intValue(source.get('Emission'))).toBe(spec.emission);
+      expect(intValue(source.get('Emission Variance'))).toBe(spec.emissionVariance);
+      expect(floatValue(source.get('Lifespan')) / 1000).toBeCloseTo(spec.life, 8);
+      expect(floatValue(source.get('Lifespan Variance')) / 1000).toBeCloseTo(spec.lifeVariance, 8);
+      expect(floatValue(source.get('Speed')) * 1000).toBeCloseTo(spec.speed, 6);
+      expect(floatValue(source.get('Speed Variance')) * 1000).toBeCloseTo(spec.speedVariance, 6);
+      expect(floatValue(source.get('Angular Speed/Spreading'))).toBeCloseTo(spec.spreading, 8);
+      expect(floatValue(source.get('Angular Speed Variance/Spreading Variation'))).toBeCloseTo(
+        spec.spreadingVariance,
+        8,
+      );
+      expect(floatValue(source.get('Initial Size'))).toBeCloseTo(spec.initialSize, 7);
+      expect(floatValue(source.get('Ending Size'))).toBeCloseTo(spec.endingSize, 7);
+      expect(colorValue(source.get('Initial Color and Alpha'))).toEqual(spec.initialColor);
+      expect(colorValue(source.get('Ending Color and Alpha'))).toEqual(spec.endingColor);
+      expect(intValue(source.get('Particle Rendering'))).toBe(spec.rendering === 'line' ? 2 : 3);
+      expect(intValue(source.get('Evolutions'))).toBe(spec.evolutions);
+      expect(intValue(source.get('Variances'))).toBe(spec.variances);
+      expect(intValue(source.get('Source Blend'))).toBe(spec.sourceBlend);
+      expect(intValue(source.get('Destination Blend'))).toBe(spec.destinationBlend);
+      expect(boolValue(source.get('Real-Time Mode'))).toBe(spec.realTimeMode);
+      expect(floatValue(source.get('DeltaTime')) / 1000).toBeCloseTo(spec.fixedDelta, 8);
+      const texture = objectValue(file, source.get('Texture'));
+      expect(texture?.name ?? null).toBe(spec.texture);
+    }
+
+    const emitter = file.byName.get('P_Modul_18_Particle')?.find((record) => record.kind === 'entity');
+    expect(emitter?.kind).toBe('entity');
+    if (emitter?.kind === 'entity') {
+      // The source frame converts so Three local -Z is the plume's global +Y.
+      expect(emitter.worldMatrix[4]).toBeCloseTo(0, 4);
+      expect(emitter.worldMatrix[5]).toBeCloseTo(0, 4);
+      expect(emitter.worldMatrix[6]).toBeCloseTo(-1, 4);
+      expect(emitter.worldMatrix[8]).toBeCloseTo(0, 4);
+      expect(emitter.worldMatrix[9]).toBeCloseTo(1, 4);
+      expect(emitter.worldMatrix[10]).toBeCloseTo(0, 4);
+    }
+  });
 
   it('P_Modul_29 matches both proximity gates and the exact broken hinge', () => {
     const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/PH/P_Modul_29.nmo')));

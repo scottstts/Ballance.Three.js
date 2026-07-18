@@ -12,6 +12,13 @@ import { ScaleableProximity } from './proximity.ts';
 
 export type Surface = 'stone' | 'wood' | 'metal' | 'dome';
 
+function configureLinearDistance(audio: THREE.PositionalAudio, near: number, far: number): void {
+  audio.setDistanceModel('linear');
+  audio.setRefDistance(near);
+  audio.setMaxDistance(far);
+  audio.setRolloffFactor(1);
+}
+
 const cap = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
 function hitFile(ball: BallKind, surface: Surface): string {
@@ -160,9 +167,14 @@ export class AudioManager {
   }
 
   /** looping positional effect bound to an object (fans etc.) */
-  createLoop(name: string, target: THREE.Object3D, volume = 1): { setActive(on: boolean): void; dispose(): void } {
+  createLoop(
+    name: string,
+    target: THREE.Object3D,
+    volume = 1,
+  ): { setActive(on: boolean): void; setDistanceRange(near: number, far: number): void; dispose(): void } {
     let audio: THREE.PositionalAudio | null = null;
     let wanted = false;
+    let distanceRange: { near: number; far: number } | null = null;
     void this.load(name).then((buffer) => {
       if (!buffer || this.disposed) return;
       audio = new THREE.PositionalAudio(this.listener);
@@ -170,6 +182,7 @@ export class AudioManager {
       audio.setLoop(true);
       audio.setRefDistance(25);
       audio.setVolume(volume * this.sfxVolume);
+      if (distanceRange) configureLinearDistance(audio, distanceRange.near, distanceRange.far);
       target.add(audio);
       if (wanted) audio.play();
     });
@@ -179,6 +192,10 @@ export class AudioManager {
         if (!audio) return;
         if (on && !audio.isPlaying) audio.play();
         else if (!on && audio.isPlaying) audio.stop();
+      },
+      setDistanceRange: (near: number, far: number) => {
+        distanceRange = { near, far };
+        if (audio) configureLinearDistance(audio, near, far);
       },
       dispose: () => {
         if (audio?.isPlaying) audio.stop();
