@@ -203,11 +203,10 @@ export abstract class Modul {
 
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z)
-      .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
-      .setLinearDamping(phys.linearDamp ?? 0.1)
-      .setAngularDamping(phys.rotDamp ?? 0.1);
+      .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w });
     if (phys.startFrozen) bodyDesc.setSleeping(true);
     const body = world.createRigidBody(bodyDesc);
+    this.ctx.physics.setIvpDamping(body, phys.linearDamp ?? 0.1, phys.rotDamp ?? 0.1);
 
     const colliders = this.createColliders(body, obj, phys, scale);
     const collider = colliders[0];

@@ -1312,3 +1312,30 @@ options subscreens are simplified (volume only).
   Menu_counter players alternate immediately so ticks can overlap. The React
   menu mixer now follows both paths; its former 0.7 counter/highscore gains and
   the extra Dong on the ordinary Highscore button were not source-authored.
+
+## 2026-07-18 IVP damping and actuator integration recovery
+
+- `Balls.nmo/Physicalize_GameBall` is the active player-ball table. Its rows are
+  paper `(friction .5, elasticity .4, mass .2, linear/rot damping 1.5/.1,
+  force .065)`, stone `(.5,.1,10,.3/.1,.92)`, and wood
+  `(.8,.2,1.9,.9/.1,.43)`. The port's paper damping had drifted to 1.3; it is
+  now 1.5 and a source-lock covers every serialized column.
+- Static recovery of shipped `physics_RT.dll` shows `Physicalize` copies the
+  serialized damping floats directly to IVP's `speed_damp_factor` and
+  `rot_speed_damp_factor`. IVP damps before committing force impulses and
+  gravity using `1-damping/66` for every coefficient Ballance serializes (with
+  its exponential high-value fallback retained). Rapier instead uses implicit
+  `1/(1+damping/66)` after forces. Passing the same number to Rapier was
+  therefore neither mathematically nor temporally equivalent.
+- Runtime dynamic bodies now keep Rapier damping at zero and apply the IVP law
+  explicitly before each 66 Hz world step. This covers player/loose balls,
+  every dynamic modul body, and trafo shatter pieces. A direct free-body probe
+  confirmed that initial X velocity 1 plus a one-unit tick impulse at paper
+  damping produces 1.97727275 (IVP target 1.97727273), while gravity remains
+  exactly -20/66 on the other axis.
+- `SetPhysicsForce` constructs an IVP controller whose shipped vtable returns
+  priority 1500 (`IVP_CP_ACTUATOR`). It queues the force as an async impulse;
+  priority-1000 gravity then damps prior velocity, commits that impulse, and
+  adds gravity. `FORCE_SCALE=66` is consequently source semantics, not tuning.
+  Pre-contact audio snapshots now predict this same force/gravity phase after
+  damping before measuring relative point velocity.

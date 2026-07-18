@@ -1,8 +1,4 @@
-/**
- * Faithful gameplay constants. Numeric values match the original game's
- * physics parameterization (as documented by the Ballance community's
- * reverse engineering of the original IVP-based physics).
- */
+/** Faithful gameplay constants decoded from the original game data and DLLs. */
 
 export const GRAVITY_Y = -20;
 export const SIM_RATE = 66; // original physics PSI rate (Hz)
@@ -54,13 +50,13 @@ export const BALL_DEFS: Record<BallKind, BallDef> = {
     friction: 0.5,
     elasticity: 0.4,
     mass: 0.2,
-    linearDamp: 1.3,
+    linearDamp: 1.5,
     rotDamp: 0.1,
     radius: 2,
   },
 };
 
-/** Push force is a constant force; IVP applied it per-PSI, so scale by rate. */
+/** SetPhysicsForce queues its authored value as one impulse per IVP PSI. */
 export const FORCE_SCALE = SIM_RATE;
 
 export interface FloorDef {

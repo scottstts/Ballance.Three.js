@@ -15,8 +15,33 @@ export interface RigidBodyMotion {
 
 export type MotionSnapshot = ReadonlyMap<number, RigidBodyMotion>;
 
+interface IvpDampingBody {
+  body: RAPIER.RigidBody;
+  linear: number;
+  angular: number;
+}
+
 function vectorLength(x: number, y: number, z: number): number {
   return Math.hypot(x, y, z);
+}
+
+/**
+ * IVP applies linear damping explicitly before force and gravity impulses.
+ * The shipped physics_RT.dll copies the serialized coefficient directly to
+ * IVP's speed_damp_factor; IVP uses this linear branch below while d*dt < .25.
+ */
+export function ivpLinearDampingFactor(damping: number, dt = SIM_DT): number {
+  const scaled = damping * dt;
+  return scaled < 0.25 ? 1 - scaled : Math.exp(-scaled);
+}
+
+/**
+ * The original uses the squared length of its three-axis damping vector to
+ * select the rotation branch. Ballance serializes one isotropic scalar.
+ */
+export function ivpAngularDampingFactor(damping: number, dt = SIM_DT): number {
+  const scaled = damping * dt;
+  return 3 * scaled * scaled < 0.5 ? 1 - scaled : Math.exp(-scaled);
 }
 
 /** Pre-solver velocity of a world point: linear + angular cross radius. */
@@ -53,6 +78,8 @@ export function initRapier(): Promise<void> {
 export class PhysicsWorld {
   readonly world: RAPIER.World;
   readonly eventQueue: RAPIER.EventQueue;
+  private readonly ivpDampingBodies = new Map<number, IvpDampingBody>();
+  private dampingPrepared = false;
 
   constructor() {
     this.world = new RAPIER.World({ x: 0, y: GRAVITY_Y, z: 0 });
@@ -61,7 +88,44 @@ export class PhysicsWorld {
   }
 
   step(): void {
+    this.prepareIvpDamping();
     this.world.step(this.eventQueue);
+    this.dampingPrepared = false;
+  }
+
+  /**
+   * Register the original IVP coefficients without enabling Rapier's own
+   * implicit, post-force damping law.
+   */
+  setIvpDamping(body: RAPIER.RigidBody, linear: number, angular: number): void {
+    body.setLinearDamping(0);
+    body.setAngularDamping(0);
+    this.ivpDampingBodies.set(body.handle, { body, linear, angular });
+  }
+
+  private prepareIvpDamping(): void {
+    if (this.dampingPrepared) return;
+    for (const [handle, state] of this.ivpDampingBodies) {
+      const { body } = state;
+      if (!body.isValid()) {
+        this.ivpDampingBodies.delete(handle);
+        continue;
+      }
+      if (!body.isDynamic() || body.isSleeping()) continue;
+      const linear = body.linvel();
+      const angular = body.angvel();
+      const linearFactor = ivpLinearDampingFactor(state.linear);
+      const angularFactor = ivpAngularDampingFactor(state.angular);
+      body.setLinvel(
+        { x: linear.x * linearFactor, y: linear.y * linearFactor, z: linear.z * linearFactor },
+        false,
+      );
+      body.setAngvel(
+        { x: angular.x * angularFactor, y: angular.y * angularFactor, z: angular.z * angularFactor },
+        false,
+      );
+    }
+    this.dampingPrepared = true;
   }
 
   /**
@@ -69,15 +133,41 @@ export class PhysicsWorld {
    * collision event supplies the magnitude of this relative-speed vector.
    */
   snapshotMotions(): Map<number, RigidBodyMotion> {
+    // IVP's gravity controller damps the existing velocity before committing
+    // the current SetPhysicsForce impulses. Prepare that same first phase so
+    // collision-speed samples observe the source-authored damping law.
+    this.prepareIvpDamping();
     const motions = new Map<number, RigidBodyMotion>();
     this.world.forEachRigidBody((body) => {
       const center = body.worldCom();
       const linear = body.linvel();
       const angular = body.angvel();
+      let linearX = linear.x;
+      let linearY = linear.y;
+      let linearZ = linear.z;
+      let angularX = angular.x;
+      let angularY = angular.y;
+      let angularZ = angular.z;
+      if (body.isDynamic() && !body.isSleeping()) {
+        // SetPhysicsForce is an IVP_CP_ACTUATOR controller: it queues an
+        // asynchronous impulse before the gravity controller damps, commits
+        // those impulses, and adds gravity. Predict that controller phase so
+        // impact sounds sample the velocity immediately before contact solve.
+        const force = body.userForce();
+        const invMassDt = body.invMass() * SIM_DT;
+        linearX += force.x * invMassDt;
+        linearY += force.y * invMassDt + GRAVITY_Y * body.gravityScale() * SIM_DT;
+        linearZ += force.z * invMassDt;
+        const torque = body.userTorque();
+        const inertia = body.effectiveWorldInvInertia();
+        angularX += (inertia.m11 * torque.x + inertia.m12 * torque.y + inertia.m13 * torque.z) * SIM_DT;
+        angularY += (inertia.m21 * torque.x + inertia.m22 * torque.y + inertia.m23 * torque.z) * SIM_DT;
+        angularZ += (inertia.m31 * torque.x + inertia.m32 * torque.y + inertia.m33 * torque.z) * SIM_DT;
+      }
       motions.set(body.handle, {
         center: { x: center.x, y: center.y, z: center.z },
-        linear: { x: linear.x, y: linear.y, z: linear.z },
-        angular: { x: angular.x, y: angular.y, z: angular.z },
+        linear: { x: linearX, y: linearY, z: linearZ },
+        angular: { x: angularX, y: angularY, z: angularZ },
       });
     });
     return motions;
@@ -139,10 +229,9 @@ export class PhysicsWorld {
   createBallBody(def: BallDef, position: THREE.Vector3): { body: RAPIER.RigidBody; collider: RAPIER.Collider } {
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(position.x, position.y, position.z)
-      .setLinearDamping(def.linearDamp)
-      .setAngularDamping(def.rotDamp)
       .setCcdEnabled(true);
     const body = this.world.createRigidBody(bodyDesc);
+    this.setIvpDamping(body, def.linearDamp, def.rotDamp);
     // IVP combines friction/elasticity multiplicatively (ball 0.8 x floor 0.7 etc.)
     const colliderDesc = RAPIER.ColliderDesc.ball(def.radius)
       .setFriction(def.friction)
@@ -156,6 +245,7 @@ export class PhysicsWorld {
   }
 
   removeBody(body: RAPIER.RigidBody): void {
+    this.ivpDampingBodies.delete(body.handle);
     this.world.removeRigidBody(body);
   }
 }

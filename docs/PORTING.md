@@ -119,9 +119,11 @@ row/column routing.
 - **Three.js, vanilla, engine-owned canvas** — not react-three-fiber. A fixed-timestep
   physics game with lots of imperative per-frame state is cleaner with an engine core that
   owns the loop; React renders the DOM UI (menus, HUD, dialogs) above the canvas.
-- **Physics: Rapier** (`@dimforge/rapier3d-compat`) — best-maintained WASM engine, trimesh
-  colliders, CCD, joints, deterministic enough. (Ammo.js is the closer-to-original
-  alternative; Rapier's API/tooling wins for a new TS codebase.)
+- **Physics: Rapier** (`@dimforge/rapier3d-compat`) — WASM rigid bodies, trimesh colliders,
+  CCD, and joints, wrapped by a 66 Hz compatibility layer recovered from the shipped IVP
+  runtime. Original coefficients are never treated as generic Rapier tuning values: the
+  port applies IVP's explicit pre-force damping law itself, converts `SetPhysicsForce` from
+  one impulse per PSI, and uses the source multiplicative contact coefficients.
 - **State bridge: zustand** (engine writes, React subscribes) + a tiny event bus.
 - **Audio: Web Audio** via `THREE.PositionalAudio` + a music state machine.
 - Persistence: `localStorage` (highscores, unlocked levels, key bindings) replacing `Database.tdb`.
@@ -276,11 +278,13 @@ Ship levels progressively — a deployed build with Level 1 fully playable beats
 
 ## 6. Risks, honestly ranked
 
-1. **Physics feel — the make-or-break.** The original uses an Ipion/early-Havok-era engine
-   whose ball-on-rail contact (two parallel curved rails) has a very particular feel, and the
-   speedrun community will notice everything. Mitigations: source-derived body/contact values,
-   dedicated deterministic regression scenes, CCD on the ball, and fixed 120 Hz stepping.
-   Approximation is tracked as an open defect rather than accepted as a final state.
+1. **Physics compatibility — the make-or-break.** The browser still solves contacts with
+   Rapier rather than the shipped IVP engine, so all-level rail/contact validation remains
+   essential. The surrounding integration is source-derived: fixed 66 Hz PSI, exact
+   `Physicalize_GameBall` and prefab values, independent input axes, per-PSI actuator impulses,
+   IVP's explicit damping before force/gravity, multiplicative friction/restitution, authored
+   mass centers/inertia, CCD, and internal-edge-fixed level trimeshes. Any remaining solver
+   difference is measured as a defect rather than hidden by hand-tuned ball constants.
 2. **Group/attribute completeness.** If BBP's export misses some semantic data (per-object
    attributes beyond groups), fall back to PyBMap for a targeted extractor. Validate against
    nmo2escn's output early.

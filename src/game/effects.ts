@@ -1383,10 +1383,9 @@ export class ShatterSystem {
 
       const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(pos.x, pos.y, pos.z)
-        .setRotation(rotation)
-        .setLinearDamping(source.linearDamping)
-        .setAngularDamping(source.angularDamping);
+        .setRotation(rotation);
       const body = this.physics.world.createRigidBody(bodyDesc);
+      this.physics.setIvpDamping(body, source.linearDamping, source.angularDamping);
       const desc =
         RAPIER.ColliderDesc.convexHull(localVertices(mesh, scale)) ?? RAPIER.ColliderDesc.ball(0.4);
       const friction = randomRange(source.friction);

@@ -83,8 +83,7 @@ export class Ball {
       .setMass(this.def.mass)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
     this.collider = world.createCollider(desc, this.body);
-    this.body.setLinearDamping(this.def.linearDamp);
-    this.body.setAngularDamping(this.def.rotDamp);
+    this.physics.setIvpDamping(this.body, this.def.linearDamp, this.def.rotDamp);
     this.body.wakeUp();
   }
 
