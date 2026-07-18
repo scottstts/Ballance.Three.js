@@ -1,0 +1,39 @@
+Initiation au jeu:
+Avec la touche "ESC" vous pouvez à tout moment stopper ou quitter le jeu.
+Appuyez sur la touche "Entrer" pour poursuivre l´initiation ou sur la touche "Q" pour la quitter.
+*Rotation de la caméra:
+Appuyer sur la touche "maj" de gauche et sur les flèches de directions gauche ou droite afin de faire pivoter la caméra de 90 degrés.
+
+Continuer avec "Entrer" ...
+*Elévation de la caméra:
+Pour obtenir une meilleure vue d´ensemble, maintenez la touche "Espace" enfoncée. 
+
+Continuer avec "Entrer" ...
+*Contrôle:
+Faites pivoter la vue de facon à ce que le chemin et les deux tours se trouvent devant vous.
+Avec l´aide des flèches de direction vous pouvez controler le déplacement de la balle vers l´avant, l´arrière, la gauche ou la droite. Suivez le chemin!
+*"Vies supplémentaires":
+Une chute dans le vide entraîne la perte d´une vie. Le nombre de vies restantes est indiqué en bas à droite de l´écran.
+Ramasser les "vies supplémentaires" afin d´obtenir une vie supplémentaire. 
+
+Continuer avec "Entrer" ...
+*Transmutateurs:
+Avec l´aide des transmutateurs, vous pouvez modifier le structure de votre balle. Le type de transmutation est indiquée par le matériau représenté dans le champ du transmutateur. Ceci est un transmutateur "pierre".
+
+Continuer avec "Entrer" ...
+*La montée est trop importante pour une balle en pierre! Recherchez un transfo "bois" et essayez à nouveau.
+Conseil: faite pivoter l´angle de vue (touches "maj" + flèche droite ou gauche) afin de mieux vous orienter. Un déplacement en arrière peut s´avérer dangereux!
+Continuer avec "Entrer" ...
+*Points supplémentaires:
+Sur le côté gauche de l´écran vous pouvez lire votre score actuel. Collectionnez les points supplémentaires pour augmenter votre score.
+
+Continuer avec "Entrer" ...
+*Point de contrôle:
+Ceci est un point de contrôle à travers lequel vous devez passer. Suite à une chute, vous rejouerez toujours une nouvelle vie à partir du dernier point de contrôle franchi.
+
+Continuer avec "Entrer" ...
+*Enfin:
+En cas de problèmes dans la poursuite du jeu, référez vous à l´aide que vous pouvez trouver dans le menu de démarrage du jeu dans Windows. Cette aide offre de nombreux conseils pour chaque niveau.
+
+Quittez l´initiation avec "Entrer" ...
+  

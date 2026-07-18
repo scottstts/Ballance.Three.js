@@ -1,18 +1,27 @@
-/**
- * Loads original game files served by the dev-server /bin route.
- * All lookups are case-insensitive (Virtools references differ in case from disk).
- */
+/** Loads the codebase-owned, deployable game assets under public/game. */
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { NmoFile } from '../formats/ck2/types.ts';
 
 const nmoCache = new Map<string, Promise<NmoFile>>();
 const bufferCache = new Map<string, Promise<ArrayBuffer>>();
 
+function normalizedAssetPath(relPath: string): string {
+  return relPath.replaceAll('\\', '/').replace(/^\/+/, '').toLowerCase();
+}
+
+/** BMP sources are losslessly repacked as PNG by scripts/sync-game-assets.mjs. */
+export function gameAssetUrl(relPath: string): string {
+  const normalized = normalizedAssetPath(relPath);
+  const bundled = normalized.endsWith('.bmp') ? `${normalized}.png` : normalized;
+  const encoded = bundled.split('/').map(encodeURIComponent).join('/');
+  return `${import.meta.env.BASE_URL}game/${encoded}`;
+}
+
 export function fetchGameBuffer(relPath: string): Promise<ArrayBuffer> {
-  const key = relPath.toLowerCase();
+  const key = normalizedAssetPath(relPath);
   let p = bufferCache.get(key);
   if (!p) {
-    p = fetch(`/bin/${relPath}`).then((r) => {
+    p = fetch(gameAssetUrl(relPath)).then((r) => {
       if (!r.ok) throw new Error(`asset not found: ${relPath}`);
       return r.arrayBuffer();
     });

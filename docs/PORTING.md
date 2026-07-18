@@ -15,8 +15,8 @@ The game splits cleanly into two kinds of content:
    rebuilds may help locate a question, but every value and rule must be confirmed against
    the original game payload before it becomes authoritative here.
 
-So the port = **one-time asset conversion pipeline** + **TypeScript reimplementation of the
-game rules** on Three.js + a physics engine, with React as the UI shell.
+So the port = **lossless deployable asset materialization** + **TypeScript reimplementation
+of the game rules** on Three.js + a physics engine, with React as the UI shell.
 
 ---
 
@@ -28,6 +28,12 @@ that every gameplay input shared by them is byte-identical. The original payload
 the sole authority; external ports are only discovery aids whose claims must be confirmed
 against these files.
 
+The browser build is self-contained. `npm run sync:assets` reads the primary installed tree
+and writes the codebase-owned runtime set to `public/game`: NMO/WAV/TGA/TXT stay byte-exact,
+BMPs are repacked losslessly as PNG, and the Atari AVI is decoded to lossless APNG. Every
+output has a checksum in `public/game/_manifest.json`; Vite copies the whole set to `dist/`.
+Neither the dev server nor the production build serves `Ballance_bin` directly.
+
 | Path | What it is | Port relevance |
 |---|---|---|
 | `base.cmo` | Virtools composition: engine bootstrap + all game logic graphs | Logic reference only — not convertible |
@@ -36,14 +42,15 @@ against these files.
 | `3D Entities/Balls.nmo` | Ball meshes + materials (paper/wood/stone + lightning spheres) | Convert |
 | `3D Entities/Menu.nmo`, `MenuLevel.nmo` | 3D main-menu scene (the menu tower) | Convert (later milestone) |
 | `3D Entities/Gameplay.nmo`, `Levelinit.nmo`, `Sound.nmo`, `Camera.nmo`, `Tutorial.nmo`, `AnimTrafo.nmo`, `Intro.nmo`, `Language.nmo`, `Musicfiles.nmo` | Framework data (camera params, sound mappings, trafo animation, language) | Reference / partial conversion |
-| `Textures/` (84 files, BMP/TGA) | All surface textures + UI | Convert to PNG |
+| `Textures/` (200 BMP/TGA images) | All surface textures + UI | BMP → lossless PNG; TGA byte-exact |
 | `Textures/sky/` (60 files) | 12 skyboxes (A–L) × **5 faces** — Back/Down/Front/Left/Right. Ballance skyboxes have **no top face**; the fog color closes the dome | Convert; special-case the missing +Y face |
-| `Sounds/` (62 WAV, ~52 MB) | Hit sounds per material pair (`Hit_Stone_Wood`…), rolling loops per pair (`Roll_*`), death sounds (`Pieces_*`), misc SFX, and music (5 themes × 3 variations + atmos) | Transcode to web codecs |
-| `Text/Tutorial1..5.txt` | Tutorial overlay strings | Copy as JSON |
+| `Sounds/` (62 WAV, ~52 MB) | Hit sounds per material pair (`Hit_Stone_Wood`…), rolling loops per pair (`Roll_*`), death sounds (`Pieces_*`), misc SFX, and music (5 themes × 3 variations + atmos) | Copy byte-exact |
+| `Text/Tutorial1..5.txt` | Tutorial overlay strings | Copy byte-exact |
 | `Database.tdb` | Highscore DB (proprietary) | Replace with `localStorage` |
 | `Bin/`, `BuildingBlocks/`, `Managers/`, `Plugins/`, `RenderEngines/` | Virtools runtime DLLs | Irrelevant |
 
-Raw asset footprint: ~136 MB → expect ~30–40 MB web-ready after transcoding (audio is the bulk).
+The current exact/lossless runtime set is 86.4 MiB of file contents; the complete production
+directory is about 111 MiB on disk. The untranscoded WAV music is the bulk.
 
 ---
 
@@ -67,53 +74,40 @@ Raw asset footprint: ~136 MB → expect ~30–40 MB web-ready after transcoding 
 
 ---
 
-## 3. Phase A — Asset pipeline (offline, run-once, lives in `tools/`)
+## 3. Phase A — Asset pipeline (implemented)
 
-Everything below reads from a **local, user-supplied** game folder and writes to
-`public/assets/` (gitignored — the assets are copyrighted by Atari/Cyparade and must not be
-committed or publicly deployed; only the code is yours to license).
+The active pipeline is `scripts/sync-game-assets.mjs`. It reads the local, read-only original
+tree and writes `public/game` plus `public/game-derived`. Those outputs are committed as the
+port's owned runtime asset set and copied into production builds. Re-running the script is a
+deliberate source refresh; normal dev/build operation has no dependency on the original tree.
 
-### 3.1 Geometry + semantics: NMO → GLB + groups JSON
+### 3.1 Geometry + semantics: direct NMO runtime parsing
 
-Recommended path — **headless Blender + BBP**, scripted:
+The implemented path does not convert geometry to GLB. `src/formats/ck2/` parses the
+source-exact NMO at runtime, retaining meshes, materials, texture slots, transforms, groups,
+animations, parameters, and raw chunks. `src/engine/sceneBuilder.ts` converts Virtools'
+left-handed data into Three.js. This avoids a Blender dependency and preserves behavioral
+records for source-lock tests.
 
-```
-tools/export_level.py   (run via: blender --background --python …)
-  for each Level_XX.NMO:
-    1. BBP import (meshes, materials, texture refs, transforms, groups)
-    2. export Level_XX.glb (glTF binary, Y-up right-handed — Blender handles the
-       axis conversion from Virtools' left-handed space; verify winding/normals once)
-    3. dump Level_XX.groups.json: { objectName: [groupNames…] } — mirrors the
-       nmo2escn schema. This is the level's entire semantic layer:
-         Sector_01..N            → progression sectors
-         Phys_Floors             → static trimesh colliders, floor material
-         Phys_FloorRails         → static colliders, rail material
-         Phys_FloorStopper       → invisible walls
-         PS_Levelstart / PC_Checkpoints / PE_Levelende
-         P_Extra_Life / P_Extra_Point / P_Trafo_* / P_Modul_XX placements
-         DepthTestCubes, shadow/decor groups, …
-  same for PH/*.nmo prefabs, Balls.nmo, MenuLevel.nmo
-```
-
-Fully-scriptable alternative (no Blender in the loop): **PyBMap** → custom glTF writer.
-More control, more code. Start with Blender; switch only if it blocks automation.
-
-The placement model matters: level files contain *placeholder objects* (`P_Modul_03_01` etc.)
-whose transforms say *where* a modul instance goes; the PH prefab GLBs say *what* it is.
-Runtime instantiates prefab at placeholder transform — exactly how the original works.
+The placement model remains important: level files contain placeholder objects such as
+`P_Modul_03_01`; their transforms say where an instance belongs, while `PH/P_Modul_03.nmo`
+defines what it is. Runtime loads the PH prefab, rebuilds its authored parent hierarchy, and
+instantiates it at each placeholder transform.
 
 ### 3.2 Textures
 
-`BMP/TGA → PNG` (Pillow or ImageMagick). Watch for: TGA alpha channels (glass, gradients,
-fonts), palette BMPs, and non-power-of-two sizes (fine in WebGL2). Skyboxes: 5 faces only —
-build the sky as a 5-sided cube (or cubemap with a solid-color +Y face matching the fog color).
+The synchronization script repacks all 184 BMPs to lossless PNG while preserving their
+source request name as `<name>.bmp.png`; 16 TGAs stay byte-exact because the port's decoder
+handles their palette/RLE/alpha semantics directly. Skyboxes use all 60 authored images:
+12 sets × five faces, with no top face. Runtime builds a five-sided cube and closes the open
+direction with the source horizon color.
 
 ### 3.3 Audio
 
-`ffmpeg WAV → .m4a (AAC)` (universal browser support; Opus/OGG optional secondary). Keep
-short SFX under Web Audio as decoded buffers; stream music. The naming already encodes the
-logic: `Hit_<ball>_<surface>`, `Roll_<ball>_<surface>` — the impact/rolling sound matrix is
-data-driven for free.
+The implementation keeps all 62 source WAVs byte-identical and decodes them through Web
+Audio. This avoids codec drift in a fidelity build. The naming encodes the material matrix:
+`Hit_<ball>_<surface>` and `Roll_<ball>_<surface>`; `Sound.nmo/BallSound` supplies the exact
+row/column routing.
 
 ---
 
@@ -121,7 +115,7 @@ data-driven for free.
 
 ### 4.1 Stack
 
-- **Vite + React 18 + TypeScript (strict)**
+- **Vite + React 19 + TypeScript (strict)**
 - **Three.js, vanilla, engine-owned canvas** — not react-three-fiber. A fixed-timestep
   physics game with lots of imperative per-frame state is cleaner with an engine core that
   owns the loop; React renders the DOM UI (menus, HUD, dialogs) above the canvas.
@@ -136,21 +130,16 @@ data-driven for free.
 
 ```
 ballance-web/
-  tools/                  # Phase A pipeline (python + shell)
-  public/assets/          # generated, gitignored
-    levels/Level_01.glb + Level_01.groups.json …
-    prefabs/  balls/  textures/  sky/  audio/
+  scripts/sync-game-assets.mjs
+  public/game/            # committed deployable NMO/WAV/TGA/TXT/lossless PNG tree
+  public/game-derived/    # lossless APNG intro movie
+  tools/                  # binary archaeology and extraction helpers
   src/
-    app/                  # React: menus, HUD, level select, options, tutorial overlays
+    ui/                   # React: menus, HUD, level select, options, tutorial overlays
     engine/
-      core/               # loop (fixed 120 Hz physics / rAF render, interpolation), scene, loader
-      physics/            # rapier world, materials table, collision-event → sound router
-      ball/               # controller, ball defs (paper/wood/stone), trafo logic
-      camera/             # Ballance chase rig: 90° step rotation, lift-to-survey, follow lag
-      level/              # groups.json interpreter, sector manager, spawn/respawn, kill plane
-      moduls/             # one class per element (see 4.4)
-      audio/              # sfx matrix, rolling-loop controller, music state machine
-    game/                 # top-level state machine: boot → menu → loading → playing → paused → death → finish → highscore
+      assets.ts           # static bundled-asset resolver and NMO cache
+      sceneBuilder.ts     # direct runtime CK2/NMO scene construction
+    game/                 # 66 Hz physics/gameplay, camera, moduls, effects, audio
 ```
 
 ### 4.3 Core systems to reimplement (the actual work)
@@ -158,7 +147,8 @@ ballance-web/
 1. **Ball + input.** Arrow keys apply a camera-relative horizontal force; no jump. Three ball
    types with distinct mass / push force / friction / restitution / damping — decode the
    original Physicalize and controller graphs rather than guessing. Falling below the sector kill
-   plane → `Pieces_*` death effect → life lost → respawn at current checkpoint.
+   plane → life lost → respawn at current checkpoint. `Pieces_*` belongs to trafo shatter,
+   not ordinary falls.
 2. **Camera rig.** `Camera.nmo` authors the 58° 4:3 target camera (near 3, far 1200), its
    22-unit horizontal / 35-unit vertical slot, and the target/orientation hierarchy.
    `Gameplay.nmo` supplies two `TT Set Dynamic Position` controllers: the target follows the
@@ -199,7 +189,11 @@ ballance-web/
    pickup is owned by exactly one source `Sector_NN` group across all 12 levels; inactive-sector
    scripts cannot animate, collect, or respawn.
 6. **Audio logic.** Impact sounds are chosen by (ball material × surface material × impact
-   speed), and rolling loops use the source contact delays plus velocity curves. `Sound.nmo`
+   speed), and rolling loops use the source contact delays and linear speed controls. The
+   exact roll rules are volume `min(1,speed*.05)`, pitch `0.5+speed*.01`, and identical `.3 s`
+   contact-on/off delays. Surface hit detectors use stone `(min2,max30,sleep1)`, wood
+   `(2,14,1)`, metal `(2,14,2)`, and dome `(1,15,1)`; volume is `speed/max` after a strict
+   minimum gate. `Sound.nmo`
    runs atmosphere (uniform 0–15 s delay) and theme (enabled after 7 s, uniform 0–50 s delay)
    as independent equal-weight three-track schedulers with immediate repeats allowed. The
    last checkpoint switches only the theme off; its flat loop uses one strict 200-unit
@@ -279,11 +273,9 @@ Ship levels progressively — a deployed build with Level 1 fully playable beats
    per modul for observation and tuning, not just coding.
 4. **Texture quirks.** TGA alpha, palettized BMPs, additive-blend materials (flames, glow) —
    handle per-material in the pipeline spike.
-5. **Licensing.** Code: your choice (GPL-3.0 if you lean on the Unity Rebuild closely).
-   Assets: Atari/Cyparade copyright — local conversion for personal use is the community
-   norm; don't commit or publicly host them. A public deployment would need a "bring your own
-   game files" loader (user drops the folder / zip into the browser, pipeline runs client-side
-   or pre-baked locally) — exactly how OpenBallance handles it.
+5. **Asset distribution policy.** The engineering requirement is a self-contained build, now
+   satisfied by `public/game`. Any licensing or public-hosting policy remains a repository-owner
+   decision and does not change the original binaries' role as primary technical authority.
 
 ---
 

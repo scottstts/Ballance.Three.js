@@ -1,0 +1,41 @@
+Introduzione al gioco:
+Premere "ESC" per fermare o abbandonare il gioco in ogni momento.
+Premere "Invio" per  continuare l´introduzione o "Q" fermarla.
+*Ruotare la visuale:
+Tenete premuto il tasto "Shift" sinistro e usate i tasti cursore "Sinistra" e "Destra" per poter ruotare la visuale a scatti di 90 gradi.
+
+Avanti con "Invio" ...
+*Alzare la visuale:
+Per potere ottenere una migliore vista d´insieme premete la "Barra Spazio".
+
+Avanti con "Invio" ...
+*Movimenti:
+Girate ora la visuale in modo che la via con le due torri vi stia di fronte.
+Usando i tasti cursore dirigerete la palla "Avanti", "Indietro", a "Destra" e a "Sinistra".
+
+Seguite la via!
+*Vite-Extra:
+Se cadete giù perdete una vita. Le vite rimanenti sono segnalate dall´indicatore in basso a destra.
+Tramite l´acquisizione di una Vita-Extra guadagnate automaticamente una vita.
+
+Avanti con "Invio" ...
+*Trasfos:
+Tramite i cosiddetti "Trasformatori" potete cambiare il materiale della palla. Il tipo di trasformazione si riconosce dal materiale del Trasfo-Campo. Questo è un Trasfo-Pietra.
+
+Avanti con "Invio" ...
+*La salita è troppo ripida per una palla di pietra! Cercate un Trasfo-legno e provate un´altra volta.
+Sugg.: Ruotate opportunamente la visuale ("Shift"+ "Destra/Sinistra") per orientarvi meglio. Attenti rotolare all´indietro può essere pericoloso!
+Avanti con "Invio" ...
+*Punti-Extra:
+Sul lato sinistro potete leggere il vostro punteggio attuale che diminuisce costantemente durante il gioco. Raccogliendo Punti-Extra avete la possibilità di aumentare il vostro punteggio.
+
+Avanti con "Invio" ...
+*Checkpoints:
+Questo è un checkpoint e dovete attraversarlo. Se, mentre giocate, perdete una vita potete continuare il gioco dall´ultimo Checkpoint attraversato.
+
+Avanti con "Invio" ...
+*Per concludere:
+Se non dovreste più riuscire ad andare avanti, potete consultare la guida in linea HTML. La guida contenente suggerimenti e indicazioni si trova sopra il menú 
+Start di Windows (non durante il gioco).
+
+Per concludere l´introduzione premere "Invio" ...

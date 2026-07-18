@@ -1,0 +1,41 @@
+Einführung in das Spiel:
+Mit "ESC" können Sie das Spiel jederzeit anhalten oder verlassen.
+Sie können nun mit der "EINGABE"-Taste (Return) die Einführung fortsetzen oder mit der "Q"-Taste die Einführung beenden.
+*Drehen der Ansicht:
+Halten Sie die linke "UMSCHALT"-Taste (Shift) gedrückt, und benutzen Sie dabei gleichzeitig die Pfeiltasten "LINKS" und "RECHTS" um die Ansicht in 90-Grad-Schritten zu drehen.
+
+Weiter mit "EINGABE" ...
+*Anheben der Ansicht:
+Um eine besseren Übersicht zu bekommen, halten Sie die "LEERTASTE" gedrückt.
+
+Weiter mit "EINGABE" ...
+*Navigation:
+Drehen Sie nun die Ansicht, so dass der Weg mit den beiden Türmen vor Ihnen liegt.
+Mit Hilfe der Pfeiltasten können Sie den Ball "VORWÄRTS", "RÜCKWÄRTS", "RECHTS" und "LINKS" steuern. 
+
+Folgen Sie dem Weg!
+*Extra-Leben:
+Wenn Sie herunter fallen, so wird Ihnen ein Leben abgezogen. Die verbleibenden Leben erkennen sie an der Anzeige unten rechts.
+Durch das Aufsammeln eines Lebens-Extras können Sie ein weiteres Leben hinzugewinnen.
+
+Weiter mit "EINGABE" ...
+*Trafos:
+Mit Hilfe sogenannter "Transformatoren" können Sie das Material Ihres Balles ändern. Die Art der Transformation erkennen Sie an dem Material des Trafo-Feldes. Dies ist ein Stein-Transformator.
+
+Weiter mit "EINGABE" ...
+*Die Steigung ist zu steil für einen Steinball!
+Suchen Sie nach einem Holz-Trafo und versuchen Sie es danach erneut.
+Tipp: Drehen Sie gelegentlich ihre Ansicht ("UMSCHALT" + "RECHTS/LINKS"), um sich besser zu orientieren. Rückwärts-Rollen kann gefährlich sein!
+Weiter mit "EINGABE" ...
+*Punkte-Extra:
+Auf der linken Seite können Sie ihren aktuellen Punkte-Stand ablesen, der während des Spiel ständig abnimmt. Durch das Aufsammeln eines Punkte-Extras können Sie Ihren Punkte-Stand erhöhen.
+
+Weiter mit "EINGABE" ...
+*Checkpoints:
+Dies ist ein Checkpoint, den Sie durchfahren müssen. Verlieren Sie während des Spiels ein Leben, so können Sie immer vom letzten durchfahrenen Checkpoint weiterspielen.
+
+Weiter mit "EINGABE"...
+*Zum Abschluss:
+Sollten Sie einmal nicht mehr weiterkommen, so können Sie in der HTML Spielhilfe nachlesen. Die Spielhilfe mit Tipps und Hinweisen finden Sie über das Windows Start-Menü (nicht während des Spiels). 
+
+Beenden der Einführung mit "EINGABE" ...

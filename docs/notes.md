@@ -4,10 +4,11 @@ Append-only scratchpad of things learned during the port. Read this first when r
 
 ## Architecture decisions
 
-- **No offline asset pipeline.** We parse the original Virtools NMO/CMO files directly in TS
-  (`src/formats/ck2/`), at runtime in the browser and in Node for tests/tools. Assets stay in
-  `Ballance_bin/` (gitignored), served to the dev server via a Vite middleware. Maximum
-  fidelity, no Blender dependency, no converted-asset drift.
+- **Deployable codebase-owned asset tree.** We parse Virtools NMO files directly in TS
+  (`src/formats/ck2/`) at runtime and in Node tests/tools, but the browser never reads
+  `Ballance_bin`. `npm run sync:assets` copies the required primary-source assets into
+  `public/game`: NMO/WAV/TGA/TXT remain byte-identical, BMPs are losslessly repacked as PNG,
+  and Atari AVI becomes lossless APNG. Vite copies this complete tree into `dist/`.
 - Format reference: MIT-licensed libcmo21 (cloned to scratchpad; re-clone if needed:
   https://github.com/yyc12345/libcmo21). Our parser is an original TS implementation.
 - Behavior reference for gameplay: imengyu/Ballance Unity Rebuild (GPL-3.0) — use for
@@ -64,7 +65,8 @@ Append-only scratchpad of things learned during the port. Read this first when r
   `PE_Levelende`, `P_Extra_Point`, `P_Extra_Life`, `P_Trafo_*`, `P_Ball_*` (trafo-target
   placeholders), `P_Modul_XX` (modul placements), `P_Box`, `P_Dome`, `Shadow`,
   `DepthTestCubes`, and **`Sound_RollID_01..03` / `Sound_HitID_01..03`** — surface→sound
-  material mapping (01=wood, 02=metal, 03=stone by convention — verify by member names).
+  material mapping (01=stone, 02=wood, 03=metal, matching the three BallSound columns and
+  PhysicsContinuousContact outputs).
 - Level_01: 356 objects, 128 meshes, 29 groups, 30 textures, 41 materials. Sectors contain
   the floor entities per stage; checkpoint/reset markers are separate groups ordered by name
   suffix (PC_Checkpoint_01... / PR_Resetpoint_01...).
@@ -76,7 +78,8 @@ Append-only scratchpad of things learned during the port. Read this first when r
 - `Sound_RollID_XX`/`Sound_HitID_XX` groups exist per level — use them for the audio matrix
   instead of guessing surface material from names.
 - Texture name case differs from file case (e.g. `floor_top_Checkpoint` vs
-  `Floor_Top_Checkpoint.bmp`) → resolve asset paths case-insensitively.
+  `Floor_Top_Checkpoint.bmp`) → the synchronized tree and runtime paths are normalized to
+  lowercase. Source `.bmp` requests map to committed `.bmp.png` files.
 - Virtools is left-handed Y-up; three.js right-handed Y-up → convert by negating Z of
   positions/normals/matrix third row+column and flipping triangle winding.
 
@@ -240,17 +243,17 @@ corrections — several earlier assumptions were WRONG:
   16x16 grid of 32px cells
   (uppercase + small-caps — render mixed-case text and it looks original),
   Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
-- **Audio model (exact original semantics)**: roll loops are created ONCE and play
-  forever at volume 0 — only volume/pitch are modulated; per-surface contact
-  needs 0.5s sustained to become audible (paper 0.8s) and 0.5s absence to go
-  silent (this kills the rail-flicker glitch). Roll volume = Hermite curve keys
-  (0,0,3.19)(0.0636,0.1375,0.82)(0.4165,0.41,1.16)(0.9,0.8,0.41)(2,1,0) sampled
-  at speed/ref (wood 9, paper 12, stone 15); pitch = min(1, 0.6+0.03*speed).
-  Hits are collision-STARTED events using the pre-step velocity projected on the
-  contact normal: below 5 nothing plays, volume ramps to max at 30 (dome 15),
-  each surface sleeps 0.6s. Ball sounds are 2D (non-positional). Dome has its own
-  hit layer (Hit_Wood_Dome / Hit_Stone_Kuppel, no roll). Phys_FloorStopper floors
-  additionally bang Hit_WoodenFlap.wav (volume=impact/10).
+- **Audio model (superseding the earlier complementary-port guesses):** roll contact
+  start/end delays are both `.3000000119` for paper, wood, and stone. The serialized
+  multiplication operation makes volume `min(1, speed*.05)`; Calculator stores
+  `0.5+(a*0.01)` for pitch, with no Hermite curve or per-ball speed reference. Hit
+  detectors are stone `(min2,max30,sleep1)`, wood `(2,14,1)`, metal `(2,14,2)`, and
+  dome `(1,15,1)`. `physics_RT.dll` uses a strict `speed > min` gate and outputs
+  `min(1,speed/max)` without subtracting min. Speed is the magnitude of the two bodies'
+  pre-response relative velocity at the contact point, including angular velocity.
+  Ball sounds are flat; BallNav activate/deactivate creates/stops their detectors.
+  Each Phys_FloorStopper owns a separate `(min.3,max10,sleep.5)` detector, and
+  `TT_LinearVolume` converts normalized speed with `x<=.01?0:.02*50^x` (capped at 1).
 - **Music**: ~70% of scheduler slots play Music_Atmo_1..3 (volume 0.5-1), gaps
   20-30s after music, 10-20s after atmo, never the same theme variation twice in
   a row. Checkpoints play Misc_Checkpoint.wav (Music_EndCheckpoint is the FINAL
@@ -312,17 +315,17 @@ corrections — several earlier assumptions were WRONG:
   16x16 grid of 32px cells
   (uppercase + small-caps — render mixed-case text and it looks original),
   Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
-- **Audio model (exact original semantics)**: roll loops are created ONCE and play
-  forever at volume 0 — only volume/pitch are modulated; per-surface contact
-  needs 0.5s sustained to become audible (paper 0.8s) and 0.5s absence to go
-  silent (this kills the rail-flicker glitch). Roll volume = Hermite curve keys
-  (0,0,3.19)(0.0636,0.1375,0.82)(0.4165,0.41,1.16)(0.9,0.8,0.41)(2,1,0) sampled
-  at speed/ref (wood 9, paper 12, stone 15); pitch = min(1, 0.6+0.03*speed).
-  Hits are collision-STARTED events using the pre-step velocity projected on the
-  contact normal: below 5 nothing plays, volume ramps to max at 30 (dome 15),
-  each surface sleeps 0.6s. Ball sounds are 2D (non-positional). Dome has its own
-  hit layer (Hit_Wood_Dome / Hit_Stone_Kuppel, no roll). Phys_FloorStopper floors
-  additionally bang Hit_WoodenFlap.wav (volume=impact/10).
+- **Audio model (superseding the earlier complementary-port guesses):** roll contact
+  start/end delays are both `.3000000119` for paper, wood, and stone. The serialized
+  multiplication operation makes volume `min(1, speed*.05)`; Calculator stores
+  `0.5+(a*0.01)` for pitch, with no Hermite curve or per-ball speed reference. Hit
+  detectors are stone `(min2,max30,sleep1)`, wood `(2,14,1)`, metal `(2,14,2)`, and
+  dome `(1,15,1)`. `physics_RT.dll` uses a strict `speed > min` gate and outputs
+  `min(1,speed/max)` without subtracting min. Speed is the magnitude of the two bodies'
+  pre-response relative velocity at the contact point, including angular velocity.
+  Ball sounds are flat; BallNav activate/deactivate creates/stops their detectors.
+  Each Phys_FloorStopper owns a separate `(min.3,max10,sleep.5)` detector, and
+  `TT_LinearVolume` converts normalized speed with `x<=.01?0:.02*50^x` (capped at 1).
 - **Music**: ~70% of scheduler slots play Music_Atmo_1..3 (volume 0.5-1), gaps
   20-30s after music, 10-20s after atmo, never the same theme variation twice in
   a row. Checkpoints play Misc_Checkpoint.wav (Music_EndCheckpoint is the FINAL
@@ -1143,3 +1146,37 @@ options subscreens are simplified (volume only).
   browser tab and dev server were closed afterward. The full gate passes with
   129 tests plus lint, typecheck, and production build; only Vite's established
   chunk-size warning remains.
+
+## 2026-07-18 source-exact collision mixer and deployable assets
+
+- `Sound.nmo/Hit Sounds` contains four independent PhysicsCollDetection blocks:
+  collision IDs 1..4 are stone `(2,30,1)`, wood `(2,14,1)`, metal `(2,14,2)`,
+  and dome `(1,15,1)` for min speed, max speed, and post-hit sleep seconds.
+  Static decompilation of `physics_RT.dll`'s handler proves its gate is strict
+  `speed > min`; the normalized output is `min(1,speed/max)`, not the former
+  `(speed-min)/(max-min)` approximation. The event input is a relative-speed
+  vector, so the port snapshots all Rapier rigid-body linear/angular velocities
+  before solving and measures both bodies at each solver contact point.
+- `MultiRollSoundControl` multiplies `TT SpeedOMeter.Absolute Speed` by the
+  serialized `SoundVolumeFactor=.05`; the operation GUID pair
+  `38996b85:334e35c2` resolves to Multiplication in the shipped
+  `ParameterOperations.dll`. Its Calculator expression is exactly
+  `0.5+(a*0.01)`. `Roll Paper` and `Roll Wood/Stone` both serialize `.3` second
+  contact-on and contact-off delays. The old complementary-port Hermite curve,
+  per-ball references, pitch clamp, and `.5/.8` delays were removed.
+- `HitSound Woodenflaps` is independent of BallNav and creates one detector for
+  every `Phys_FloorStopper` member: min `.3`, max `10`, sleep `.5`, no collision
+  ID filter. `TT_Toolbox_RT.dll`'s `TT_LinearVolume` implementation is
+  `x<=.01 ? 0 : .02*pow(50,x)`, capped at 1. The old global `.25` second cooldown
+  and linear gain were removed. Ball hit/roll graphs now follow BallNav
+  activate/deactivate, and all detector/contact timers advance on the fixed
+  66 Hz simulation clock rather than render frames.
+- Runtime assets no longer come from a Vite `/bin` middleware. `npm run
+  sync:assets` materializes 317 primary-source inputs under `public/game`:
+  NMO/WAV/TGA/TXT are byte-identical, 184 BMPs become lossless PNGs, and
+  `atari.avi` becomes lossless APNG. Paths are lowercased to preserve Virtools'
+  case-insensitive lookup semantics; `.bmp` requests map to `.bmp.png`.
+  `_manifest.json` pins every bundled checksum and the source authority.
+  `assets.test.ts` verifies all 317 hashes and complete 12-level/26-prefab/
+  62-sound coverage. `vite build` now creates a self-contained ~111 MiB `dist/`
+  with 318 game files plus the APNG and no runtime reference to `Ballance_bin`.

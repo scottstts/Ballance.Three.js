@@ -4,7 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
-import { LEVEL_THEMES, MUSIC_SOURCE, levelFinalMusic, musicVariation } from './audio.ts';
+import {
+  COLLISION_SOUND_SOURCE,
+  LEVEL_THEMES,
+  MUSIC_SOURCE,
+  ROLL_SOUND_SOURCE,
+  WOODEN_FLAP_SOUND_SOURCE,
+  collisionSpeedVolume,
+  levelFinalMusic,
+  linearVolume,
+  musicVariation,
+  rollPitch,
+  rollVolume,
+} from './audio.ts';
 import { scaleableProximityFrameDelay } from './proximity.ts';
 
 const GAME_DIR = [
@@ -14,6 +26,7 @@ const GAME_DIR = [
 const soundPath = join(GAME_DIR, '3D Entities/Sound.nmo');
 const levelinitPath = join(GAME_DIR, '3D Entities/Levelinit.nmo');
 const musicfilesPath = join(GAME_DIR, '3D Entities/Musicfiles.nmo');
+const parameterOperationsPath = join(GAME_DIR, 'Managers/ParameterOperations.dll');
 
 function behavior(file: NmoFile, name: string): BehaviorRec {
   const found = file.objects.find(
@@ -64,6 +77,34 @@ function floatValue(value: ParameterRec): number {
 function integerValue(value: ParameterRec): number {
   return new DataView(value.valueBytes.buffer, value.valueBytes.byteOffset).getInt32(0, true);
 }
+
+function stringValue(value: ParameterRec): string {
+  return Buffer.from(value.valueBytes).toString('latin1').replace(/\0.*$/s, '');
+}
+
+describe('source-authored collision and rolling helpers', () => {
+  it('normalizes collision speed against max without subtracting the minimum', () => {
+    expect(collisionSpeedVolume(2.0001, 30)).toBeCloseTo(2.0001 / 30, 8);
+    expect(collisionSpeedVolume(15, 15)).toBe(1);
+    expect(collisionSpeedVolume(30.1, 30)).toBe(1);
+    expect(collisionSpeedVolume(0, 30)).toBe(0.0001);
+  });
+
+  it('converts the flap detector output with TT_LinearVolume', () => {
+    expect(linearVolume(0.01)).toBe(0);
+    expect(linearVolume(0.5)).toBeCloseTo(0.02 * Math.sqrt(50), 12);
+    expect(linearVolume(1)).toBe(1);
+    expect(linearVolume(2)).toBe(1);
+  });
+
+  it('uses the multiplication and calculator expressions without old per-ball curves', () => {
+    expect(rollVolume(0)).toBe(0);
+    expect(rollVolume(10)).toBeCloseTo(0.5, 7);
+    expect(rollVolume(25)).toBe(1);
+    expect(rollPitch(0)).toBe(0.5);
+    expect(rollPitch(20)).toBeCloseTo(0.7, 12);
+  });
+});
 
 describe('source-authored music helpers', () => {
   it('uses all three equal variations and permits an immediate repeat', () => {
@@ -129,6 +170,58 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
 
       const startup = children(sound, 'Music_Manager', 'Delayer')[0];
       expect(floatValue(parameter(sound, startup, 'Time to Wait')) / 1000).toBe(MUSIC_SOURCE.themeActivationDelay);
+    });
+
+    it('matches all four PhysicsCollDetection surface layers', () => {
+      if (!sound) return;
+      const detectors = children(sound, 'Hit Sounds', 'PhysicsCollDetection');
+      expect(detectors).toHaveLength(4);
+      const byId = new Map(detectors.map((detector) => [integerValue(parameter(sound, detector, 'Collision ID')), detector]));
+      for (const source of Object.values(COLLISION_SOUND_SOURCE)) {
+        const detector = byId.get(source.collisionId);
+        expect(detector).toBeDefined();
+        if (!detector) continue;
+        expect(floatValue(parameter(sound, detector, 'Min Speed m/s'))).toBe(source.minSpeed);
+        expect(floatValue(parameter(sound, detector, 'Max Speed m/s'))).toBe(source.maxSpeed);
+        expect(floatValue(parameter(sound, detector, 'Sleep afterwards'))).toBe(source.sleep);
+        expect(integerValue(parameter(sound, detector, 'Use Collision ID'))).toBe(1);
+      }
+    });
+
+    it('uses one multiplication and the exact rolling pitch expression', () => {
+      if (!sound) return;
+      const control = behavior(sound, 'MultiRollSoundControl');
+      const op = children(sound, control.name, 'Op')[0];
+      expect(floatValue(parameter(sound, op, 'p2'))).toBe(ROLL_SOUND_SOURCE.volumeFactor);
+      const operationIds = parameters(sound, op)
+        .filter((entry) => entry.name === '' && entry.valueBytes.byteLength === 4)
+        .map(integerValue);
+      expect(operationIds).toEqual([0x38996b85, 0x334e35c2]);
+      expect(stringValue(parameter(sound, children(sound, control.name, 'Calculator')[0], 'expression'))).toBe(
+        '0.5+(a*0.01)',
+      );
+      if (existsSync(parameterOperationsPath)) {
+        expect(readFileSync(parameterOperationsPath).includes(Buffer.from('Multiplication\0', 'latin1'))).toBe(true);
+      }
+    });
+
+    it('uses identical 0.3-second rolling contact gates for every ball', () => {
+      if (!sound) return;
+      for (const graph of ['Roll Paper', 'Roll Wood/Stone']) {
+        const contact = children(sound, graph, 'PhysicsContinuousContact')[0];
+        expect(floatValue(parameter(sound, contact, 'Time Delay Start'))).toBe(ROLL_SOUND_SOURCE.contactDelayStart);
+        expect(floatValue(parameter(sound, contact, 'Time Delay End'))).toBe(ROLL_SOUND_SOURCE.contactDelayEnd);
+        expect(integerValue(parameter(sound, contact, 'Number Group Output'))).toBe(ROLL_SOUND_SOURCE.contactOutputs);
+      }
+    });
+
+    it('matches the independent per-flap collision detector', () => {
+      if (!sound) return;
+      const detector = children(sound, 'HitSound Woodenflaps', 'PhysicsCollDetection')[0];
+      expect(floatValue(parameter(sound, detector, 'Min Speed m/s'))).toBe(WOODEN_FLAP_SOUND_SOURCE.minSpeed);
+      expect(floatValue(parameter(sound, detector, 'Max Speed m/s'))).toBe(WOODEN_FLAP_SOUND_SOURCE.maxSpeed);
+      expect(floatValue(parameter(sound, detector, 'Sleep afterwards'))).toBe(WOODEN_FLAP_SOUND_SOURCE.sleep);
+      expect(integerValue(parameter(sound, detector, 'Use Collision ID'))).toBe(0);
     });
 
     it('uses exact one-second group fades', () => {

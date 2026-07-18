@@ -253,6 +253,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
               TRAFO_SOURCE.pullOffset[2],
             ).applyMatrix4(ev.sourceMain.matrixWorld);
             trafoAnim.start(ev.ball, ev.sourceMain, ev.sourceShadow);
+            audio.setBallSoundsActive(false);
             ball.collider.setEnabled(false);
             ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
             pendingTrafo = {
@@ -315,7 +316,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let deathTimer = 0;
   let pointTimer = 0;
   let birthTimer = 0;
-  let flapCooldown = 0;
   let pendingTrafo: {
     ball: BallKind;
     elapsed: number;
@@ -335,6 +335,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
 
   const startBirth = () => {
+    audio.setBallSoundsActive(false);
     birthTimer = BALL_BIRTH_DELAY;
     ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
     ball.collider.setEnabled(false);
@@ -432,6 +433,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     // the screen fades white, then the ball is reborn at the reset point
     trafoAnim.stop();
     lightning.stop();
+    audio.setBallSoundsActive(false);
     if (pendingTrafo) {
       ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
       ball.collider.setEnabled(true);
@@ -466,6 +468,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const simStep = () => {
     const s = gameStore.getState();
+    audio.updateSimulation(SIM_DT);
     const previousLastStageProximityDelay = lastStageProximityDelay;
     lastStageProximityDelay = Math.max(0, lastStageProximityDelay - SIM_DT);
     if (previousLastStageProximityDelay > 0 && lastStageProximityDelay === 0) {
@@ -560,6 +563,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         ball.teleport(position);
         s.set({ ballKind: pendingTrafo.ball });
         pendingTrafo = null;
+        audio.setBallSoundsActive(true);
       }
     }
 
@@ -572,6 +576,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
           ball.collider.setEnabled(true);
           ball.body.wakeUp();
+          audio.setBallSoundsActive(true);
         }
       }
       pushDir.set(0, 0, 0);
@@ -582,41 +587,40 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     balloonPhysics?.update();
     moduls.update(SIM_DT);
     shatter.advance(SIM_DT);
-    const preVel = ball.body.linvel();
+    const motions = physics.snapshotMotions();
     physics.step();
     simTicks++;
 
-    // impact sounds: collision-start events, volume from the contact-normal
-    // approach speed (original: min 5, max 30, per-surface 0.6s sleep)
+    // physics_RT.dll uses the magnitude of IVP's pre-response relative-speed
+    // vector, including angular velocity at the collision point.
     physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       shatter.handleCollision(h1, h2);
+      const firstCollider = physics.world.getCollider(h1);
+      const secondCollider = physics.world.getCollider(h2);
+      if (!firstCollider || !secondCollider) return;
+      let impact: number | null = null;
+      const relativeSpeed = () => {
+        impact ??= physics.collisionRelativeSpeed(firstCollider, secondCollider, motions);
+        return impact;
+      };
+
+      // HitSound Woodenflaps owns one detector per Phys_FloorStopper member,
+      // independent of BallNav and therefore also valid for loose objects.
+      const firstFloorSound = floorHitByCollider.get(h1);
+      if (firstFloorSound) audio.woodenFlapHit(firstFloorSound, h1, relativeSpeed());
+      const secondFloorSound = floorHitByCollider.get(h2);
+      if (secondFloorSound) audio.woodenFlapHit(secondFloorSound, h2, relativeSpeed());
+
       const ballHandle = ball.collider.handle;
       if (h1 !== ballHandle && h2 !== ballHandle) return;
       const other = h1 === ballHandle ? h2 : h1;
       const surface = surfaceByCollider.get(other) ?? 'stone';
-      const otherCollider = physics.world.getCollider(other);
-      let impact = 0;
-      if (otherCollider) {
-        physics.world.contactPair(ball.collider, otherCollider, (manifold) => {
-          const n = manifold.normal();
-          impact = Math.max(impact, Math.abs(preVel.x * n.x + preVel.y * n.y + preVel.z * n.z));
-        });
-      }
-      if (impact === 0) {
-        // no manifold (grazing/CCD): fall back to the velocity change
-        const v = ball.body.linvel();
-        impact = Math.hypot(v.x - preVel.x, v.y - preVel.y, v.z - preVel.z);
-      }
-      audio.hit(ball.kind, surface, impact);
-      // flap floors bang with their own sound on top of the ball's
-      const floorHit = floorHitByCollider.get(other);
-      if (floorHit && impact > 0.4 && flapCooldown <= 0) {
-        flapCooldown = 0.25;
-        audio.playFlat(floorHit, THREE.MathUtils.clamp(impact / 10, 0.08, 1));
-      }
+      audio.hit(ball.kind, surface, relativeSpeed());
     });
-    flapCooldown -= SIM_DT;
+
+    const velocity = ball.body.linvel();
+    audio.updateRoll(ball.kind, contactSurfaces(), Math.hypot(velocity.x, velocity.y, velocity.z), SIM_DT);
 
     // point countdown (held while the birth lightning plays)
     if (birthTimer <= 0) {
@@ -669,6 +673,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         }
         case 'finish': {
           s.set({ phase: 'finished', winScreen: false });
+          audio.setBallSoundsActive(false);
           finishScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
           finishElapsed = 0;
           finishEnded = false;
@@ -734,9 +739,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       const fade = Math.min(1, finishElapsed / FINISH_SKY_FADE_DURATION);
       setSkyLayerFilter(0.7843137979507446 * (1 - fade));
     }
-    const v = ball.body.linvel();
-    const speed = Math.hypot(v.x, v.y, v.z);
-    audio.updateRoll(ball.kind, contactSurfaces(), speed, frameDt);
     const flameScale = renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360));
     flames.update(frameDt, flameScale);
     pickups.update(frameDt, flameScale);

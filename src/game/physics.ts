@@ -7,6 +7,44 @@ import { GRAVITY_Y, SIM_DT, type BallDef } from './constants.ts';
 
 let rapierReady: Promise<void> | null = null;
 
+export interface RigidBodyMotion {
+  center: { x: number; y: number; z: number };
+  linear: { x: number; y: number; z: number };
+  angular: { x: number; y: number; z: number };
+}
+
+export type MotionSnapshot = ReadonlyMap<number, RigidBodyMotion>;
+
+function vectorLength(x: number, y: number, z: number): number {
+  return Math.hypot(x, y, z);
+}
+
+/** Pre-solver velocity of a world point: linear + angular cross radius. */
+export function pointVelocity(
+  motion: RigidBodyMotion | undefined,
+  point: { x: number; y: number; z: number },
+): { x: number; y: number; z: number } {
+  if (!motion) return { x: 0, y: 0, z: 0 };
+  const rx = point.x - motion.center.x;
+  const ry = point.y - motion.center.y;
+  const rz = point.z - motion.center.z;
+  return {
+    x: motion.linear.x + motion.angular.y * rz - motion.angular.z * ry,
+    y: motion.linear.y + motion.angular.z * rx - motion.angular.x * rz,
+    z: motion.linear.z + motion.angular.x * ry - motion.angular.y * rx,
+  };
+}
+
+export function relativePointSpeed(
+  first: RigidBodyMotion | undefined,
+  second: RigidBodyMotion | undefined,
+  point: { x: number; y: number; z: number },
+): number {
+  const a = pointVelocity(first, point);
+  const b = pointVelocity(second, point);
+  return vectorLength(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
 export function initRapier(): Promise<void> {
   rapierReady ??= RAPIER.init();
   return rapierReady;
@@ -24,6 +62,47 @@ export class PhysicsWorld {
 
   step(): void {
     this.world.step(this.eventQueue);
+  }
+
+  /**
+   * Capture velocities before the solver mutates them. physics_RT.dll's
+   * collision event supplies the magnitude of this relative-speed vector.
+   */
+  snapshotMotions(): Map<number, RigidBodyMotion> {
+    const motions = new Map<number, RigidBodyMotion>();
+    this.world.forEachRigidBody((body) => {
+      const center = body.worldCom();
+      const linear = body.linvel();
+      const angular = body.angvel();
+      motions.set(body.handle, {
+        center: { x: center.x, y: center.y, z: center.z },
+        linear: { x: linear.x, y: linear.y, z: linear.z },
+        angular: { x: angular.x, y: angular.y, z: angular.z },
+      });
+    });
+    return motions;
+  }
+
+  /** Best Rapier equivalent of IVP's pre-response collision-speed vector. */
+  collisionRelativeSpeed(
+    first: RAPIER.Collider,
+    second: RAPIER.Collider,
+    motions: MotionSnapshot,
+  ): number {
+    const firstMotion = motions.get(first.parent()?.handle ?? -1);
+    const secondMotion = motions.get(second.parent()?.handle ?? -1);
+    let speed = 0;
+    let sampledPoint = false;
+    this.world.contactPair(first, second, (manifold) => {
+      for (let index = 0; index < manifold.numSolverContacts(); index++) {
+        sampledPoint = true;
+        speed = Math.max(speed, relativePointSpeed(firstMotion, secondMotion, manifold.solverContactPoint(index)));
+      }
+    });
+    if (sampledPoint) return speed;
+    const a = firstMotion?.linear ?? { x: 0, y: 0, z: 0 };
+    const b = secondMotion?.linear ?? { x: 0, y: 0, z: 0 };
+    return vectorLength(a.x - b.x, a.y - b.y, a.z - b.z);
   }
 
   /**

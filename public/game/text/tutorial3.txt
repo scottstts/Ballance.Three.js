@@ -1,0 +1,38 @@
+Introducción al juego:
+Con "ESC" puede parar el juego en cualquier momento o salir de él.Puede confirmar con la tecla "entrada" (Return) o con la tecla "Q" terminar la introducción.
+*Girar la visión:
+Mantenga apretada la tecla de "mayúsculas" (Shift) y utilice a la vez las teclas de flechas "izquierda" y "derecha" para girar la visión en paros de 90 grados.
+
+Seguir con "entrada"...
+*Subir la visión:
+Para tener una visión mejor mantenga apretada el "espaciador".
+
+Seguir con "entrada"...
+*Navigación: 
+Gire ahora la visión hasta que el camino de las dos torres esté delante suya.
+Con ayuda de las teclas de flecha puede guiar la bola "adelante" , "atras", "a la derecha" y "a la izquierda".
+
+Siga por el camino!
+*Vida-extra: 
+Si se cae, entonces le quitan una vida. Las vidas restantes se pueden reconocer en la indicación abajo a la derecha. 
+Con la recolecta de una vida-extra puede ganar una vida aparte.
+
+Seguir con "entrada"...
+*Trafos: 
+Con la ayuda de los llamados transformadores se puede cambiar el material de su bola. La clase de transformador lo reconoce por el material del area de trafos. Este es un transformador de piedra. 
+
+Seguir con "entrada"...
+*La subida es demasiada inclinada para una bola de piedra: Busque un trafo de madera y después inténtelo de nuevo.
+Consejo: Gire de vez en en cuando su vista (tecla de "mayuscula" y "derecha/izquierda"), para orientarse mejor. Rodar hacia atrás puede ser peligroso.   Seguir con "entrada"...
+*Punto-extra:
+En el lado izquierdo puede leer su puntuación actual, que durante el juego va disminuyendo. Con la recolecta de un punto-extra puede elevar su puntuación. 
+
+Seguir con "entrada"...
+*Checkpoints (Puntos de crontol):
+Este es un Checkpoint por el que tiene que pasar. Si pierde una vida durante el juego, entonces siempre puede seguir jugando desde el último Checkpoint traspasado. 
+
+Seguir con "entrada":
+*Al final: Si ya no puede seguir, puede leer en el manual de juego, HTML. El manual de juego con consejos y notas lo encuentra bajo Windows menu de entrar (no durante el juego).
+
+Termine con la introducción de "entrada"...
+

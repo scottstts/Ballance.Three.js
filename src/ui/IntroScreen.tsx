@@ -27,7 +27,7 @@ type IntroStage = 'delay' | 'atari' | 'atariOut' | 'clouds' | 'out';
 
 async function loadMovie(): Promise<string | null> {
   try {
-    const response = await fetch('/bin-derived/atari.apng');
+    const response = await fetch(`${import.meta.env.BASE_URL}game-derived/atari.apng`);
     if (!response.ok) return null;
     return URL.createObjectURL(await response.blob());
   } catch {

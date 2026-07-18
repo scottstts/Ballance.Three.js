@@ -1,6 +1,6 @@
 /**
- * Decodes original texture files (BMP via native browser decode, TGA via a
- * small decoder) into THREE textures, applying Virtools color-key transparency.
+ * Decodes synchronized texture files (BMP sources are lossless PNGs; TGA uses
+ * a small decoder) into THREE textures, applying Virtools color-key transparency.
  */
 import * as THREE from 'three';
 import { fetchGameBuffer } from './assets.ts';
@@ -17,7 +17,8 @@ export async function decodeImageFile(relPath: string): Promise<DecodedImage> {
   const buf = await fetchGameBuffer(relPath);
   const ext = relPath.split('.').pop()?.toLowerCase();
   if (ext === 'tga') return decodeTga(new Uint8Array(buf));
-  return decodeViaBrowser(buf, ext === 'bmp' ? 'image/bmp' : `image/${ext}`);
+  // External BMPs are stored as lossless PNGs in the deployable asset tree.
+  return decodeViaBrowser(buf, ext === 'bmp' ? 'image/png' : `image/${ext}`);
 }
 
 async function decodeViaBrowser(buf: ArrayBuffer, mime: string): Promise<DecodedImage> {

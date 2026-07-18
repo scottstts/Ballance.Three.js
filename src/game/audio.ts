@@ -7,7 +7,6 @@
 import * as THREE from 'three';
 import { fetchGameBuffer } from '../engine/assets.ts';
 import type { BallKind } from './constants.ts';
-import { evalCurve } from './curve.ts';
 import { ScaleableProximity } from './proximity.ts';
 
 export type Surface = 'stone' | 'wood' | 'metal' | 'dome';
@@ -32,27 +31,57 @@ function rollFile(ball: BallKind, surface: Surface): string {
   return `Roll_${cap(ball)}_${cap(surface)}.wav`;
 }
 
-// original collision layer config: hits play between speed 5 and 30 (the
-// dome caps at 15), then the layer sleeps 0.6s; rolling contact needs 0.5s
-// on / 0.5s off to switch
-const HIT_MIN_SPEED = 5;
-const HIT_MAX_SPEED = 30;
-const HIT_MAX_SPEED_DOME = 15;
-const HIT_SLEEP = 0.6;
-const ROLL_DELAY_END = 0.5;
-const rollDelayStart = (ball: BallKind): number => (ball === 'paper' ? 0.8 : 0.5);
+/** Exact PhysicsCollDetection inputs serialized by Sound.nmo/Hit Sounds. */
+export const COLLISION_SOUND_SOURCE: Record<Surface, Readonly<{
+  collisionId: number;
+  minSpeed: number;
+  maxSpeed: number;
+  sleep: number;
+}>> = {
+  stone: { collisionId: 1, minSpeed: 2, maxSpeed: 30, sleep: 1 },
+  wood: { collisionId: 2, minSpeed: 2, maxSpeed: 14, sleep: 1 },
+  metal: { collisionId: 3, minSpeed: 2, maxSpeed: 14, sleep: 2 },
+  dome: { collisionId: 4, minSpeed: 1, maxSpeed: 15, sleep: 1 },
+};
 
-/** original roll volume curve, x = speed / per-ball reference speed */
-const ROLL_VOLUME_KEYS: [number, number, number][] = [
-  [0, 0, 3.1866],
-  [0.0636, 0.1375, 0.8179],
-  [0.4165, 0.41, 1.1629],
-  [0.9, 0.8, 0.4121],
-  [2, 1, 0],
-];
-const ROLL_SPEED_REF: Record<BallKind, number> = { wood: 9, paper: 12, stone: 15 };
-const ROLL_PITCH_BASE = 0.6;
-const ROLL_PITCH_FACTOR = 0.03;
+/** Exact Sound.nmo/MultiRollSoundControl and contact-detector inputs. */
+export const ROLL_SOUND_SOURCE = {
+  volumeFactor: 0.05000000074505806,
+  pitchBase: 0.5,
+  pitchFactor: 0.01,
+  contactDelayStart: 0.30000001192092896,
+  contactDelayEnd: 0.30000001192092896,
+  contactOutputs: 3,
+} as const;
+
+/** Exact Sound.nmo/HitSound Woodenflaps detector inputs. */
+export const WOODEN_FLAP_SOUND_SOURCE = {
+  minSpeed: 0.30000001192092896,
+  maxSpeed: 10,
+  sleep: 0.5,
+} as const;
+
+/** physics_RT.dll emits speed/max after the strict minimum-speed gate. */
+export function collisionSpeedVolume(speed: number, maxSpeed: number): number {
+  if (speed <= 0.0001) return 0.0001;
+  if (maxSpeed < 0.0001 || speed / maxSpeed > 1) return 1;
+  return speed / maxSpeed;
+}
+
+/** TT_Toolbox_RT.dll's TT_LinearVolume conversion used by wooden flaps. */
+export function linearVolume(normalized: number): number {
+  if (normalized > 1) return 1;
+  if (normalized <= 0.01) return 0;
+  return 0.02 * Math.pow(50, normalized);
+}
+
+export function rollVolume(speed: number): number {
+  return Math.min(1, Math.max(0, speed) * ROLL_SOUND_SOURCE.volumeFactor);
+}
+
+export function rollPitch(speed: number): number {
+  return ROLL_SOUND_SOURCE.pitchBase + Math.max(0, speed) * ROLL_SOUND_SOURCE.pitchFactor;
+}
 
 const SURFACES: Surface[] = ['stone', 'wood', 'metal'];
 
@@ -104,6 +133,8 @@ export class AudioManager {
   private rollLoops = new Map<string, THREE.Audio>();
   private rollContacts = new Map<Surface, RollContactState>();
   private hitSleep = new Map<Surface, number>();
+  private woodenFlapSleep = new Map<number, number>();
+  private ballSoundsActive = false;
   private musicGain: GainNode | null = null;
   private atmoSource: AudioBufferSourceNode | null = null;
   private themeSource: AudioBufferSourceNode | null = null;
@@ -222,19 +253,24 @@ export class AudioManager {
     });
   }
 
-  /**
-   * Ball impact on a surface. `impactSpeed` is the contact-normal approach
-   * speed; below the original threshold (5) nothing plays, and each surface
-   * sleeps 0.6s after a hit, exactly like the original collision detector.
-   */
+  /** Ball impact using physics_RT.dll's strict gate and speed/max output. */
   hit(ball: BallKind, surface: Surface, impactSpeed: number): void {
-    if (impactSpeed < HIT_MIN_SPEED) return;
+    if (!this.ballSoundsActive) return;
+    const source = COLLISION_SOUND_SOURCE[surface];
+    if (!(impactSpeed > source.minSpeed)) return;
     if ((this.hitSleep.get(surface) ?? 0) > 0) return;
-    this.hitSleep.set(surface, HIT_SLEEP);
-    const max = surface === 'dome' ? HIT_MAX_SPEED_DOME : HIT_MAX_SPEED;
-    const vol = THREE.MathUtils.clamp((impactSpeed - HIT_MIN_SPEED) / (max - HIT_MIN_SPEED), 0, 1);
+    this.hitSleep.set(surface, source.sleep);
     // ball sounds are flat (non-positional), as in the original
-    this.playFlat(hitFile(ball, surface), vol);
+    this.playFlat(hitFile(ball, surface), collisionSpeedVolume(impactSpeed, source.maxSpeed));
+  }
+
+  /** Independent Start Music-gated collision detector on each wooden flap. */
+  woodenFlapHit(name: string, detector: number, impactSpeed: number): void {
+    if (!(impactSpeed > WOODEN_FLAP_SOUND_SOURCE.minSpeed)) return;
+    if ((this.woodenFlapSleep.get(detector) ?? 0) > 0) return;
+    this.woodenFlapSleep.set(detector, WOODEN_FLAP_SOUND_SOURCE.sleep);
+    const normalized = collisionSpeedVolume(impactSpeed, WOODEN_FLAP_SOUND_SOURCE.maxSpeed);
+    this.playFlat(name, linearVolume(normalized));
   }
 
   /** flat (non-positional) one-shot */
@@ -265,19 +301,32 @@ export class AudioManager {
     return audio;
   }
 
-  /**
-   * Continuous rolling, following the original contact detector: a surface
-   * only becomes audible after 0.5s of sustained contact (0.8s for paper)
-   * and only goes silent after 0.5s without contact, so momentary bounces
-   * (rails!) never restart the loop. The loops themselves play forever and
-   * are only volume/pitch modulated.
-   */
-  updateRoll(ball: BallKind, touching: ReadonlySet<Surface>, speed: number, dt: number): void {
-    for (const [k, v] of this.hitSleep) {
-      if (v > 0) this.hitSleep.set(k, v - dt);
+  /** Advance PhysicsCollDetection sleep timers on the fixed simulation clock. */
+  updateSimulation(dt: number): void {
+    for (const [surface, remaining] of this.hitSleep) {
+      if (remaining > 0) this.hitSleep.set(surface, Math.max(0, remaining - dt));
     }
-    const vol = Math.min(1, evalCurve(ROLL_VOLUME_KEYS, speed / ROLL_SPEED_REF[ball]));
-    const pitch = Math.min(1, ROLL_PITCH_BASE + speed * ROLL_PITCH_FACTOR);
+    for (const [detector, remaining] of this.woodenFlapSleep) {
+      if (remaining > 0) this.woodenFlapSleep.set(detector, Math.max(0, remaining - dt));
+    }
+  }
+
+  /** Mirror BallNav activate/deactivate, which creates/stops ball detectors. */
+  setBallSoundsActive(active: boolean): void {
+    if (active === this.ballSoundsActive) return;
+    this.ballSoundsActive = active;
+    this.hitSleep.clear();
+    this.rollContacts.clear();
+    if (!active) {
+      for (const loop of this.rollLoops.values()) loop.setVolume(0);
+    }
+  }
+
+  /** Continuous rolling under the source's identical 0.3 s on/off delays. */
+  updateRoll(ball: BallKind, touching: ReadonlySet<Surface>, speed: number, dt: number): void {
+    if (!this.ballSoundsActive) return;
+    const volume = rollVolume(speed);
+    const pitch = rollPitch(speed);
     for (const surface of SURFACES) {
       let st = this.rollContacts.get(surface);
       if (!st) {
@@ -291,12 +340,12 @@ export class AudioManager {
       } else {
         st.since += dt;
       }
-      if (now && !st.active && st.since >= rollDelayStart(ball)) st.active = true;
-      else if (!now && st.active && st.since >= ROLL_DELAY_END) st.active = false;
+      if (now && !st.active && st.since >= ROLL_SOUND_SOURCE.contactDelayStart) st.active = true;
+      else if (!now && st.active && st.since >= ROLL_SOUND_SOURCE.contactDelayEnd) st.active = false;
 
       const loop = this.ensureRollLoop(ball, surface);
       if (loop) {
-        loop.setVolume(st.active ? vol * this.sfxVolume : 0);
+        loop.setVolume(st.active ? volume * this.sfxVolume : 0);
         if (st.active) loop.setPlaybackRate(pitch);
       }
     }
