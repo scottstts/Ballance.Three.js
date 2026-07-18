@@ -45,9 +45,9 @@ export async function buildSky(letter: string, fogColor: THREE.Color): Promise<B
     names.map((n) => decodeImageFile(`Textures/Sky/Sky_${letter}_${n}.bmp`).catch(() => null)),
   );
 
-  // sample the bottom rows of the side faces for the fog/horizon color
-  const horizonColor = new THREE.Color(0xbed7e3);
-  {
+  // sample edge rows of the side faces: bottom rows give the fog/horizon
+  // color, top rows give the zenith cap color (so the cap blends seamlessly)
+  const sampleRows = (top: boolean): THREE.Color | null => {
     let r = 0;
     let g = 0;
     let b = 0;
@@ -55,7 +55,8 @@ export async function buildSky(letter: string, fogColor: THREE.Color): Promise<B
     for (const img of images.slice(0, 4)) {
       if (!img) continue;
       const rows = 6;
-      for (let y = img.height - rows; y < img.height; y++) {
+      const y0 = top ? 0 : img.height - rows;
+      for (let y = y0; y < y0 + rows; y++) {
         for (let x = 0; x < img.width; x += 4) {
           const i = (y * img.width + x) * 4;
           r += img.rgba[i];
@@ -65,18 +66,21 @@ export async function buildSky(letter: string, fogColor: THREE.Color): Promise<B
         }
       }
     }
-    if (n > 0) horizonColor.setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
-  }
+    if (n === 0) return null;
+    return new THREE.Color().setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
+  };
+  const horizonColor = sampleRows(false) ?? new THREE.Color(0xbed7e3);
+  const zenithColor = sampleRows(true) ?? horizonColor.clone();
   fogColor.copy(horizonColor);
 
   const group = new THREE.Group();
   group.name = 'sky';
   group.renderOrder = -1000;
 
-  const mk = (img: { rgba: Uint8ClampedArray; width: number; height: number } | null, mirrorX = true) => {
+  const mk = (img: { rgba: Uint8ClampedArray; width: number; height: number } | null, mirrorX = true, capColor?: THREE.Color) => {
     const mat = new THREE.MeshBasicMaterial({
       map: img ? faceTexture(img.rgba, img.width, img.height, mirrorX) : null,
-      color: img ? 0xffffff : fogColor,
+      color: img ? 0xffffff : (capColor ?? fogColor),
       depthWrite: false,
       depthTest: false,
       fog: false,
@@ -106,8 +110,9 @@ export async function buildSky(letter: string, fogColor: THREE.Color): Promise<B
   const down = mk(images[4]);
   down.position.set(0, -SIZE, 0);
   down.rotation.x = -Math.PI / 2;
-  // top face: fog-colored cap
-  const top = mk(null);
+  // top face: cap colored like the side faces' top rows (there is no Up texture
+  // in the original data; the original camera can still glimpse the zenith)
+  const top = mk(null, false, zenithColor);
   top.position.set(0, SIZE, 0);
   top.rotation.x = Math.PI / 2;
 

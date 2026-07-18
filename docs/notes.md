@@ -190,3 +190,139 @@ Append-only scratchpad of things learned during the port. Read this first when r
   fly-to-HUD approximation), then hide.
 - BOOT ORDER MATTERS: AudioManager must be constructed BEFORE ModulManager.create (fan
   moduls call ctx.attachLoop in their constructors).
+
+## Full-scope fidelity audit round (sky table, original UI, IVP semantics)
+
+Sourced by parallel read-only audits of the Unity Rebuild + original data. Key
+corrections — several earlier assumptions were WRONG:
+
+- **Per-level sky assignment is NOT sequential.** The real table (from the level
+  definitions) is L1=L, L2=F, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B,
+  L11=J, L12=I ("E" is never used, "F" three times). assets.ts skyLetter now
+  holds this table. The warm orange look of refs 1/2 is Sky L (Level 1).
+- **Original lighting = ONE white light + ambient, no gameplay fog.** Light_Ingame
+  (Gameplay.nmo): white point light, no falloff, at (-5,15,3.6) — approximated as
+  a white directional from that bearing + white ambient 0.34. Levels tint the
+  light: L9 #E9E9E9, L12 #969696 (LEVEL_LIGHT_COLORS). The old warm 3-light rig
+  and the sky-sampled gameplay fog were port inventions — removed.
+- **Scenery placements are gray dummies.** PC_TwoFlames_NN / PS_FourFlames_NN /
+  PE_Balloon(Levelende)_NN in level NMOs are untextured stand-ins; the textured
+  prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
+  instantiates the prefabs (PR_Resetpoint has no prefab — hide only). Under the
+  old warm lighting the gray dummies passed as "wood" — that hid the bug.
+- **Menu (rebuild MenuLevelCameraControl):** day sky = C, night lightzone = M;
+  warm linear fog #d3c894 100-800; camera ORBITS the dome (I_Dome) at -10 deg/s
+  at the authored radius/height (Cam_MenuLevel at (0,40,-95) LH → r=95 h=40);
+  Menu_atmo.wav is a ONE-SHOT replayed after random 1-10s gaps (not a loop).
+- **Original menu/HUD UI is fully reproducible from assets**: Button01_deselect/
+  select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
+  slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
+  HUD pieces (score plate (105,185,135,44), under-swoosh (82,199,176,52), amber
+  flash variants, life ball (16,134,31,31), lives hook (0,133,16,33), lives curl
+  (46,119,60,63)), Font_1.tga = cp1252 bitmap font in a 16x16 grid of 32px cells
+  (uppercase + small-caps — render mixed-case text and it looks original),
+  Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
+- **Audio model (exact original semantics)**: roll loops are created ONCE and play
+  forever at volume 0 — only volume/pitch are modulated; per-surface contact
+  needs 0.5s sustained to become audible (paper 0.8s) and 0.5s absence to go
+  silent (this kills the rail-flicker glitch). Roll volume = Hermite curve keys
+  (0,0,3.19)(0.0636,0.1375,0.82)(0.4165,0.41,1.16)(0.9,0.8,0.41)(2,1,0) sampled
+  at speed/ref (wood 9, paper 12, stone 15); pitch = min(1, 0.6+0.03*speed).
+  Hits are collision-STARTED events using the pre-step velocity projected on the
+  contact normal: below 5 nothing plays, volume ramps to max at 30 (dome 15),
+  each surface sleeps 0.6s. Ball sounds are 2D (non-positional). Dome has its own
+  hit layer (Hit_Wood_Dome / Hit_Stone_Kuppel, no roll). Phys_FloorStopper floors
+  additionally bang Hit_WoodenFlap.wav (volume=impact/10).
+- **Music**: ~70% of scheduler slots play Music_Atmo_1..3 (volume 0.5-1), gaps
+  20-30s after music, 10-20s after atmo, never the same theme variation twice in
+  a row. Checkpoints play Misc_Checkpoint.wav (Music_EndCheckpoint is the FINAL
+  SECTOR balloon ambient loop, with music muted ~70s). Extra life = Blob + then
+  Misc_extraball at +0.317s; extra point = +100 then six staggered +20 with
+  Extra_Hit.wav.
+- **Death/birth**: falling plays Misc_Fall.wav, the ball keeps falling, the screen
+  fades WHITE, respawn at the EXACT reset point (no +4 drop) with the lightning
+  sphere + Misc_Lightning.wav; control and the point countdown only start after
+  the ~1s birth. The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
+  bursts at swap) — not to death. Trafo visual = AnimTrafo.nmo ring cage
+  (4 Ringparts + Bars + additive Flashfield) spun procedurally for 2.3s.
+- **Scoring**: final level score = level*100 + remaining points + 200*lives, shown
+  as a tally (Level Bonus / Time Points / Extra Lives / Total) with Menu_counter
+  ticking and Music_Highscore. completeLevel stores that, not raw points.
+- **Physics findings**: IVP combines friction AND elasticity multiplicatively →
+  Rapier CoefficientCombineRule.Multiply on ball/dynamic colliders (the old Max
+  restitution rule caused rail micro-bounce jitter). Rapier trimeshes need
+  TriMeshFlags.FIX_INTERNAL_EDGES (=144) or flat floors feel bumpy. Push X/Z are
+  INDEPENDENT axes — diagonals are sqrt(2) stronger, do NOT normalize. The paper
+  ball is physicalized as its crumpled MESH (BallRadius 0) → convex hull, both
+  player and loose props. Camera vertical FOV is 60 (was 75 — wrong). Camera
+  lift: 0.8s up / 1.3s down. UpForce/DownForce in the ball table are debug-only.
+- **Beware prefab-vs-NMO naming**: the Unity rebuild renamed some parts (its
+  "P_Modul_01_Filter" is the NMOs
+## Full-scope fidelity audit round (sky table, original UI, IVP semantics)
+
+Sourced by parallel read-only audits of the Unity Rebuild + original data. Key
+corrections — several earlier assumptions were WRONG:
+
+- **Per-level sky assignment is NOT sequential.** The real table (from the level
+  definitions) is L1=L, L2=F, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B,
+  L11=J, L12=I ("E" is never used, "F" three times). assets.ts skyLetter now
+  holds this table. The warm orange look of refs 1/2 is Sky L (Level 1).
+- **Original lighting = ONE white light + ambient, no gameplay fog.** Light_Ingame
+  (Gameplay.nmo): white point light, no falloff, at (-5,15,3.6) — approximated as
+  a white directional from that bearing + white ambient 0.34. Levels tint the
+  light: L9 #E9E9E9, L12 #969696 (LEVEL_LIGHT_COLORS). The old warm 3-light rig
+  and the sky-sampled gameplay fog were port inventions — removed.
+- **Scenery placements are gray dummies.** PC_TwoFlames_NN / PS_FourFlames_NN /
+  PE_Balloon(Levelende)_NN in level NMOs are untextured stand-ins; the textured
+  prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
+  instantiates the prefabs (PR_Resetpoint has no prefab — hide only). Under the
+  old warm lighting the gray dummies passed as "wood" — that hid the bug.
+- **Menu (rebuild MenuLevelCameraControl):** day sky = C, night lightzone = M;
+  warm linear fog #d3c894 100-800; camera ORBITS the dome (I_Dome) at -10 deg/s
+  at the authored radius/height (Cam_MenuLevel at (0,40,-95) LH -> r=95 h=40);
+  Menu_atmo.wav is a ONE-SHOT replayed after random 1-10s gaps (not a loop).
+- **Original menu/HUD UI is fully reproducible from assets**: Button01_deselect/
+  select.tga atlases (capsule 250x60 at (2,1,252,62); medium at (60,191,164,63);
+  slider bar (2,102,252,28); round +/- (226,198/226)), Button01_special.tga for
+  HUD pieces (score plate (105,185,135,44), under-swoosh (82,199,176,52), amber
+  flash variants, life ball (16,134,31,31), lives hook (0,133,16,33), lives curl
+  (46,119,60,63)), Font_1.tga = cp1252 bitmap font in a 16x16 grid of 32px cells
+  (uppercase + small-caps — render mixed-case text and it looks original),
+  Cursor.tga = the menu arrow cursor. src/ui/ogui.ts crops pieces + renders text.
+- **Audio model (exact original semantics)**: roll loops are created ONCE and play
+  forever at volume 0 — only volume/pitch are modulated; per-surface contact
+  needs 0.5s sustained to become audible (paper 0.8s) and 0.5s absence to go
+  silent (this kills the rail-flicker glitch). Roll volume = Hermite curve keys
+  (0,0,3.19)(0.0636,0.1375,0.82)(0.4165,0.41,1.16)(0.9,0.8,0.41)(2,1,0) sampled
+  at speed/ref (wood 9, paper 12, stone 15); pitch = min(1, 0.6+0.03*speed).
+  Hits are collision-STARTED events using the pre-step velocity projected on the
+  contact normal: below 5 nothing plays, volume ramps to max at 30 (dome 15),
+  each surface sleeps 0.6s. Ball sounds are 2D (non-positional). Dome has its own
+  hit layer (Hit_Wood_Dome / Hit_Stone_Kuppel, no roll). Phys_FloorStopper floors
+  additionally bang Hit_WoodenFlap.wav (volume=impact/10).
+- **Music**: ~70% of scheduler slots play Music_Atmo_1..3 (volume 0.5-1), gaps
+  20-30s after music, 10-20s after atmo, never the same theme variation twice in
+  a row. Checkpoints play Misc_Checkpoint.wav (Music_EndCheckpoint is the FINAL
+  SECTOR balloon ambient loop, with music muted ~70s). Extra life = Blob + then
+  Misc_extraball at +0.317s; extra point = +100 then six staggered +20 with
+  Extra_Hit.wav.
+- **Death/birth**: falling plays Misc_Fall.wav, the ball keeps falling, the screen
+  fades WHITE, respawn at the EXACT reset point (no +4 drop) with the lightning
+  sphere + Misc_Lightning.wav; control and the point countdown only start after
+  the ~1s birth. The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
+  bursts at swap) — not to death. Trafo visual = AnimTrafo.nmo ring cage
+  (4 Ringparts + Bars + additive Flashfield) spun procedurally for 2.3s.
+- **Scoring**: final level score = level*100 + remaining points + 200*lives, shown
+  as a tally (Level Bonus / Time Points / Extra Lives / Total) with Menu_counter
+  ticking and Music_Highscore. completeLevel stores that, not raw points.
+- **Physics findings**: IVP combines friction AND elasticity multiplicatively ->
+  Rapier CoefficientCombineRule.Multiply on ball/dynamic colliders (the old Max
+  restitution rule caused rail micro-bounce jitter). Rapier trimeshes need
+  TriMeshFlags.FIX_INTERNAL_EDGES (=144) or flat floors feel bumpy. Push X/Z are
+  INDEPENDENT axes — diagonals are sqrt(2) stronger, do NOT normalize. The paper
+  ball is physicalized as its crumpled MESH (BallRadius 0) -> convex hull, both
+  player and loose props. Camera vertical FOV is 60 (was 75 — wrong). Camera
+  lift: 0.8s up / 1.3s down. UpForce/DownForce in the ball table are debug-only.
+- **Beware prefab-vs-NMO naming**: the Unity rebuild renamed some parts (its
+  "P_Modul_01_Filter" is the NMO's "P_Modul_01_Filler"; its "P_Modul_41_Box" is
+  the NMO's "P_Modul_41"). NMO names are authoritative here.

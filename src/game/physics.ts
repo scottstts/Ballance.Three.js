@@ -50,10 +50,10 @@ export class PhysicsWorld {
     }
     const indices = new Uint32Array(index.array);
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    const desc = RAPIER.ColliderDesc.trimesh(vertices, indices)
+    // FIX_INTERNAL_EDGES stops the ball from tripping on triangle seams of flat floors
+    const desc = RAPIER.ColliderDesc.trimesh(vertices, indices, RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES)
       .setFriction(friction)
-      .setRestitution(restitution)
-      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Max);
+      .setRestitution(restitution);
     return this.world.createCollider(desc, body);
   }
 
@@ -64,9 +64,12 @@ export class PhysicsWorld {
       .setAngularDamping(def.rotDamp)
       .setCcdEnabled(true);
     const body = this.world.createRigidBody(bodyDesc);
+    // IVP combines friction/elasticity multiplicatively (ball 0.8 x floor 0.7 etc.)
     const colliderDesc = RAPIER.ColliderDesc.ball(def.radius)
       .setFriction(def.friction)
       .setRestitution(def.elasticity)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
       .setMass(def.mass)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
     const collider = this.world.createCollider(colliderDesc, body);

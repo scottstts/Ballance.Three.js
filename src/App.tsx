@@ -3,13 +3,23 @@ import GameCanvas from './GameCanvas.tsx';
 import { useGameStore } from './game/store.ts';
 import Hud from './ui/Hud.tsx';
 import MenuBackdrop from './ui/MenuBackdrop.tsx';
-import { FinishedOverlay, GameOverOverlay, LevelSelect, MainMenu, PauseOverlay } from './ui/Menus.tsx';
+import {
+  CreditsScreen,
+  FinishedOverlay,
+  GameOverOverlay,
+  HighscoreScreen,
+  LevelSelect,
+  MainMenu,
+  OptionsScreen,
+  PauseOverlay,
+} from './ui/Menus.tsx';
 
 const IN_GAME = new Set(['loading', 'playing', 'paused', 'dead', 'finished', 'gameover']);
 
 export default function App() {
   const phase = useGameStore((s) => s.phase);
   const level = useGameStore((s) => s.level);
+  const whiteFade = useGameStore((s) => s.whiteFade);
   const set = useGameStore((s) => s.set);
 
   // dev shortcut: ?level=N boots straight into a level
@@ -31,7 +41,7 @@ export default function App() {
   }, [set]);
 
   const inGame = IN_GAME.has(phase);
-  const inMenus = phase === 'menu' || phase === 'levelselect';
+  const inMenus = ['menu', 'levelselect', 'highscore', 'options', 'credits'].includes(phase);
   return (
     <>
       {inGame && <GameCanvas key={`level-${level}`} level={level} />}
@@ -39,9 +49,13 @@ export default function App() {
       {inMenus && <MenuBackdrop />}
       {phase === 'menu' && <MainMenu />}
       {phase === 'levelselect' && <LevelSelect />}
+      {phase === 'highscore' && <HighscoreScreen />}
+      {phase === 'options' && <OptionsScreen />}
+      {phase === 'credits' && <CreditsScreen />}
       {phase === 'paused' && <PauseOverlay />}
       {phase === 'finished' && <FinishedOverlay />}
       {phase === 'gameover' && <GameOverOverlay />}
+      {inGame && <div className={`white-fade${whiteFade ? ' white-fade-on' : ''}`} />}
     </>
   );
 }

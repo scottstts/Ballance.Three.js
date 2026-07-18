@@ -35,7 +35,9 @@ export function levelPath(level: number): string {
   return `3D Entities/Level/Level_${String(level).padStart(2, '0')}.NMO`;
 }
 
-/** Sky texture set letter for a level (Level_01 -> A ... Level_12 -> L). */
+/** Original per-level sky set assignment (from the level definitions). */
+const SKY_LETTERS = ['L', 'F', 'A', 'F', 'C', 'H', 'D', 'G', 'K', 'B', 'J', 'I'];
+
 export function skyLetter(level: number): string {
-  return String.fromCharCode(64 + level);
+  return SKY_LETTERS[level - 1] ?? 'A';
 }

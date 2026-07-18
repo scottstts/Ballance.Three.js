@@ -9,6 +9,7 @@ import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuild
 import { decodeImageFile } from '../engine/textures.ts';
 import { localVertices } from './moduls/base.ts';
 import { BALL_DEFS, type BallKind } from './constants.ts';
+import { evalCurve } from './curve.ts';
 import type { PhysicsWorld } from './physics.ts';
 
 async function spriteTexture(path: string, mode: 'glow' | 'shadow' = 'glow'): Promise<THREE.Texture | null> {
@@ -36,115 +37,261 @@ async function spriteTexture(path: string, mode: 'glow' | 'shadow' = 'glow'): Pr
   }
 }
 
-/** Rising pink flame: layered additive billboards with flicker, like the original. */
+/**
+ * Checkpoint/start flame: a particle emitter replicating the original
+ * Virtools particle systems (parameters recovered from the Ballance Unity
+ * Rebuild FlameBig/FlameSmall prefabs, which mirror the original emitters):
+ * near-vertical cone, ~26 particles/s, alpha-blended sprites tinted with an
+ * HDR pink, each particle randomly leaning crimson or smoke-white.
+ */
+interface FlameSpec {
+  life: number;
+  speed: number;
+  size: number;
+  rate: number;
+  /** [t, value, slope] Hermite keys for size over lifetime */
+  sizeKeys: [number, number, number][];
+}
+
+const FLAME_BIG: FlameSpec = {
+  life: 1.5,
+  speed: 2,
+  size: 1.5,
+  rate: 26,
+  sizeKeys: [
+    [0, 0.376, 10.89],
+    [0.211, 0.971, -1.406],
+    [1, 0.2, -0.47],
+  ],
+};
+
+const FLAME_SMALL: FlameSpec = {
+  life: 1.0,
+  speed: 2.6,
+  size: 1.2,
+  rate: 25,
+  sizeKeys: [
+    [0, 0.6, 7.2],
+    [0.221, 1, -0.9],
+    [1, 0.05, -0.5],
+  ],
+};
+
+// original material: tex * HDR tint * per-particle gradient, SrcAlpha blend
+const TINT = new THREE.Color(4.372, 2.2479, 3.8764);
+const CRIMSON = new THREE.Color(0.9216 * TINT.r, 0.1686 * TINT.g, 0.2745 * TINT.b);
+const MATERIAL_ALPHA = 0.6235;
+
+const flameVertex = /* glsl */ `
+  attribute float aSize;
+  attribute float aAlpha;
+  attribute vec3 aColor;
+  varying float vAlpha;
+  varying vec3 vColor;
+  uniform float uScale;
+  void main() {
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = aSize * uScale / max(0.1, -mv.z);
+    vAlpha = aAlpha;
+    vColor = aColor;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const flameFragment = /* glsl */ `
+  uniform sampler2D uMap;
+  varying float vAlpha;
+  varying vec3 vColor;
+  void main() {
+    vec4 tex = texture2D(uMap, gl_PointCoord);
+    vec3 rgb = min(vec3(1.0), tex.rgb * vColor);
+    gl_FragColor = vec4(rgb, tex.a * vAlpha);
+    #include <colorspace_fragment>
+  }
+`;
+
+const MAX_PARTICLES = 50;
+
 export class Flame {
-  readonly group = new THREE.Group();
-  private sprites: THREE.Sprite[] = [];
-  private t = Math.random() * 10;
-  big: boolean;
+  readonly points: THREE.Points;
+  private spec: FlameSpec;
+  private positions: Float32Array;
+  private colors: Float32Array;
+  private alphas: Float32Array;
+  private sizes: Float32Array;
+  private ages: Float32Array;
+  private mix: Float32Array;
+  private vel: Float32Array;
+  private alive: boolean[];
+  private spawnAcc = Math.random();
+  origin = new THREE.Vector3();
 
   constructor(texture: THREE.Texture | null, big: boolean) {
-    this.big = big;
-    // bright magenta core + rising pink wisps, like the original emitters
-    const tints = [new THREE.Color(1.6, 0.5, 1.1), new THREE.Color(1.2, 0.35, 0.9), new THREE.Color(1, 0.3, 0.8), new THREE.Color(0.9, 0.35, 0.9)];
-    for (let i = 0; i < 4; i++) {
-      const mat = new THREE.SpriteMaterial({
-        map: texture,
-        color: tints[i],
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        transparent: true,
-        opacity: 0.95,
-      });
-      const s = new THREE.Sprite(mat);
-      this.group.add(s);
-      this.sprites.push(s);
+    this.spec = big ? FLAME_BIG : FLAME_SMALL;
+    this.positions = new Float32Array(MAX_PARTICLES * 3);
+    this.colors = new Float32Array(MAX_PARTICLES * 3);
+    this.alphas = new Float32Array(MAX_PARTICLES);
+    this.sizes = new Float32Array(MAX_PARTICLES);
+    this.ages = new Float32Array(MAX_PARTICLES);
+    this.mix = new Float32Array(MAX_PARTICLES);
+    this.vel = new Float32Array(MAX_PARTICLES * 3);
+    this.alive = new Array<boolean>(MAX_PARTICLES).fill(false);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    geo.setAttribute('aColor', new THREE.BufferAttribute(this.colors, 3));
+    geo.setAttribute('aAlpha', new THREE.BufferAttribute(this.alphas, 1));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(this.sizes, 1));
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: texture },
+        uScale: { value: 800 },
+      },
+      vertexShader: flameVertex,
+      fragmentShader: flameFragment,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.points = new THREE.Points(geo, mat);
+    this.points.frustumCulled = false;
+    this.points.renderOrder = 5;
+  }
+
+  get visible(): boolean {
+    return this.points.visible;
+  }
+
+  set visible(on: boolean) {
+    if (this.points.visible === on) return;
+    this.points.visible = on;
+    if (!on) {
+      this.alive.fill(false);
+      this.alphas.fill(0);
+      this.sizes.fill(0);
     }
   }
 
-  update(dt: number): void {
-    this.t += dt;
-    const base = this.big ? 5.2 : 3.6;
-    for (let i = 0; i < this.sprites.length; i++) {
-      const s = this.sprites[i];
-      const phase = this.t * (2.2 + i * 0.7) + i * 2.1;
-      const flicker = 0.8 + 0.2 * Math.sin(phase) * Math.sin(phase * 1.7);
-      if (i === 0) {
-        // core orb at the base
-        s.scale.set(base * 0.6 * flicker, base * 0.6 * flicker, 1);
-        s.position.y = base * 0.18;
-        (s.material as THREE.SpriteMaterial).opacity = 0.95;
+  update(dt: number, uScale: number): void {
+    if (!this.points.visible) return;
+    const s = this.spec;
+    (this.points.material as THREE.ShaderMaterial).uniforms.uScale.value = uScale;
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+      if (!this.alive[i]) continue;
+      this.ages[i] += dt;
+      if (this.ages[i] >= s.life) {
+        this.alive[i] = false;
+        this.alphas[i] = 0;
+        this.sizes[i] = 0;
         continue;
       }
-      const h = base * (0.75 + 0.3 * i);
-      s.scale.set(base * 0.42 * flicker, h * flicker, 1);
-      s.position.y = h * 0.42 + 0.4 * i + 0.2 * Math.sin(phase * 1.3);
-      (s.material as THREE.SpriteMaterial).opacity = (0.85 - i * 0.18) * flicker;
+      this.positions[i * 3] += this.vel[i * 3] * dt;
+      this.positions[i * 3 + 1] += this.vel[i * 3 + 1] * dt;
+      this.positions[i * 3 + 2] += this.vel[i * 3 + 2] * dt;
+      const t = this.ages[i] / s.life;
+      this.sizes[i] = s.size * evalCurve(s.sizeKeys, t);
+      // gradient blend: crimson curve fades by t=0.847, white fades linearly
+      const m = this.mix[i];
+      const aCrimson = 0.478 * Math.max(0, 1 - t / 0.847);
+      const aWhite = 1 - t;
+      this.alphas[i] = (aCrimson * (1 - m) + aWhite * m) * MATERIAL_ALPHA;
     }
+    // spawn new particles
+    this.spawnAcc += s.rate * dt;
+    while (this.spawnAcc >= 1) {
+      this.spawnAcc -= 1;
+      const slot = this.alive.indexOf(false);
+      if (slot < 0) break;
+      this.alive[slot] = true;
+      this.ages[slot] = 0;
+      const m = Math.random();
+      this.mix[slot] = m;
+      this.positions[slot * 3] = this.origin.x;
+      this.positions[slot * 3 + 1] = this.origin.y;
+      this.positions[slot * 3 + 2] = this.origin.z;
+      // near-vertical cone (~1.2 degrees) like the original emitters
+      const cone = 0.022 * Math.random();
+      const phi = Math.random() * Math.PI * 2;
+      this.vel[slot * 3] = Math.sin(cone) * Math.cos(phi) * s.speed;
+      this.vel[slot * 3 + 1] = Math.cos(cone) * s.speed;
+      this.vel[slot * 3 + 2] = Math.sin(cone) * Math.sin(phi) * s.speed;
+      const c = new THREE.Color().lerpColors(CRIMSON, TINT, m);
+      this.colors[slot * 3] = c.r;
+      this.colors[slot * 3 + 1] = c.g;
+      this.colors[slot * 3 + 2] = c.b;
+      this.sizes[slot] = s.size * evalCurve(s.sizeKeys, 0);
+      const aCrimson = 0.478;
+      this.alphas[slot] = (aCrimson * (1 - m) + m) * MATERIAL_ALPHA;
+    }
+    const geo = this.points.geometry;
+    geo.getAttribute('position').needsUpdate = true;
+    geo.getAttribute('aColor').needsUpdate = true;
+    geo.getAttribute('aAlpha').needsUpdate = true;
+    geo.getAttribute('aSize').needsUpdate = true;
   }
 }
 
 /**
- * Flame decorations. Original states: the start pad burns four flames; the
- * *armed* (next) checkpoint burns its big center flame, later checkpoints
- * show two small flames, crossed checkpoints none.
+ * Flame decorations, following the original sector logic:
+ * - start pad (PS_FourFlames): four small flames while sector 1 is current
+ * - the just-passed checkpoint: two small flames on its side pods
+ * - the next (armed) checkpoint: one big flame at its center
+ * - every other checkpoint: nothing
  */
 export class FlameSystem {
   private flames: Flame[] = [];
-  private byCheckpoint = new Map<string, { big: Flame; smalls: Flame[] }>();
+  private startFlames: Flame[] = [];
+  private byCheckpoint = new Map<number, { big: Flame; smalls: Flame[] }>();
   private texture: THREE.Texture | null = null;
 
   async init(built: BuiltScene, scene: THREE.Scene): Promise<void> {
     this.texture = await spriteTexture('Textures/Particle_Flames.bmp');
-    // start pad: four flames, always burning
+    // start pad: four small flames at the pod corners (original prefab offsets)
     const start = groupEntities(built, 'PS_Levelstart')[0];
     if (start) {
       const offsets = [
-        [7.3, 2.1, -6.1],
-        [7.3, 2.1, 6.1],
-        [-7.2, 2.1, 6.1],
-        [-7.2, 2.1, -6.1],
+        [-6.16, 1.7, -7.64],
+        [-6.34, 1.7, 6.93],
+        [6.02, 1.7, 6.91],
+        [6.07, 1.7, -7.63],
       ];
-      for (const [x, y, z] of offsets) this.addFlame(scene, start.object, new THREE.Vector3(x, y, -z), false);
+      for (const [x, y, z] of offsets) {
+        this.startFlames.push(this.addFlame(scene, start.object, new THREE.Vector3(x, y, z), false));
+      }
     }
     for (const cp of groupEntities(built, 'PC_Checkpoints')) {
-      const big = this.addFlame(scene, cp.object, new THREE.Vector3(0, 1.5, 0), true);
-      const smallA = this.addFlame(scene, cp.object, new THREE.Vector3(0, 2.1, 6.9), false);
-      const smallB = this.addFlame(scene, cp.object, new THREE.Vector3(0, 2.1, -7.1), false);
-      big.group.visible = false;
-      this.byCheckpoint.set(cp.rec.name, { big, smalls: [smallA, smallB] });
+      const num = Number(/_(\d+)$/.exec(cp.rec.name)?.[1] ?? NaN);
+      if (Number.isNaN(num)) continue;
+      const big = this.addFlame(scene, cp.object, new THREE.Vector3(0, 1.12, 0), true);
+      const smallA = this.addFlame(scene, cp.object, new THREE.Vector3(6.93, 1.6, 0), false);
+      const smallB = this.addFlame(scene, cp.object, new THREE.Vector3(-6.93, 1.6, 0), false);
+      big.visible = false;
+      smallA.visible = false;
+      smallB.visible = false;
+      this.byCheckpoint.set(num, { big, smalls: [smallA, smallB] });
     }
   }
 
   private addFlame(scene: THREE.Scene, anchor: THREE.Object3D, offset: THREE.Vector3, big: boolean): Flame {
     const flame = new Flame(this.texture, big);
-    const pos = offset.clone().applyQuaternion(anchor.quaternion).add(anchor.position);
-    flame.group.position.copy(pos);
-    scene.add(flame.group);
+    flame.origin.copy(offset).applyQuaternion(anchor.quaternion).add(anchor.position);
+    scene.add(flame.points);
     this.flames.push(flame);
     return flame;
   }
 
-  /** the checkpoint the player must reach next: big flame on, smalls off */
-  arm(checkpointName: string): void {
-    const f = this.byCheckpoint.get(checkpointName);
-    if (!f) return;
-    f.big.group.visible = true;
-    for (const s of f.smalls) s.group.visible = false;
-  }
-
-  /** checkpoint crossed: all its flames out */
-  extinguish(checkpointName: string): void {
-    const f = this.byCheckpoint.get(checkpointName);
-    if (!f) return;
-    f.big.group.visible = false;
-    for (const s of f.smalls) s.group.visible = false;
-  }
-
-  update(dt: number): void {
-    for (const f of this.flames) {
-      if (f.group.visible) f.update(dt);
+  /** apply the original per-sector flame states */
+  setSector(sector: number): void {
+    for (const f of this.startFlames) f.visible = sector === 1;
+    for (const [num, f] of this.byCheckpoint) {
+      const armed = num === sector; // PC_TwoFlames_NN gates sector NN+1
+      const passed = num === sector - 1;
+      f.big.visible = armed;
+      for (const s of f.smalls) s.visible = passed;
     }
+  }
+
+  update(dt: number, uScale: number): void {
+    for (const f of this.flames) f.update(dt, uScale);
   }
 }
 
@@ -244,6 +391,76 @@ export class LightningSphere {
   }
 }
 
+/**
+ * The original transformation cage (AnimTrafo.nmo): four environment-mapped
+ * rings, a bar cage and the flash field, spun around the ball during the
+ * 2.3s transformation. (The original plays authored keyframes; this drives
+ * the same meshes procedurally.)
+ */
+export class TrafoAnim {
+  readonly group = new THREE.Group();
+  private rings: THREE.Object3D[] = [];
+  private flash: THREE.Mesh | null = null;
+  active = false;
+  private t = 0;
+
+  async init(): Promise<void> {
+    try {
+      const built = await buildScene(await loadNmo('3D Entities/AnimTrafo.nmo'));
+      this.group.add(built.root);
+      built.root.updateMatrixWorld(true);
+      for (let i = 1; i <= 4; i++) {
+        const e = built.entities.get(`AnimTrafo_Ringpart${i}`);
+        if (e) this.rings.push(e.object);
+      }
+      const flash = built.entities.get('AnimTrafo_Flashfield');
+      if (flash && flash.object instanceof THREE.Mesh) {
+        this.flash = flash.object;
+        const mats = Array.isArray(flash.object.material) ? flash.object.material : [flash.object.material];
+        for (const m of mats) {
+          m.transparent = true;
+          m.blending = THREE.AdditiveBlending;
+          m.depthWrite = false;
+        }
+      }
+    } catch {
+      /* keep an empty group if the file is absent */
+    }
+    this.group.visible = false;
+  }
+
+  start(): void {
+    this.active = true;
+    this.t = 0;
+    this.group.visible = true;
+  }
+
+  stop(): void {
+    this.active = false;
+    this.group.visible = false;
+  }
+
+  update(dt: number, ballPos: THREE.Vector3): void {
+    if (!this.active) return;
+    this.t += dt;
+    this.group.position.copy(ballPos);
+    // quick scale-in, rings counter-rotating at different speeds
+    const s = Math.min(1, this.t / 0.18);
+    this.group.scale.setScalar(0.4 + 0.6 * s);
+    const speeds = [2.6, -3.3, 2.1, -2.8];
+    this.rings.forEach((r, i) => {
+      r.rotation.y += dt * speeds[i % speeds.length];
+      r.updateMatrix();
+    });
+    if (this.flash) {
+      this.flash.rotation.y -= dt * 1.7;
+      this.flash.updateMatrix();
+      const mats = Array.isArray(this.flash.material) ? this.flash.material : [this.flash.material];
+      for (const m of mats) m.opacity = 0.55 + 0.35 * Math.sin(this.t * 21);
+    }
+  }
+}
+
 interface Piece {
   mesh: THREE.Mesh;
   body: RAPIER.RigidBody;
@@ -296,7 +513,12 @@ export class ShatterSystem {
       const scale = new THREE.Vector3(1, 1, 1);
       const desc =
         RAPIER.ColliderDesc.convexHull(localVertices(mesh, scale)) ?? RAPIER.ColliderDesc.ball(0.4);
-      desc.setFriction(kind === 'wood' ? 2 : 0.8).setRestitution(1).setMass(kind === 'stone' ? 0.8 : 0.2);
+      desc
+        .setFriction(kind === 'wood' ? 2 : 0.8)
+        .setRestitution(1)
+        .setMass(kind === 'stone' ? 0.8 : 0.2)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+        .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply);
       this.physics.world.createCollider(desc, body);
 
       // explosion impulse within the original piece force range

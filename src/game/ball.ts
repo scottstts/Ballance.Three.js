@@ -16,6 +16,8 @@ export class Ball {
   visual: THREE.Object3D;
   private visuals: Record<BallKind, THREE.Object3D>;
   private physics: PhysicsWorld;
+  /** the paper ball is physicalized as its crumpled mesh, not a sphere */
+  private paperHull: Float32Array | null = null;
 
   private constructor(
     physics: PhysicsWorld,
@@ -34,6 +36,7 @@ export class Ball {
       parent.add(v);
     }
     this.visual.visible = true;
+    this.paperHull = hullVertices(visuals.paper);
   }
 
   static async create(physics: PhysicsWorld, parent: THREE.Object3D, position: THREE.Vector3): Promise<Ball> {
@@ -65,12 +68,24 @@ export class Ball {
     this.visual.visible = false;
     this.visual = this.visuals[kind];
     this.visual.visible = true;
-    // swap physical properties in place
-    this.collider.setFriction(this.def.friction);
-    this.collider.setRestitution(this.def.elasticity);
-    this.collider.setMass(this.def.mass);
+    // swap the collider: paper uses its crumpled mesh hull (original
+    // physicalizes it as a mesh, BallRadius 0), wood/stone are spheres
+    const world = this.physics.world;
+    world.removeCollider(this.collider, false);
+    let desc: RAPIER.ColliderDesc | null = null;
+    if (kind === 'paper' && this.paperHull) desc = RAPIER.ColliderDesc.convexHull(this.paperHull);
+    desc ??= RAPIER.ColliderDesc.ball(this.def.radius);
+    desc
+      .setFriction(this.def.friction)
+      .setRestitution(this.def.elasticity)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+      .setMass(this.def.mass)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+    this.collider = world.createCollider(desc, this.body);
     this.body.setLinearDamping(this.def.linearDamp);
     this.body.setAngularDamping(this.def.rotDamp);
+    this.body.wakeUp();
   }
 
   /** Constant push force in a camera-relative horizontal direction. */
@@ -106,4 +121,15 @@ export class Ball {
   dispose(): void {
     this.physics.removeBody(this.body);
   }
+}
+
+/** collect local-space vertices of the first mesh under an object */
+function hullVertices(obj: THREE.Object3D): Float32Array | null {
+  let found: Float32Array | null = null;
+  obj.traverse((child) => {
+    if (found || !(child instanceof THREE.Mesh)) return;
+    const pos = child.geometry.getAttribute('position');
+    if (pos) found = new Float32Array(pos.array);
+  });
+  return found;
 }

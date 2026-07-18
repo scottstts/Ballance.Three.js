@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { levelPath, loadNmo, skyLetter } from '../engine/assets.ts';
-import { addLightRig } from '../engine/viewer.ts';
+import { addLightRig, LEVEL_LIGHT_COLORS } from '../engine/viewer.ts';
 import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
 import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
@@ -12,10 +12,11 @@ import { Ball } from './ball.ts';
 import { CamRig } from './camera.ts';
 import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { BallShadow, FlameSystem, LightningSphere, ShatterSystem } from './effects.ts';
+import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TrafoAnim } from './effects.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
+import { instantiatePrefab, loadPrefab } from './moduls/prefabs.ts';
 import { modulFactories } from './moduls/registry.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
 import { PickupSystem } from './pickups.ts';
@@ -60,9 +61,11 @@ const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
 
-const DEATH_DELAY = 2.2; // seconds between death and respawn (shatter plays)
+const DEATH_DELAY = 2.0; // fall (~1s) + white fade before respawn
 const POINT_TICK = 0.5; // seconds per -1 point
 const TRAFO_TIME = 2.3; // original transformation animation length
+const BIRTH_TIME = 1.0; // spawn lightning; control + countdown start after
+const LIFE_BONUS = 200; // original: each remaining life is worth 200 points
 
 export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
   bootStage('rapier');
@@ -76,8 +79,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const scene = new THREE.Scene();
   const fogColor = new THREE.Color(0xbed7e3);
-  scene.fog = new THREE.Fog(fogColor, 380, 1100);
-  addLightRig(scene);
+  // original gameplay has no fog; the single white light is tinted per level
+  addLightRig(scene, LEVEL_LIGHT_COLORS[level] ?? 0xffffff);
 
   bootStage('level-nmo');
   const file = await loadNmo(levelPath(level));
@@ -88,19 +91,38 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const builtSky = await buildSky(skyLetter(level), fogColor);
   const sky = builtSky.group;
   scene.add(sky);
-  // fog matches the level sky's horizon; keep distances Ballance-like
-  scene.fog = new THREE.Fog(builtSky.horizonColor, 380, 1100);
   renderer.setClearColor(builtSky.horizonColor);
 
   bootStage('colliders');
   const bootFlags = new URLSearchParams(window.location.search);
   const physics = new PhysicsWorld();
-  const surfaceByCollider = bootFlags.has('nocolliders')
-    ? new Map<number, Surface>()
+  const { surfaceByCollider, floorHitByCollider } = bootFlags.has('nocolliders')
+    ? { surfaceByCollider: new Map<number, Surface>(), floorHitByCollider: new Map<number, string>() }
     : buildStaticColliders(physics, built);
   const minY = computeMinY(built) - 30;
 
   const logic = new LevelLogic(built, minY);
+
+  // the level file only carries gray placement dummies for the scenery
+  // pieces; the textured versions live in PH/*.nmo (as the original loads)
+  bootStage('scenery');
+  let balloonInstance: THREE.Object3D | null = null;
+  for (const { group, prefab } of [
+    { group: 'PC_Checkpoints', prefab: 'PC_TwoFlames' },
+    { group: 'PS_Levelstart', prefab: 'PS_FourFlames' },
+    { group: 'PE_Levelende', prefab: 'PE_Balloon' },
+  ]) {
+    const placements = groupEntities(built, group);
+    if (placements.length === 0) continue;
+    const p = await loadPrefab(prefab);
+    for (const e of placements) {
+      e.object.visible = false;
+      const inst = instantiatePrefab(p, e.object.matrix);
+      scene.add(inst.root);
+      if (group === 'PE_Levelende') balloonInstance = inst.root;
+    }
+  }
+  for (const e of groupEntities(built, 'PR_Resetpoints')) e.object.visible = false;
 
   bootStage('ball');
   const spawn = logic.spawnFor(1);
@@ -115,6 +137,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const lightning = new LightningSphere();
   await lightning.init();
   scene.add(lightning.mesh);
+  const trafoAnim = new TrafoAnim();
+  await trafoAnim.init();
+  scene.add(trafoAnim.group);
   const shatter = new ShatterSystem(physics, scene);
   await shatter.init();
   const pickups = new PickupSystem();
@@ -159,8 +184,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             s.set({ lives: gameStore.getState().lives + 1 });
             break;
           case 'trafo':
-            // original: lightning plays 2.3s before the ball morphs
-            lightning.start();
+            // original: the ring cage spins 2.3s, then the old ball bursts
+            trafoAnim.start();
             pendingTrafo = { ball: ev.ball, timer: TRAFO_TIME };
             break;
           case 'sound':
@@ -173,7 +198,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     sectorLookup(built),
   );
   moduls.setSector(1);
-  flames.arm('PC_TwoFlames_01');
+  flames.setSector(1);
   bootStage('done');
 
   const input = new Input();
@@ -188,6 +213,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     sector: 1,
     sectorCount: logic.sectorCount,
     ballKind: 'wood',
+    whiteFade: false,
   });
 
   let disposed = false;
@@ -205,9 +231,24 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let debug: GameDebug | null = null;
   let deathTimer = 0;
   let pointTimer = 0;
+  let birthTimer = 0;
+  let flapCooldown = 0;
   let pendingTrafo: { ball: BallKind; timer: number } | null = null;
   let finishRise = 0;
-  const balloonVisual = groupEntities(built, 'PE_Levelende')[0]?.object ?? null;
+  const balloonVisual = balloonInstance ?? groupEntities(built, 'PE_Levelende')[0]?.object ?? null;
+  // simple sim-time one-shot timer queue
+  const timers: { t: number; fn: () => void }[] = [];
+  const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
+  // final-sector ambient from the balloon (Music_EndCheckpoint loop)
+  const balloonAmbient = balloonVisual ? audio.createLoop('Music_EndCheckpoint.wav', balloonVisual, 0.9) : null;
+
+  const startBirth = () => {
+    birthTimer = BIRTH_TIME;
+    lightning.start();
+    audio.play('Misc_Lightning.wav', ball.position, 1, scene);
+  };
+  audio.play('Misc_StartLevel.wav', ball.position, 1, scene);
+  startBirth();
 
   // the original's slowly drifting cloud layer plane
   const skyLayer = built.entities.get('SkyLayer')?.object ?? null;
@@ -215,14 +256,25 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     skyLayer.visible = true;
     const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
     for (const m of mats) {
-      const map = (m as THREE.MeshPhongMaterial).map;
-      if (map) {
-        map.wrapS = THREE.RepeatWrapping;
-        map.wrapT = THREE.RepeatWrapping;
+      const pm = m as THREE.MeshPhongMaterial;
+      if (pm.map) {
+        pm.map.wrapS = THREE.RepeatWrapping;
+        pm.map.wrapT = THREE.RepeatWrapping;
+        // the cloud texture supplies its own translucency (alphaMap reads
+        // the green channel — luminance for the grayscale cloud image)
+        pm.alphaMap = pm.map;
       }
-      m.transparent = true;
-      m.opacity = Math.min((m as THREE.MeshPhongMaterial).opacity, 0.55);
-      m.depthWrite = false;
+      pm.transparent = true;
+      pm.depthWrite = false;
+    }
+    // widen the layer so its edge can never peek inside the sky walls; scale
+    // the UV repeat with it so the cloud density stays as authored
+    const grow = 6;
+    skyLayer.scale.multiplyScalar(grow);
+    skyLayer.updateMatrix();
+    for (const m of mats) {
+      const map = (m as THREE.MeshPhongMaterial).map;
+      if (map) map.repeat.multiplyScalar(grow);
     }
   }
 
@@ -230,38 +282,52 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const s = gameStore.getState();
     shatter.clear();
     ball.visual.visible = true;
+    // original: the ball materializes exactly at the reset point
     const rp = logic.spawnFor(logic.currentSector);
-    const pos = rp.position.clone();
-    pos.y += 4;
     ball.setKind(logic.sectorBallKind);
-    ball.teleport(pos);
-    rig.resetTo(pos, rp.yaw);
+    ball.teleport(rp.position);
+    rig.resetTo(rp.position, rp.yaw);
     moduls.resetSector(logic.currentSector);
-    s.set({ phase: 'playing', ballKind: logic.sectorBallKind });
+    s.set({ phase: 'playing', ballKind: logic.sectorBallKind, whiteFade: false });
+    startBirth();
   };
 
   const die = () => {
     const s = gameStore.getState();
-    // original: the ball shatters into its piece meshes
-    shatter.burst(ball.kind, ball.position);
-    ball.visual.visible = false;
+    // original fall: Misc_Fall plays, the ball keeps falling into the void,
+    // the screen fades white, then the ball is reborn at the reset point
+    trafoAnim.stop();
     lightning.stop();
     pendingTrafo = null;
-    audio.play(`Pieces_${ball.kind[0].toUpperCase()}${ball.kind.slice(1)}.wav`, ball.position, 1, scene);
+    audio.play('Misc_Fall.wav', ball.position, 1, scene);
     const lives = s.lives - 1;
     if (lives <= 0) {
-      s.set({ lives: 0, phase: 'gameover' });
+      s.set({ lives: 0 });
+      after(1.5, () => {
+        audio.stopMusic();
+        gameStore.getState().set({ phase: 'gameover' });
+      });
+      s.set({ phase: 'dead' });
+      deathTimer = Infinity; // gameover timer takes over
     } else {
       s.set({ lives, phase: 'dead' });
       deathTimer = DEATH_DELAY;
+      after(1.0, () => gameStore.getState().set({ whiteFade: true }));
     }
   };
 
   const simStep = () => {
     const s = gameStore.getState();
+    for (let i = timers.length - 1; i >= 0; i--) {
+      timers[i].t -= SIM_DT;
+      if (timers[i].t <= 0) {
+        const { fn } = timers[i];
+        timers.splice(i, 1);
+        fn();
+      }
+    }
     if (s.phase === 'dead') {
-      physics.step(); // pieces keep flying
-      shatter.update();
+      physics.step(); // the ball keeps falling into the void
       deathTimer -= SIM_DT;
       if (deathTimer <= 0) respawn();
       return;
@@ -277,42 +343,73 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     if (s.phase !== 'playing') return; // paused/gameover freeze the sim
 
-    // pending ball transformation (original: swap after the 2.3s lightning)
+    // pending ball transformation: ring cage spins, then the old ball
+    // bursts into its pieces as the new ball takes over
     if (pendingTrafo) {
       pendingTrafo.timer -= SIM_DT;
       if (pendingTrafo.timer <= 0) {
+        const oldKind = ball.kind;
+        shatter.burst(oldKind, ball.position);
+        audio.play(`Pieces_${oldKind[0].toUpperCase()}${oldKind.slice(1)}.wav`, ball.position, 1, scene);
         ball.setKind(pendingTrafo.ball);
         s.set({ ballKind: pendingTrafo.ball });
-        lightning.stop();
+        trafoAnim.stop();
         pendingTrafo = null;
       }
     }
 
-    rig.pushDirection(input.state, pushDir);
+    // birth lightning: control and the countdown start once it finishes
+    if (birthTimer > 0) {
+      birthTimer -= SIM_DT;
+      if (birthTimer <= 0) lightning.stop();
+      pushDir.set(0, 0, 0);
+    } else {
+      rig.pushDirection(input.state, pushDir);
+    }
     ball.applyPush(pushDir);
     moduls.update(SIM_DT);
+    const preVel = ball.body.linvel();
     physics.step();
     simTicks++;
 
-    // impact sounds from contact force events
-    physics.eventQueue.drainContactForceEvents((ev) => {
-      const h1 = ev.collider1();
-      const h2 = ev.collider2();
+    // impact sounds: collision-start events, volume from the contact-normal
+    // approach speed (original: min 5, max 30, per-surface 0.6s sleep)
+    physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
+      if (!started) return;
       const ballHandle = ball.collider.handle;
       if (h1 !== ballHandle && h2 !== ballHandle) return;
       const other = h1 === ballHandle ? h2 : h1;
       const surface = surfaceByCollider.get(other) ?? 'stone';
-      const strength = ev.totalForceMagnitude() / (ball.def.mass * 900);
-      if (strength > 0.1) {
-        audio.hit(ball.kind, surface, ball.position, strength, scene);
+      const otherCollider = physics.world.getCollider(other);
+      let impact = 0;
+      if (otherCollider) {
+        physics.world.contactPair(ball.collider, otherCollider, (manifold) => {
+          const n = manifold.normal();
+          impact = Math.max(impact, Math.abs(preVel.x * n.x + preVel.y * n.y + preVel.z * n.z));
+        });
+      }
+      if (impact === 0) {
+        // no manifold (grazing/CCD): fall back to the velocity change
+        const v = ball.body.linvel();
+        impact = Math.hypot(v.x - preVel.x, v.y - preVel.y, v.z - preVel.z);
+      }
+      audio.hit(ball.kind, surface, impact);
+      // flap floors bang with their own sound on top of the ball's
+      const floorHit = floorHitByCollider.get(other);
+      if (floorHit && impact > 0.4 && flapCooldown <= 0) {
+        flapCooldown = 0.25;
+        audio.playFlat(floorHit, THREE.MathUtils.clamp(impact / 10, 0.08, 1));
       }
     });
+    flapCooldown -= SIM_DT;
 
-    // point countdown
-    pointTimer += SIM_DT;
-    while (pointTimer >= POINT_TICK) {
-      pointTimer -= POINT_TICK;
-      if (s.points > 0) s.set({ points: s.points - 1 });
+    // point countdown (held while the birth lightning plays)
+    if (birthTimer <= 0) {
+      pointTimer += SIM_DT;
+      while (pointTimer >= POINT_TICK) {
+        pointTimer -= POINT_TICK;
+        if (s.points > 0) s.set({ points: s.points - 1 });
+      }
     }
 
     const pos = ball.position;
@@ -322,45 +419,70 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     for (const ev of logic.update(pos, ball.kind)) {
       switch (ev.kind) {
-        case 'checkpoint':
+        case 'checkpoint': {
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
-          flames.extinguish(`PC_TwoFlames_${String(ev.sector - 1).padStart(2, '0')}`);
-          flames.arm(`PC_TwoFlames_${String(ev.sector).padStart(2, '0')}`);
-          audio.play('Music_EndCheckpoint.wav', pos, 0.8, scene);
+          flames.setSector(ev.sector);
+          audio.play('Misc_Checkpoint.wav', pos, 1, scene);
+          // entering the final sector: the balloon hums its ambient and the
+          // background music stays out of the way (original: 70s mute)
+          if (ev.sector === logic.sectorCount) {
+            balloonAmbient?.setActive(true);
+            audio.muteMusicFor(70);
+          }
           break;
-        case 'finish':
+        }
+        case 'finish': {
           s.set({ phase: 'finished' });
-          s.completeLevel(level, gameStore.getState().points);
+          const finalScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
+          s.completeLevel(level, finalScore);
+          balloonAmbient?.setActive(false);
           audio.stopMusic();
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             audio.play('Misc_UFO.wav', pos, 1, scene);
+            audio.play('Misc_UFO_anim.wav', pos, 0.9, scene);
             audio.play('Music_LastFinal.wav', pos, 0.9, scene);
+            after(5.5, () => audio.play('Music_Final.wav', ball.position, 0.9, scene));
           } else {
             audio.play('Music_Final.wav', pos, 0.9, scene);
           }
           break;
-        case 'extraPoint':
-          s.set({ points: gameStore.getState().points + ev.amount });
+        }
+        case 'extraPoint': {
+          // original: +100 at the center, then the six orbiters strike the
+          // counter for +20 each as they fly in
+          s.set({ points: gameStore.getState().points + 100 });
           pickups.collect(ev.name);
           audio.play('Extra_Start.wav', pos, 1, scene);
+          for (let i = 0; i < 6; i++) {
+            after(0.45 + i * 0.12, () => {
+              gameStore.getState().set({ points: gameStore.getState().points + 20 });
+              audio.playFlat('Extra_Hit.wav', 0.8);
+            });
+          }
           break;
+        }
         case 'extraLife':
-          s.set({ lives: gameStore.getState().lives + 1 });
           pickups.collect(ev.name);
           audio.play('Extra_Life_Blob.wav', pos, 1, scene);
+          after(0.317, () => {
+            gameStore.getState().set({ lives: gameStore.getState().lives + 1 });
+            audio.playFlat('Misc_extraball.wav', 1);
+          });
           break;
       }
     }
   };
 
-  const contactSurface = (): Surface | null => {
-    let found: Surface | null = null;
+  const touchingSurfaces = new Set<Surface>();
+  const contactSurfaces = (): Set<Surface> => {
+    touchingSurfaces.clear();
     physics.world.contactPairsWith(ball.collider, (other) => {
-      if (found === null) found = surfaceByCollider.get(other.handle) ?? 'stone';
+      const s = surfaceByCollider.get(other.handle);
+      if (s) touchingSurfaces.add(s);
     });
-    return found;
+    return touchingSurfaces;
   };
 
   const present = (frameDt: number) => {
@@ -368,10 +490,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     rig.update(frameDt, ball.position, input.state);
     const v = ball.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
-    audio.updateRoll(ball.kind, contactSurface(), speed, ball.position, scene, frameDt);
-    flames.update(frameDt);
+    audio.updateRoll(ball.kind, contactSurfaces(), speed, frameDt);
+    const flameScale = renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360));
+    flames.update(frameDt, flameScale);
     pickups.update(frameDt, rig.camera.position);
     lightning.update(frameDt, ball.position);
+    trafoAnim.update(frameDt, ball.position);
     shatter.update();
     {
       const bp = ball.position;
@@ -383,7 +507,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       const mats = Array.isArray(skyLayer.material) ? skyLayer.material : [skyLayer.material];
       for (const m of mats) {
         const map = (m as THREE.MeshPhongMaterial).map;
-        if (map) map.offset.x = (map.offset.x + frameDt * 0.0035) % 1;
+        if (map) {
+          // original cloud drift: 0.008/s on both axes
+          map.offset.x = (map.offset.x + frameDt * 0.008) % 1;
+          map.offset.y = (map.offset.y + frameDt * 0.008) % 1;
+        }
       }
     }
     sky.position.copy(rig.camera.position);
@@ -485,20 +613,25 @@ function soundSurfaceLookup(built: BuiltScene): Map<string, Surface> {
   return map;
 }
 
-function buildStaticColliders(physics: PhysicsWorld, built: BuiltScene): Map<number, Surface> {
+function buildStaticColliders(
+  physics: PhysicsWorld,
+  built: BuiltScene,
+): { surfaceByCollider: Map<number, Surface>; floorHitByCollider: Map<number, string> } {
   const surfaceOf = soundSurfaceLookup(built);
-  const byCollider = new Map<number, Surface>();
+  const surfaceByCollider = new Map<number, Surface>();
+  const floorHitByCollider = new Map<number, string>();
   for (const [groupName, def] of Object.entries(FLOOR_GROUPS)) {
     for (const e of groupEntities(built, groupName)) {
       if (e.object instanceof THREE.Mesh) {
         const collider = physics.addStaticMesh(e.object, def.friction, def.elasticity);
         if (collider) {
-          byCollider.set(collider.handle, surfaceOf.get(e.rec.name) ?? def.surface);
+          surfaceByCollider.set(collider.handle, surfaceOf.get(e.rec.name) ?? def.surface);
+          if (def.hitSound) floorHitByCollider.set(collider.handle, def.hitSound);
         }
       }
     }
   }
-  return byCollider;
+  return { surfaceByCollider, floorHitByCollider };
 }
 
 /** debug: a scene view with no groups, so no moduls get created */

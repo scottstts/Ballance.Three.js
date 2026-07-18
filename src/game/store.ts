@@ -5,6 +5,9 @@ import type { BallKind } from './constants.ts';
 export type GamePhase =
   | 'menu'
   | 'levelselect'
+  | 'highscore'
+  | 'options'
+  | 'credits'
   | 'loading'
   | 'playing'
   | 'paused'
@@ -58,6 +61,8 @@ export interface GameState {
   sector: number;
   sectorCount: number;
   ballKind: BallKind;
+  /** white screen fade during the fall-death transition */
+  whiteFade: boolean;
   progress: Progress;
   settings: Settings;
   set: (partial: Partial<GameState>) => void;
@@ -75,6 +80,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   sector: 1,
   sectorCount: 1,
   ballKind: 'wood',
+  whiteFade: false,
   progress: initial.progress,
   settings: initial.settings,
   set: (partial) => set(partial),

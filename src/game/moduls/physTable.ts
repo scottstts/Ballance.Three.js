@@ -23,7 +23,7 @@ export interface PartPhys {
   /** sphere collider of this radius (loose balls) */
   sphereRadius?: number;
   /** sound surface when the ball hits this part */
-  surface?: 'wood' | 'stone' | 'metal';
+  surface?: 'wood' | 'stone' | 'metal' | 'dome';
 }
 
 export interface HingeDef {
@@ -297,6 +297,7 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
   },
   // loose pushable balls placed on the course
   P_Ball_Paper: {
+    // original physicalizes loose paper balls as their crumpled mesh (UseBall 0)
     parts: [
       {
         suffix: 'Paper_MF',
@@ -305,7 +306,6 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
         elasticity: 0.4,
         linearDamp: 1.5,
         rotDamp: 0.1,
-        sphereRadius: 2,
         surface: 'wood',
       },
     ],
@@ -339,7 +339,8 @@ export const MODUL_PHYS: Record<string, ModulPhys> = {
     ],
   },
   P_Dome: {
-    parts: [{ suffix: 'Dome_MF', fixed: true, friction: 0.2, elasticity: 0.8, trimesh: true, surface: 'stone' }],
+    // the dome has its own hit-sound layer (Hit_Wood_Dome / Hit_Stone_Kuppel)
+    parts: [{ suffix: 'Dome_MF', fixed: true, friction: 0.2, elasticity: 0.8, trimesh: true, surface: 'dome' }],
   },
 };
 

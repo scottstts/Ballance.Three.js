@@ -5,7 +5,7 @@ This is a project attempt to port a Ballance game binary to react ts + three.js
 - all terminal commands you run MUST use `zsh -ic '<command>'`, instead of bare commands
 - do NOT attempt to run the original game binary, only interpret the code
 - you can run dev server and do live browser inspection of the ported three.js version of the game
-- the goal is to 100% faithful between ported version and the original, or as close to 100% as possible
+- the goal is to 100% faithful between ported version and the original. The ultimate goal is to play the ported threejs version of the game and feel like as if playing the exact original game but in a browser
 - typical hygine: lint, typecheck, build, unit tests, regression tests
 - you may periodcally commit to main to keep meaningful progress
 - after compaction, you MUST re-read this project rules in full before proceeding to task

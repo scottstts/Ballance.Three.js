@@ -76,13 +76,15 @@ export interface FloorDef {
   elasticity: number;
   /** sound surface: wood | metal | stone */
   surface: 'wood' | 'metal' | 'stone';
+  /** floor's own impact sound (wooden flaps), volume = impact/10 */
+  hitSound?: string;
 }
 
 export const FLOOR_GROUPS: Record<string, FloorDef> = {
   Phys_Floors: { friction: 0.7, elasticity: 0.3, surface: 'stone' },
   Phys_FloorWoods: { friction: 0.7, elasticity: 0.3, surface: 'wood' },
   Phys_FloorRails: { friction: 0.7, elasticity: 0.3, surface: 'metal' },
-  Phys_FloorStopper: { friction: 0.7, elasticity: 0.5, surface: 'wood' },
+  Phys_FloorStopper: { friction: 0.7, elasticity: 0.5, surface: 'wood', hitSound: 'Hit_WoodenFlap.wav' },
 };
 
 /** Camera rig (original follow values). */
@@ -91,6 +93,7 @@ export const CAM_NORMAL_Z = 17;
 export const CAM_SPACE_Y = 55;
 export const CAM_SPACE_Z = 8;
 export const CAM_ROTATE_TIME = 0.3; // seconds per 90° step
-export const CAM_LIFT_TIME = 0.5;
+export const CAM_LIFT_UP_TIME = 0.8; // original overview raise
+export const CAM_LIFT_DOWN_TIME = 1.3; // original overview drop
 export const CAM_FOLLOW_SPEED = 0.05;
-export const CAM_FOV = 75;
+export const CAM_FOV = 60;

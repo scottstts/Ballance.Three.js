@@ -6,7 +6,8 @@ import * as THREE from 'three';
 import {
   CAM_FOLLOW_SPEED,
   CAM_FOV,
-  CAM_LIFT_TIME,
+  CAM_LIFT_DOWN_TIME,
+  CAM_LIFT_UP_TIME,
   CAM_NORMAL_Y,
   CAM_NORMAL_Z,
   CAM_ROTATE_TIME,
@@ -61,9 +62,9 @@ export class CamRig {
       if (this.rotateT >= 1) this.yawCurrent = this.yawTarget;
     }
 
-    // overview lift while Space held
+    // overview lift while Space held (original: 0.8s up, 1.3s down)
     const liftTarget = input.space ? 1 : 0;
-    const liftRate = dt / CAM_LIFT_TIME;
+    const liftRate = dt / (input.space ? CAM_LIFT_UP_TIME : CAM_LIFT_DOWN_TIME);
     this.liftT = THREE.MathUtils.clamp(this.liftT + Math.sign(liftTarget - this.liftT) * liftRate, 0, 1);
 
     // lagged follow of the ball
@@ -91,11 +92,11 @@ export class CamRig {
     const cos = Math.cos(this.yawCurrent);
     const fwd = new THREE.Vector3(-sin, 0, -cos);
     const right = new THREE.Vector3(cos, 0, -sin);
+    // original: X and Z axis forces are independent, so diagonals push sqrt(2) harder
     if (input.forward) out.add(fwd);
     if (input.back) out.sub(fwd);
     if (input.right) out.add(right);
     if (input.left) out.sub(right);
-    if (out.lengthSq() > 1) out.normalize();
     return out;
   }
 

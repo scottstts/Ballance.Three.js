@@ -149,7 +149,11 @@ export abstract class Modul {
       if (index) desc = RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(index.array));
     }
     desc ??= RAPIER.ColliderDesc.convexHull(verts) ?? RAPIER.ColliderDesc.ball(1);
-    desc.setFriction(phys.friction).setRestitution(phys.elasticity);
+    desc
+      .setFriction(phys.friction)
+      .setRestitution(phys.elasticity)
+      .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
+      .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply);
 
     // mass properties: original mass, optional shifted center, box-approx inertia
     const mass = phys.mass ?? 1;

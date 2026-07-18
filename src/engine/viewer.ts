@@ -15,18 +15,19 @@ export interface ViewerHandle {
 }
 
 /**
- * Original global lighting, D3D fixed-function energy levels: materials
- * already add their own emissive lift, so total light stays near 1.
+ * Original lighting: a single pure-white light (Light_Ingame, a no-falloff
+ * point at (-5,15,3.6) relative to the play area — approximated as a
+ * directional from that bearing) plus the fixed-function global ambient.
+ * Levels 9 and 12 tint the light (E9E9E9 / 969696) per the original data.
  */
-export function addLightRig(scene: THREE.Scene): void {
-  const ambient = new THREE.AmbientLight(0xfff4e8, 0.32);
+export const LEVEL_LIGHT_COLORS: Record<number, number> = { 9: 0xe9e9e9, 12: 0x969696 };
+
+export function addLightRig(scene: THREE.Scene, tint = 0xffffff): void {
+  const ambient = new THREE.AmbientLight(tint, 0.34);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(0xfff2e2, 0.95);
-  sun.position.set(-0.45, 1, -0.3).multiplyScalar(100);
+  const sun = new THREE.DirectionalLight(tint, 0.95);
+  sun.position.set(-5, 15, 3.6).multiplyScalar(10);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0xdde4f0, 0.18);
-  fill.position.set(0.5, 0.4, 0.6).multiplyScalar(100);
-  scene.add(fill);
 }
 
 export async function startViewer(canvas: HTMLCanvasElement, level: number): Promise<ViewerHandle> {
