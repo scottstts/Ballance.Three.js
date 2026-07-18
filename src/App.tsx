@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import GameCanvas from './GameCanvas.tsx';
 import { useGameStore } from './game/store.ts';
 import Hud from './ui/Hud.tsx';
+import MenuBackdrop from './ui/MenuBackdrop.tsx';
 import { FinishedOverlay, GameOverOverlay, LevelSelect, MainMenu, PauseOverlay } from './ui/Menus.tsx';
 
 const IN_GAME = new Set(['loading', 'playing', 'paused', 'dead', 'finished', 'gameover']);
@@ -30,10 +31,12 @@ export default function App() {
   }, [set]);
 
   const inGame = IN_GAME.has(phase);
+  const inMenus = phase === 'menu' || phase === 'levelselect';
   return (
     <>
       {inGame && <GameCanvas key={`level-${level}`} level={level} />}
       {inGame && <Hud />}
+      {inMenus && <MenuBackdrop />}
       {phase === 'menu' && <MainMenu />}
       {phase === 'levelselect' && <LevelSelect />}
       {phase === 'paused' && <PauseOverlay />}

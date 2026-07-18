@@ -333,7 +333,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           s.set({ phase: 'finished' });
           s.completeLevel(level, gameStore.getState().points);
           audio.stopMusic();
-          audio.play('Music_Final.wav', pos, 0.9, scene);
+          // the final level ends with the UFO pickup, others with the balloon
+          if (level === 12) {
+            audio.play('Misc_UFO.wav', pos, 1, scene);
+            audio.play('Music_LastFinal.wav', pos, 0.9, scene);
+          } else {
+            audio.play('Music_Final.wav', pos, 0.9, scene);
+          }
           break;
         case 'extraPoint':
           s.set({ points: gameStore.getState().points + ev.amount });
