@@ -13,6 +13,7 @@ import { localVertices } from './moduls/base.ts';
 import { FORCE_SCALE, type BallKind } from './constants.ts';
 import { decodeCk2dCurve, evalCurve, type CurveKey } from './curve.ts';
 import type { PhysicsWorld } from './physics.ts';
+import { ScaleableProximity, type ScaleableProximitySpec } from './proximity.ts';
 
 async function spriteTexture(path: string, mode: 'glow' | 'shadow' = 'glow'): Promise<THREE.Texture | null> {
   try {
@@ -117,6 +118,27 @@ const flameFragment = /* glsl */ `
 `;
 
 const MAX_PARTICLES = 50;
+
+const flameProximity = (
+  exactnessMaxDistance: number,
+  minimumFrameDelay: number,
+): ScaleableProximitySpec => ({
+  distance: 70,
+  exactnessMinDistance: 75,
+  exactnessMaxDistance,
+  minimumFrameDelay,
+  maximumFrameDelay: 100,
+  initialFrameDelay: 2,
+  axes: 5,
+  squaredDistance: true,
+});
+
+/** Source outer gates that activate the otherwise dormant particle scripts. */
+export const FLAME_PROXIMITY_SOURCE = {
+  start: flameProximity(120, 5),
+  checkpointBig: flameProximity(150, 10),
+  checkpointSmall: flameProximity(150, 20),
+} as const;
 
 export class Flame {
   readonly points: THREE.Points;
@@ -266,7 +288,21 @@ export class Flame {
 export class FlameSystem {
   private flames: Flame[] = [];
   private startFlames: Flame[] = [];
-  private byCheckpoint = new Map<number, { big: Flame; smalls: Flame[] }>();
+  private startPosition: THREE.Vector3 | null = null;
+  private startActive = false;
+  private startProximity = new ScaleableProximity(FLAME_PROXIMITY_SOURCE.start);
+  private byCheckpoint = new Map<
+    number,
+    {
+      big: Flame;
+      smalls: Flame[];
+      position: THREE.Vector3;
+      bigActive: boolean;
+      smallActive: boolean;
+      bigProximity: ScaleableProximity;
+      smallProximity: ScaleableProximity;
+    }
+  >();
   private texture: THREE.Texture | null = null;
 
   async init(built: BuiltScene, scene: THREE.Scene): Promise<void> {
@@ -281,9 +317,14 @@ export class FlameSystem {
     // exact placement, their rotations define the particle emission axis.
     const start = groupEntities(built, 'PS_Levelstart')[0];
     if (start) {
+      this.startPosition = start.object.getWorldPosition(new THREE.Vector3());
       for (const suffix of ['A', 'B', 'C', 'D']) {
         const emitter = startPrefab.entities.get(`PS_FourFlames_Flame_${suffix}`)?.object;
-        if (emitter) this.startFlames.push(this.addFlame(scene, start.object, emitter, false));
+        if (emitter) {
+          const flame = this.addFlame(scene, start.object, emitter, false);
+          flame.visible = false;
+          this.startFlames.push(flame);
+        }
       }
     }
     for (const cp of groupEntities(built, 'PC_Checkpoints')) {
@@ -299,7 +340,15 @@ export class FlameSystem {
       big.visible = false;
       smallA.visible = false;
       smallB.visible = false;
-      this.byCheckpoint.set(num, { big, smalls: [smallA, smallB] });
+      this.byCheckpoint.set(num, {
+        big,
+        smalls: [smallA, smallB],
+        position: cp.object.getWorldPosition(new THREE.Vector3()),
+        bigActive: false,
+        smallActive: false,
+        bigProximity: new ScaleableProximity(FLAME_PROXIMITY_SOURCE.checkpointBig),
+        smallProximity: new ScaleableProximity(FLAME_PROXIMITY_SOURCE.checkpointSmall),
+      });
     }
   }
 
@@ -315,17 +364,68 @@ export class FlameSystem {
 
   /** apply the original per-sector flame states */
   setSector(sector: number): void {
-    for (const f of this.startFlames) f.visible = sector === 1;
+    this.startActive = sector === 1;
+    this.startProximity.reset();
+    for (const flame of this.startFlames) flame.visible = false;
     for (const [num, f] of this.byCheckpoint) {
       const armed = num === sector; // PC_TwoFlames_NN gates sector NN+1
       const passed = num === sector - 1;
-      f.big.visible = armed;
-      for (const s of f.smalls) s.visible = passed;
+      f.bigActive = armed;
+      f.smallActive = passed;
+      f.bigProximity.reset();
+      f.smallProximity.reset();
+      f.big.visible = false;
+      // After Checkpoint reached, the graph starts both small scripts before
+      // their outer sampler performs its first check two frames later.
+      for (const small of f.smalls) small.visible = passed;
+    }
+  }
+
+  /** Execute the source proximity blocks at the fixed 66 Hz behavior tick. */
+  updateSimulation(ballPosition: THREE.Vector3): void {
+    if (this.startActive && this.startPosition) {
+      const output = this.startProximity.updatePositions(ballPosition, this.startPosition);
+      if (output === 'enterRange') for (const flame of this.startFlames) flame.visible = true;
+      else if (output === 'exitRange') for (const flame of this.startFlames) flame.visible = false;
+    }
+    for (const checkpoint of this.byCheckpoint.values()) {
+      if (checkpoint.bigActive) {
+        const output = checkpoint.bigProximity.updatePositions(ballPosition, checkpoint.position);
+        if (output === 'enterRange') checkpoint.big.visible = true;
+        else if (output === 'exitRange') checkpoint.big.visible = false;
+      }
+      if (checkpoint.smallActive) {
+        const output = checkpoint.smallProximity.updatePositions(ballPosition, checkpoint.position);
+        if (output === 'enterRange') for (const flame of checkpoint.smalls) flame.visible = true;
+        else if (output === 'exitRange') for (const flame of checkpoint.smalls) flame.visible = false;
+      }
     }
   }
 
   update(dt: number, uScale: number): void {
     for (const f of this.flames) f.update(dt, uScale);
+  }
+
+  debugState(): Record<string, unknown> {
+    return {
+      start: {
+        active: this.startActive,
+        visible: this.startFlames.map((flame) => flame.visible),
+        position: this.startPosition?.toArray() ?? null,
+      },
+      checkpoints: Object.fromEntries(
+        [...this.byCheckpoint].map(([number, checkpoint]) => [
+          number,
+          {
+            bigActive: checkpoint.bigActive,
+            bigVisible: checkpoint.big.visible,
+            smallActive: checkpoint.smallActive,
+            smallVisible: checkpoint.smalls.map((flame) => flame.visible),
+            position: checkpoint.position.toArray(),
+          },
+        ]),
+      ),
+    };
   }
 }
 

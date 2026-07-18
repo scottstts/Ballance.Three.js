@@ -15,7 +15,7 @@ import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuild
 import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
-import { BalloonPhysics } from './balloon.ts';
+import { BALLOON_WAKE_PROXIMITY_SOURCE, BalloonPhysics } from './balloon.ts';
 import { CamRig } from './camera.ts';
 import {
   BALL_BIRTH_DELAY,
@@ -40,6 +40,7 @@ import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/pre
 import { modulFactories } from './moduls/registry.ts';
 import { initRapier, PhysicsWorld } from './physics.ts';
 import { PickupSystem } from './pickups.ts';
+import { ScaleableProximity } from './proximity.ts';
 import { screenMode } from './settings.ts';
 import { gameStore } from './store.ts';
 import { TutorialSystem, tutorialEligible } from './tutorial.ts';
@@ -75,6 +76,7 @@ export interface GameDebug {
   cameraTarget(): { x: number; y: number; z: number };
   cameraYaw(): number;
   audio(): Record<string, unknown>;
+  effects(): Record<string, unknown>;
 }
 
 declare global {
@@ -270,6 +272,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   );
   moduls.setSector(1);
   flames.setSector(1);
+  pickups.setSector(1);
   bootStage('done');
 
   input.attach(window);
@@ -291,6 +294,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     logic.currentSector = logic.sectorCount;
     moduls.setSector(logic.sectorCount);
     flames.setSector(logic.sectorCount);
+    pickups.setSector(logic.sectorCount);
     const end = groupEntities(built, 'PE_Levelende')[0];
     if (end) {
       // Start above the physical platform so the deterministic helper enters
@@ -323,6 +327,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let finishEnded = false;
   let finishScore = 0;
   let lastStageProximityDelay = 0;
+  const balloonWakeProximity = new ScaleableProximity(BALLOON_WAKE_PROXIMITY_SOURCE);
+  let balloonWakeProximityActive = false;
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
 
   const startBirth = () => {
@@ -457,7 +463,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const simStep = () => {
     const s = gameStore.getState();
+    const previousLastStageProximityDelay = lastStageProximityDelay;
     lastStageProximityDelay = Math.max(0, lastStageProximityDelay - SIM_DT);
+    if (previousLastStageProximityDelay > 0 && lastStageProximityDelay === 0) {
+      audio.restartLastStageProximity();
+    }
     for (let i = timers.length - 1; i >= 0; i--) {
       timers[i].t -= SIM_DT;
       if (timers[i].t <= 0) {
@@ -615,6 +625,14 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
 
     const pos = ball.position;
+    flames.updateSimulation(pos);
+    if (balloonWakeProximityActive && levelEndPosition) {
+      const output = balloonWakeProximity.updatePositions(pos, levelEndPosition);
+      if (output === 'enterRange') {
+        balloonPhysics?.wake();
+        balloonWakeProximityActive = false;
+      }
+    }
     if (lastStageProximityDelay === 0 && levelEndPosition) {
       audio.updateLastStageDistance(pos.distanceTo(levelEndPosition));
     }
@@ -625,7 +643,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       die();
       return;
     }
-    for (const ev of logic.update(pos, ball.kind)) {
+    const pointHits = pickups.updateSimulation(SIM_DT, pos);
+    for (const ev of logic.update(pos, ball.kind, (name) => pickups.canCollect(name))) {
       switch (ev.kind) {
         case 'checkpoint': {
           // Pursuing +20 balls are tied to the current section. Source2's
@@ -634,11 +653,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           s.set({ sector: ev.sector });
           moduls.setSector(ev.sector);
           flames.setSector(ev.sector);
+          pickups.setSector(ev.sector);
           audio.play('Misc_Checkpoint.wav', pos, 1, scene);
           // Last Stage starts the flat checkpoint loop and switches only the
           // theme graph Off. The independent atmosphere graph remains live.
           if (ev.sector === logic.sectorCount) {
-            balloonPhysics?.wake();
+            balloonWakeProximity.reset();
+            balloonWakeProximityActive = true;
             audio.enterLastStage();
           }
           break;
@@ -685,7 +706,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           break;
       }
     }
-    for (const _hit of pickups.updateSimulation(SIM_DT, pos)) {
+    for (const _hit of pointHits) {
       gameStore.getState().set({ points: gameStore.getState().points + 20 });
       audio.playFlat('Extra_Hit.wav', 0.8);
     }
@@ -819,6 +840,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       cameraTarget: () => rig.targetPosition,
       cameraYaw: () => rig.yaw,
       audio: () => audio.debugState(),
+      effects: () => ({
+        flames: flames.debugState(),
+        pickups: pickups.debugState(),
+        balloonAwake: balloonPhysics?.isAwake() ?? false,
+        balloonWakeProximityActive,
+      }),
     };
   }
 

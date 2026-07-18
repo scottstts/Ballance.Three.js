@@ -11,6 +11,7 @@ import {
   BALLOON_LAUNCH_FORCE,
   BALLOON_SLIDERS,
   BALLOON_SPRING,
+  BALLOON_WAKE_PROXIMITY_SOURCE,
 } from './balloon.ts';
 
 const GAME_DIR = [
@@ -60,6 +61,11 @@ function floatValue(parameter: ParameterRec | undefined): number {
   return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getFloat32(0, true);
 }
 
+function intValue(parameter: ParameterRec | undefined): number {
+  if (!parameter || parameter.valueBytes.length < 4) return Number.NaN;
+  return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getInt32(0, true);
+}
+
 function boolValue(parameter: ParameterRec | undefined): boolean {
   if (!parameter || parameter.valueBytes.length < 4) return false;
   return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getUint32(0, true) !== 0;
@@ -77,6 +83,27 @@ function matchingSuffix(name: string, suffix: string): boolean {
 
 describe.skipIf(!existsSync(sourcePath))('source-backed PE_Balloon physics', () => {
   const file = existsSync(sourcePath) ? parseNmo(readFileSync(sourcePath)) : null;
+
+  it('matches the one-shot horizontal physics-wake proximity', () => {
+    if (!file) return;
+    const proximity = file.objects
+      .filter((record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'TT Scaleable Proximity')
+      .find((record) => floatValue(parameters(file, record).get('Distance')) === BALLOON_WAKE_PROXIMITY_SOURCE.distance);
+    expect(proximity).toBeDefined();
+    if (!proximity) return;
+    const source = parameters(file, proximity);
+    expect(floatValue(source.get('Exactness min. Distance'))).toBe(
+      BALLOON_WAKE_PROXIMITY_SOURCE.exactnessMinDistance,
+    );
+    expect(floatValue(source.get('Exactness max. Distance'))).toBe(
+      BALLOON_WAKE_PROXIMITY_SOURCE.exactnessMaxDistance,
+    );
+    expect(intValue(source.get('Minimum Framedelay'))).toBe(BALLOON_WAKE_PROXIMITY_SOURCE.minimumFrameDelay);
+    expect(intValue(source.get('Maximum Framedelay'))).toBe(BALLOON_WAKE_PROXIMITY_SOURCE.maximumFrameDelay);
+    expect(intValue(source.get(''))).toBe(BALLOON_WAKE_PROXIMITY_SOURCE.initialFrameDelay);
+    expect(intValue(source.get('Check Axis:'))).toBe(BALLOON_WAKE_PROXIMITY_SOURCE.axes);
+    expect(boolValue(source.get('Squared Distance?'))).toBe(BALLOON_WAKE_PROXIMITY_SOURCE.squaredDistance);
+  });
 
   it('expands the five source Physicalize templates to all 18 bodies and authored hulls', () => {
     if (!file) return;

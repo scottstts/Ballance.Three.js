@@ -7,6 +7,7 @@ import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts
 import { decodeCk2dCurve } from './curve.ts';
 import {
   BALL_SHADOW_SOURCE,
+  FLAME_PROXIMITY_SOURCE,
   FLAME_BIG,
   FLAME_SMALL,
   LIGHTNING_SOURCE,
@@ -15,6 +16,7 @@ import {
   ballShadowFootprintWidth,
   type FlameSpec,
 } from './effects.ts';
+import type { ScaleableProximitySpec } from './proximity.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -123,6 +125,18 @@ function expectSpec(file: NmoFile, scriptName: string, spec: FlameSpec): void {
   expect(intValue(source.get('Destination Blend'))).toBe(2); // One
 }
 
+function expectProximity(file: NmoFile, node: BehaviorRec, spec: ScaleableProximitySpec): void {
+  const source = parameters(file, node);
+  expect(floatValue(source.get('Distance'))).toBe(spec.distance);
+  expect(floatValue(source.get('Exactness min. Distance'))).toBe(spec.exactnessMinDistance);
+  expect(floatValue(source.get('Exactness max. Distance'))).toBe(spec.exactnessMaxDistance);
+  expect(intValue(source.get('Minimum Framedelay'))).toBe(spec.minimumFrameDelay);
+  expect(intValue(source.get('Maximum Framedelay'))).toBe(spec.maximumFrameDelay);
+  expect(intValue(source.get(''))).toBe(spec.initialFrameDelay);
+  expect(intValue(source.get('Check Axis:'))).toBe(spec.axes);
+  expect(intValue(source.get('Squared Distance?')) !== 0).toBe(spec.squaredDistance);
+}
+
 describe.skipIf(!existsSync(checkpointPath) || !existsSync(startPath))('source-backed checkpoint/start flames', () => {
   const checkpoint = existsSync(checkpointPath) ? parseNmo(readFileSync(checkpointPath)) : null;
   const start = existsSync(startPath) ? parseNmo(readFileSync(startPath)) : null;
@@ -141,6 +155,27 @@ describe.skipIf(!existsSync(checkpointPath) || !existsSync(startPath))('source-b
     for (const suffix of ['A', 'B', 'C', 'D']) {
       expect(start.byName.get(`PS_FourFlames_Flame_${suffix}`)?.some((record) => record.kind === 'entity')).toBe(true);
     }
+  });
+
+  it('matches every outer particle-script proximity gate', () => {
+    if (!checkpoint || !start) return;
+    const startNode = childBehaviors(start, 'PS_FourFlames_MF Script', 'TT Scaleable Proximity')[0];
+    expectProximity(start, startNode, FLAME_PROXIMITY_SOURCE.start);
+
+    const checkpointNodes = childBehaviors(checkpoint, 'PC_TwoFlames_MF Script', 'TT Scaleable Proximity');
+    const outer = checkpointNodes.filter(
+      (node) => floatValue(parameters(checkpoint, node).get('Distance')) === FLAME_PROXIMITY_SOURCE.checkpointBig.distance,
+    );
+    expect(outer).toHaveLength(2);
+    const big = outer.find(
+      (node) => intValue(parameters(checkpoint, node).get('Minimum Framedelay')) === 10,
+    );
+    const small = outer.find(
+      (node) => intValue(parameters(checkpoint, node).get('Minimum Framedelay')) === 20,
+    );
+    if (!big || !small) throw new Error('missing source checkpoint outer proximity nodes');
+    expectProximity(checkpoint, big, FLAME_PROXIMITY_SOURCE.checkpointBig);
+    expectProximity(checkpoint, small, FLAME_PROXIMITY_SOURCE.checkpointSmall);
   });
 });
 

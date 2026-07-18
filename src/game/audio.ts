@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { fetchGameBuffer } from '../engine/assets.ts';
 import type { BallKind } from './constants.ts';
 import { evalCurve } from './curve.ts';
+import { ScaleableProximity } from './proximity.ts';
 
 export type Surface = 'stone' | 'wood' | 'metal' | 'dome';
 
@@ -67,10 +68,12 @@ export const MUSIC_SOURCE = {
   themeDelayMin: 0,
   themeDelayMax: 50,
   fadeDuration: 1,
-  lastStageEnterDistance: 200,
-  lastStageExitDistance: 250,
+  lastStageDistance: 200,
+  lastStageExactnessMinDistance: 200,
+  lastStageExactnessMaxDistance: 250,
   lastStageMinFrameDelay: 5,
   lastStageMaxFrameDelay: 20,
+  lastStageInitialFrameDelay: 2,
 } as const;
 
 export type MusicVariation = 1 | 2 | 3;
@@ -83,12 +86,6 @@ export function musicVariation(random: number): MusicVariation {
 /** Play EndMusic selects one mutually-exclusive wave by CurrentLevel==maxLevel. */
 export function levelFinalMusic(level: number): 'Music_Final.wav' | 'Music_LastFinal.wav' {
   return level === 12 ? 'Music_LastFinal.wav' : 'Music_Final.wav';
-}
-
-/** TT Scaleable Proximity chooses an inclusive integer frame delay. */
-export function lastStageFrameDelay(random: number): number {
-  const span = MUSIC_SOURCE.lastStageMaxFrameDelay - MUSIC_SOURCE.lastStageMinFrameDelay + 1;
-  return MUSIC_SOURCE.lastStageMinFrameDelay + Math.min(span - 1, Math.floor(THREE.MathUtils.clamp(random, 0, 1) * span));
 }
 
 type MusicChannel = 'atmo' | 'theme';
@@ -116,7 +113,16 @@ export class AudioManager {
   private theme = 1;
   private lastStage = false;
   private lastStageNear = false;
-  private lastStageCheckFrames = 0;
+  private readonly lastStageProximity = new ScaleableProximity({
+    distance: MUSIC_SOURCE.lastStageDistance,
+    exactnessMinDistance: MUSIC_SOURCE.lastStageExactnessMinDistance,
+    exactnessMaxDistance: MUSIC_SOURCE.lastStageExactnessMaxDistance,
+    minimumFrameDelay: MUSIC_SOURCE.lastStageMinFrameDelay,
+    maximumFrameDelay: MUSIC_SOURCE.lastStageMaxFrameDelay,
+    initialFrameDelay: MUSIC_SOURCE.lastStageInitialFrameDelay,
+    axes: 7,
+    squaredDistance: false,
+  });
   private disposed = false;
   sfxVolume = 1;
   musicVolume = 1;
@@ -366,23 +372,26 @@ export class AudioManager {
     this.clearTimer('themeTimer');
     this.stopSource('themeSource');
     this.lastStageNear = true;
-    this.lastStageCheckFrames = lastStageFrameDelay(Math.random());
+    this.lastStageProximity.reset();
     this.setLastStageLoop(true);
   }
 
-  /** Apply TT Scaleable Proximity's exact 200/250-unit hysteresis. */
+  /** Apply TT Scaleable Proximity's source threshold and adaptive sampler. */
   updateLastStageDistance(distance: number): void {
     if (!this.lastStage) return;
-    this.lastStageCheckFrames--;
-    if (this.lastStageCheckFrames > 0) return;
-    this.lastStageCheckFrames = lastStageFrameDelay(Math.random());
-    if (this.lastStageNear && distance > MUSIC_SOURCE.lastStageExitDistance) {
+    const output = this.lastStageProximity.updateDistance(distance);
+    if (output === 'exitRange') {
       this.lastStageNear = false;
       this.setLastStageLoop(false);
-    } else if (!this.lastStageNear && distance < MUSIC_SOURCE.lastStageEnterDistance) {
+    } else if (output === 'enterRange') {
       this.lastStageNear = true;
       this.setLastStageLoop(true);
     }
+  }
+
+  /** Ball Off stops the block; its delayed `In` resets only Last Check. */
+  restartLastStageProximity(): void {
+    if (this.lastStage) this.lastStageProximity.restartTransitionState();
   }
 
   private setLastStageLoop(on: boolean): void {
@@ -478,7 +487,7 @@ export class AudioManager {
     this.musicFadingOut = false;
     this.lastStage = false;
     this.lastStageNear = false;
-    this.lastStageCheckFrames = 0;
+    this.lastStageProximity.reset();
     this.clearTimer('atmoTimer');
     this.clearTimer('themeTimer');
     this.clearTimer('themeActivationTimer');
@@ -510,7 +519,7 @@ export class AudioManager {
         theme: this.theme,
         lastStage: this.lastStage,
         lastStageNear: this.lastStageNear,
-        lastStageCheckFrames: this.lastStageCheckFrames,
+        lastStageCheckFrames: this.lastStageProximity.remainingFrames(),
         lastStagePlaying: this.lastStageSource !== null,
         finalPlaying: this.finalSource !== null,
       },

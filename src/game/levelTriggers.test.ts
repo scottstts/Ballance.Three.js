@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import { LEVEL_TRIGGER_SOURCE, sphereContains } from './level.ts';
+import { PICKUP_PROXIMITY_SOURCE } from './pickups.ts';
 
 const PH_DIR = fileURLToPath(new URL('../../Ballance_bin/source1/Ballance/3D Entities/PH', import.meta.url));
 const files = {
@@ -102,6 +103,44 @@ describe.skipIf(Object.values(files).some((path) => !existsSync(path)))('source-
     expectAllAxisSphere(file, node);
   });
 
+  it('matches the life show/hide and point behavior outer gates', () => {
+    const life = sourceFile(files.extraLife);
+    const lifeOuter = proximity(life, 'P_Extra_Life_MF Script', PICKUP_PROXIMITY_SOURCE.life.distance);
+    expect(floatValue(parameter(life, lifeOuter, 'Exactness min. Distance'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.life.exactnessMinDistance,
+    );
+    expect(floatValue(parameter(life, lifeOuter, 'Exactness max. Distance'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.life.exactnessMaxDistance,
+    );
+    expect(intValue(parameter(life, lifeOuter, 'Minimum Framedelay'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.life.minimumFrameDelay,
+    );
+    expect(intValue(parameter(life, lifeOuter, 'Maximum Framedelay'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.life.maximumFrameDelay,
+    );
+    expect(intValue(parameter(life, lifeOuter, ''))).toBe(PICKUP_PROXIMITY_SOURCE.life.initialFrameDelay);
+    expect(intValue(parameter(life, lifeOuter, 'Check Axis:'))).toBe(PICKUP_PROXIMITY_SOURCE.life.axes);
+    expect(intValue(parameter(life, lifeOuter, 'Squared Distance?'))).toBe(1);
+
+    const point = sourceFile(files.extraPoint);
+    const pointOuter = proximity(point, 'P_Extra_Point_MF Script', PICKUP_PROXIMITY_SOURCE.point.distance);
+    expect(floatValue(parameter(point, pointOuter, 'Exactness min. Distance'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.point.exactnessMinDistance,
+    );
+    expect(floatValue(parameter(point, pointOuter, 'Exactness max. Distance'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.point.exactnessMaxDistance,
+    );
+    expect(intValue(parameter(point, pointOuter, 'Minimum Framedelay'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.point.minimumFrameDelay,
+    );
+    expect(intValue(parameter(point, pointOuter, 'Maximum Framedelay'))).toBe(
+      PICKUP_PROXIMITY_SOURCE.point.maximumFrameDelay,
+    );
+    expect(intValue(parameter(point, pointOuter, ''))).toBe(PICKUP_PROXIMITY_SOURCE.point.initialFrameDelay);
+    expect(intValue(parameter(point, pointOuter, 'Check Axis:'))).toBe(PICKUP_PROXIMITY_SOURCE.point.axes);
+    expect(intValue(parameter(point, pointOuter, 'Squared Distance?'))).toBe(1);
+  });
+
   it('uses TT Extra 3-unit point activation distance', () => {
     const file = sourceFile(files.extraPoint);
     const ttExtra = children(file, behavior(file, 'P_Extra_Point_MF Script'), 'TT Extra')[0];
@@ -122,4 +161,27 @@ describe.skipIf(Object.values(files).some((path) => !existsSync(path)))('source-
     expect(sphereContains(origin, new THREE.Vector3(1, 0, 0), 1)).toBe(false);
     expect(sphereContains(origin, new THREE.Vector3(0.8, 0.8, 0), 1)).toBe(false);
   });
+});
+
+describe('source level pickup sector ownership', () => {
+  for (let level = 1; level <= 12; level++) {
+    it(`assigns every level ${level} pickup to exactly one Sector_NN group`, () => {
+      const file = sourceFile(
+        fileURLToPath(
+          new URL(
+            `../../Ballance_bin/source1/Ballance/3D Entities/Level/Level_${String(level).padStart(2, '0')}.NMO`,
+            import.meta.url,
+          ),
+        ),
+      );
+      const sectors = file.groups.filter((group) => /^Sector_\d+$/.test(group.name));
+      const pickups = file.entities.filter((entity) => /^P_Extra_(?:Life|Point)_\d+$/.test(entity.name));
+      for (const pickup of pickups) {
+        expect(
+          sectors.filter((sector) => sector.memberIndices.includes(pickup.index)),
+          `${pickup.name} sector ownership`,
+        ).toHaveLength(1);
+      }
+    });
+  }
 });

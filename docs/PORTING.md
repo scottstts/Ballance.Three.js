@@ -184,18 +184,22 @@ ballance-web/
    to ball birth/respawn.
 5. **Scoring/lives.** Level point budget counts down at the original two points/second;
    remaining points bank at level end. `P_Extra_Life` uses its source 2-second CK2dCurve
-   bob/squash animation, collects inside the authored strict 4.5-unit all-axis sphere, awards
-   one life after 317 ms, and reappears when the active section restarts. `P_Extra_Point`
-   activates inside the authored strict 3-unit sphere for +100, sends six
+   bob/squash animation, is shown only inside its 60-unit XY proximity gate, collects inside
+   the authored strict 4.5-unit all-axis sphere, awards one life after 317 ms, and reappears
+   when its active section restarts. `P_Extra_Point` enables its orbit only inside an 80-unit
+   all-axis gate, then activates inside the authored strict 3-unit sphere for +100 and sends six
    original sprites outward for 1000 ms, then pursues the ball using the shipped
    `TT_Gravity_RT.dll` Verlet update. Each real satellite contact adds +20 (220 total), while
-   checkpoint crossing discards any remaining satellites. Point extras never reappear.
+   checkpoint crossing discards any remaining satellites. Point extras never reappear. Every
+   pickup is owned by exactly one source `Sector_NN` group across all 12 levels; inactive-sector
+   scripts cannot animate, collect, or respawn.
 6. **Audio logic.** Impact sounds are chosen by (ball material × surface material × impact
    speed), and rolling loops use the source contact delays plus velocity curves. `Sound.nmo`
    runs atmosphere (uniform 0–15 s delay) and theme (enabled after 7 s, uniform 0–50 s delay)
    as independent equal-weight three-track schedulers with immediate repeats allowed. The
-   last checkpoint switches only the theme off; its flat loop uses the serialized 200/250
-   proximity hysteresis and random 5–20-frame checks. Both Start/End Music fades are 1 s.
+   last checkpoint switches only the theme off; its flat loop uses one strict 200-unit
+   proximity threshold. The serialized 200/250 exactness range deterministically scales checks
+   from 5 to 20 frames; it is neither hysteresis nor randomness. Both Start/End Music fades are 1 s.
    Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`.
 7. **Menus/UI in React.** Main menu (optionally rendering the converted `MenuLevel` 3D tower
    behind it), level select with unlock progression, pause, options, tutorial text from

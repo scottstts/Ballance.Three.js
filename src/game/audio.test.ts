@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
-import { LEVEL_THEMES, MUSIC_SOURCE, lastStageFrameDelay, levelFinalMusic, musicVariation } from './audio.ts';
+import { LEVEL_THEMES, MUSIC_SOURCE, levelFinalMusic, musicVariation } from './audio.ts';
+import { scaleableProximityFrameDelay } from './proximity.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -76,9 +77,20 @@ describe('source-authored music helpers', () => {
     expect(levelFinalMusic(12)).toBe('Music_LastFinal.wav');
   });
 
-  it('selects the inclusive 5..20 proximity frame-delay range', () => {
-    expect(lastStageFrameDelay(0)).toBe(MUSIC_SOURCE.lastStageMinFrameDelay);
-    expect(lastStageFrameDelay(0.999999)).toBe(MUSIC_SOURCE.lastStageMaxFrameDelay);
+  it('scales the last-stage sampler deterministically from 5 to 20 frames', () => {
+    const spec = {
+      distance: MUSIC_SOURCE.lastStageDistance,
+      exactnessMinDistance: MUSIC_SOURCE.lastStageExactnessMinDistance,
+      exactnessMaxDistance: MUSIC_SOURCE.lastStageExactnessMaxDistance,
+      minimumFrameDelay: MUSIC_SOURCE.lastStageMinFrameDelay,
+      maximumFrameDelay: MUSIC_SOURCE.lastStageMaxFrameDelay,
+      initialFrameDelay: MUSIC_SOURCE.lastStageInitialFrameDelay,
+      axes: 7,
+      squaredDistance: false,
+    };
+    expect(scaleableProximityFrameDelay(200, spec)).toBe(5);
+    expect(scaleableProximityFrameDelay(225, spec)).toBe(12);
+    expect(scaleableProximityFrameDelay(250, spec)).toBe(20);
   });
 });
 
@@ -153,15 +165,15 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
       expect(edges.some((edge) => edge.includes('Last Checkpoint->Music_Atmo.Off'))).toBe(false);
     });
 
-    it('matches Last Stage loop, proximity hysteresis, and final selector', () => {
+    it('matches Last Stage loop, strict proximity sampler, and final selector', () => {
       if (!sound) return;
       const proximity = children(sound, 'Last Stage', 'TT Scaleable Proximity')[0];
-      expect(floatValue(parameter(sound, proximity, 'Distance'))).toBe(MUSIC_SOURCE.lastStageEnterDistance);
+      expect(floatValue(parameter(sound, proximity, 'Distance'))).toBe(MUSIC_SOURCE.lastStageDistance);
       expect(floatValue(parameter(sound, proximity, 'Exactness min. Distance'))).toBe(
-        MUSIC_SOURCE.lastStageEnterDistance,
+        MUSIC_SOURCE.lastStageExactnessMinDistance,
       );
       expect(floatValue(parameter(sound, proximity, 'Exactness max. Distance'))).toBe(
-        MUSIC_SOURCE.lastStageExitDistance,
+        MUSIC_SOURCE.lastStageExactnessMaxDistance,
       );
       expect(integerValue(parameter(sound, proximity, 'Minimum Framedelay'))).toBe(
         MUSIC_SOURCE.lastStageMinFrameDelay,
@@ -169,6 +181,9 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
       expect(integerValue(parameter(sound, proximity, 'Maximum Framedelay'))).toBe(
         MUSIC_SOURCE.lastStageMaxFrameDelay,
       );
+      expect(integerValue(parameter(sound, proximity, ''))).toBe(MUSIC_SOURCE.lastStageInitialFrameDelay);
+      expect(integerValue(parameter(sound, proximity, 'Check Axis:'))).toBe(7);
+      expect(integerValue(parameter(sound, proximity, 'Squared Distance?'))).toBe(0);
       const ambient = children(sound, 'Last Stage', 'Wave Player')[0];
       expect(integerValue(parameter(sound, ambient, 'Loop'))).toBe(1);
 

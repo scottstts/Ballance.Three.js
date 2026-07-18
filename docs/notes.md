@@ -845,9 +845,9 @@ options subscreens are simplified (volume only).
   now-inaudible sources down after the fade for resource hygiene.
 - `last Checkpoint reached` switches only `Music_Theme.Off`; atmosphere remains
   live. `Music_EndCheckpoint` is a flat loop, not positional balloon audio.
-  `TT Scaleable Proximity` starts with `Last Check=true`, samples after random
-  inclusive 5–20-frame delays, enters below 200 units, and exits above 250.
-  Ball Off disables the sampler and re-enables it after exactly 3000 ms.
+  `TT Scaleable Proximity` uses one strict 200-unit threshold in both directions;
+  its 200/250 exactness interval deterministically scales checks from 5 to 20
+  frames. Ball Off disables the sampler and re-enables it after exactly 3000 ms.
 - `Play EndMusic` compares CurrentLevel to max Level with comparison mode 1
   (Equal). Levels 1–11 play only `Music_Final`; level 12 plays only the 7.686 s
   `Music_LastFinal`. The former invented level-12 follow-up `Music_Final` was
@@ -857,11 +857,53 @@ options subscreens are simplified (volume only).
   lock every scheduler delay, selector coefficient/repeat flag, fade, theme,
   last-stage proximity value, frame delay, loop flag, group member, and ending
   selector. Deterministic browser traversal confirmed theme-only shutdown,
-  the saved initial proximity window, exit/re-entry hysteresis, and the finish
+  the saved initial proximity window, strict exit/re-entry threshold, and the finish
   overlap. Network capture fetched only `Music_Final.wav` for level 11 and only
   `Music_LastFinal.wav` for level 12. There were zero browser errors; the tab
   and Vite server were closed. The full gate passes with 87 tests plus lint,
   typecheck, and production build (the usual chunk-size warning only).
+
+## 2026-07-18 TT Scaleable Proximity runtime and sector ownership correction
+
+- Static disassembly of shipped `TT_Toolbox_RT.dll` at runtime function
+  `0x1001bb70` resolves the building block exactly. `Distance` is the sole
+  strict `<` range threshold. `Exactness min/max Distance` controls only an
+  adaptive local-frame countdown: at/below min it uses Minimum Framedelay,
+  at/above max it uses Maximum Framedelay, and between them it linearly
+  interpolates then truncates toward zero. `Squared Distance?` squares the
+  current distance and both exactness endpoints before interpolation. There is
+  no random choice and no enter/exit hysteresis.
+- The plugin string supplies the axis bit field verbatim:
+  `X=1,Y=2,Z=4,XY=3,XZ=5,YZ=6,XYZ=7`. The unnamed serialized local is the
+  initial countdown. A sampled unknown `Last Check` state emits EnterRange or
+  ExitRange on its first check. Its `In` input resets only that transition
+  state and preserves the countdown; a full graph reset restores both.
+- Recovered outer gates now drive the runtime particle/pickup/end systems:
+  start flames use 70/75/120, 5..100 frames, initial 2, XZ squared; checkpoint
+  big/small flames use 70/75/150, 10..100 and 20..100, initial 2, XZ squared;
+  Life Extra show/hide uses 60/60/70, 5..20, initial 1, XY squared; Point Extra
+  orbit On/Off uses 80/85/100, 5..30, initial 2, XYZ squared; PE_Balloon's
+  one-shot physics wake uses 70/75/100, 10..60, initial 1, XZ squared; Last
+  Stage audio uses 200/200/250, 5..20, initial 2, XYZ non-squared.
+- Every `P_Extra_Life_NN` and `P_Extra_Point_NN` placement in all twelve source
+  levels belongs to exactly one `Sector_NN` group. Runtime trigger checks and
+  animations are now active-sector-only, and a fall restores only Life Extras
+  belonging to the restarted sector. Source-lock tests parse every level to
+  prevent cross-sector regressions.
+- `TT_Toolbox_RT.dll`, `Sound.nmo`, all five affected PH prefabs, and all
+  twelve `Level_NN.NMO` files are byte-identical between source1 and the
+  statically extracted source2 payload. The two sources independently confirm
+  the recovered constants and sector memberships.
+- Deterministic browser holds confirmed every strict outer boundary: start and
+  checkpoint flames were off at exactly 70 and on at 69.9; the life was hidden
+  at exactly 60 XY and shown at 59.9; point behavior was off at exactly 80 and
+  on at 79.9; Last Stage exited at exactly 200 and re-entered at 199.9; the
+  frozen balloon stayed asleep at exactly 70 XZ, woke at 69.9, and disabled its
+  one-shot gate. There were zero browser errors (only Rapier's known init
+  warning), and the tab and server were closed. The full gate passes with 119
+  tests plus lint, typecheck, and production build; only Vite's established
+  chunk-size warning remains.
+
 ## 2026-07-18 resolved HUD parity finding: life count
 
 - The user-provided comparison exposed three guessed flex-layout errors: the

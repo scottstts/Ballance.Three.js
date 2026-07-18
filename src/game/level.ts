@@ -19,6 +19,11 @@ export interface ResetPoint {
   yaw: number;
 }
 
+interface SectorPickup {
+  entity: BuiltEntity;
+  sector: number;
+}
+
 /** Exact all-axis trigger spheres from the original prefab behavior graphs. */
 export const LEVEL_TRIGGER_SOURCE = {
   checkpointDistance: 6.5,
@@ -41,8 +46,8 @@ export class LevelLogic {
   private resetPoints: (ResetPoint | null)[] = [];
   private balloon: THREE.Vector3 | null;
   private depthBoxes: THREE.Box3[] = [];
-  private pickupsPoint: BuiltEntity[] = [];
-  private pickupsLife: BuiltEntity[] = [];
+  private pickupsPoint: SectorPickup[] = [];
+  private pickupsLife: SectorPickup[] = [];
   private collected = new Set<string>();
   private fallbackMinY: number;
 
@@ -76,8 +81,8 @@ export class LevelLogic {
       if (!box.isEmpty()) this.depthBoxes.push(box.expandByScalar(2));
     }
 
-    this.pickupsPoint = rootPlacements(groupEntities(built, 'P_Extra_Point'));
-    this.pickupsLife = rootPlacements(groupEntities(built, 'P_Extra_Life'));
+    this.pickupsPoint = sectorPickups(built, rootPlacements(groupEntities(built, 'P_Extra_Point')));
+    this.pickupsLife = sectorPickups(built, rootPlacements(groupEntities(built, 'P_Extra_Life')));
   }
 
   spawnFor(sector: number): ResetPoint {
@@ -86,9 +91,11 @@ export class LevelLogic {
     return rp;
   }
 
-  /** The manual and source scripts reset every Life Extra after a fall. */
+  /** The active section's source script resets its Life Extras after a fall. */
   resetAfterFall(): void {
-    for (const pickup of this.pickupsLife) this.collected.delete(pickup.rec.name);
+    for (const pickup of this.pickupsLife) {
+      if (pickup.sector === this.currentSector) this.collected.delete(pickup.entity.rec.name);
+    }
   }
 
   /**
@@ -104,7 +111,11 @@ export class LevelLogic {
   }
 
   /** Per-tick trigger checks. Returns events that fired. */
-  update(ballPos: THREE.Vector3, currentBall: BallKind): LevelEvent[] {
+  update(
+    ballPos: THREE.Vector3,
+    currentBall: BallKind,
+    pickupActive: (name: string) => boolean = () => true,
+  ): LevelEvent[] {
     const events: LevelEvent[] = [];
 
     // next checkpoint only (original: checkpoints activate in order)
@@ -124,8 +135,10 @@ export class LevelLogic {
       events.push({ kind: 'finish' });
     }
 
-    for (const p of this.pickupsPoint) {
+    for (const { entity: p, sector } of this.pickupsPoint) {
+      if (sector !== this.currentSector) continue;
       if (this.collected.has(p.rec.name)) continue;
+      if (!pickupActive(p.rec.name)) continue;
       // TT Extra performs a true 3D distance check at Activationdistance=3.
       if (sphereContains(p.object.position, ballPos, LEVEL_TRIGGER_SOURCE.extraPointDistance)) {
         this.collected.add(p.rec.name);
@@ -133,8 +146,10 @@ export class LevelLogic {
         events.push({ kind: 'extraPoint', amount: EXTRA_POINT_VALUE, name: p.rec.name });
       }
     }
-    for (const p of this.pickupsLife) {
+    for (const { entity: p, sector } of this.pickupsLife) {
+      if (sector !== this.currentSector) continue;
       if (this.collected.has(p.rec.name)) continue;
+      if (!pickupActive(p.rec.name)) continue;
       if (sphereContains(p.object.position, ballPos, LEVEL_TRIGGER_SOURCE.extraLifeDistance)) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
@@ -174,6 +189,18 @@ function sourceTargetPosition(
 /** Placement roots: entities whose name is the group prefix + _NN. */
 function rootPlacements(entities: BuiltEntity[]): BuiltEntity[] {
   return entities.filter((e) => /^P_Extra_(Point|Life)_\d+$/.test(e.rec.name));
+}
+
+/** Resolve source group membership rather than guessing from placement IDs. */
+function sectorPickups(built: BuiltScene, entities: BuiltEntity[]): SectorPickup[] {
+  const byIndex = new Map<number, number>();
+  for (const [name, group] of built.groups) {
+    const match = /^Sector_(\d+)$/.exec(name);
+    if (!match) continue;
+    const sector = Number.parseInt(match[1], 10);
+    for (const index of group.memberIndices) byIndex.set(index, sector);
+  }
+  return entities.map((entity) => ({ entity, sector: byIndex.get(entity.rec.index) ?? 1 }));
 }
 
 function hidePlacement(root: BuiltEntity): void {

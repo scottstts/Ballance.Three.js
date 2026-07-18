@@ -10,7 +10,9 @@ import * as THREE from 'three';
 import { groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
 import { loadCkTexture } from '../engine/textures.ts';
 import { decodeCk2dCurve, evalCurve, type CurveKey } from './curve.ts';
+import { sectorLookup } from './moduls/manager.ts';
 import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/prefabs.ts';
+import { ScaleableProximity, type ScaleableProximitySpec } from './proximity.ts';
 
 const LIFE_DURATION = 2;
 const LIFE_BOB_A = -0.4;
@@ -31,6 +33,30 @@ const POINT_FORCE_WIDTH = 0.08;
 /** TT Extra compares squared separation with the authored value 4. */
 const POINT_HIT_DISTANCE_SQUARED = 4;
 
+/** Source proximity gates surrounding each pickup's inner collection rule. */
+export const PICKUP_PROXIMITY_SOURCE = {
+  life: {
+    distance: 60,
+    exactnessMinDistance: 60,
+    exactnessMaxDistance: 70,
+    minimumFrameDelay: 5,
+    maximumFrameDelay: 20,
+    initialFrameDelay: 1,
+    axes: 3,
+    squaredDistance: true,
+  },
+  point: {
+    distance: 80,
+    exactnessMinDistance: 85,
+    exactnessMaxDistance: 100,
+    minimumFrameDelay: 5,
+    maximumFrameDelay: 30,
+    initialFrameDelay: 2,
+    axes: 7,
+    squaredDistance: true,
+  },
+} as const satisfies Record<string, ScaleableProximitySpec>;
+
 const ORBIT_AXES = [
   new THREE.Vector3(0, 1, 0),
   new THREE.Vector3(0, 0, 1),
@@ -42,12 +68,17 @@ const ORBIT_AXES = [
 
 interface LifeVisual {
   name: string;
+  sector: number;
   group: THREE.Group;
+  origin: THREE.Vector3;
   sphere: THREE.Object3D;
   shadowMaterial: THREE.MeshPhongMaterial | null;
   oilTexture: THREE.Texture | null;
   oilOffset: THREE.Vector2;
   elapsed: number;
+  available: boolean;
+  activeSector: boolean;
+  proximity: ScaleableProximity;
 }
 
 interface PointSatellite {
@@ -61,13 +92,18 @@ type PointPhase = 'orbit' | 'away' | 'chase' | 'done';
 
 interface PointVisual {
   name: string;
+  sector: number;
   group: THREE.Group;
+  origin: THREE.Vector3;
   center: THREE.Sprite;
   floor: THREE.Object3D;
   satellites: PointSatellite[];
   trail: PointTrail;
   phase: PointPhase;
   phaseTime: number;
+  activeSector: boolean;
+  proximityNear: boolean;
+  proximity: ScaleableProximity;
 }
 
 export interface PointPickupHit {
@@ -83,6 +119,7 @@ export class PickupSystem {
   private lifeBobCurve: CurveKey[] = [];
 
   async init(built: BuiltScene, scene: THREE.Scene): Promise<void> {
+    const sectorOf = sectorLookup(built);
     const [lifePrefab, pointPrefab] = await Promise.all([loadPrefab('P_Extra_Life'), loadPrefab('P_Extra_Point')]);
     const lifeCurves = lifePrefab.file.objects
       .filter((record) => record.kind === 'parameter' && record.name === 'Progression Curve')
@@ -118,12 +155,17 @@ export class PickupSystem {
       scene.add(instance.root);
       const visual: LifeVisual = {
         name: placement.rec.name,
+        sector: sectorOf(placement.rec.name),
         group: instance.root,
+        origin: placement.object.getWorldPosition(new THREE.Vector3()),
         sphere,
         shadowMaterial,
         oilTexture: materialMap(oilMaterial),
         oilOffset: materialMap(oilMaterial)?.offset.clone() ?? new THREE.Vector2(),
         elapsed: 0,
+        available: true,
+        activeSector: false,
+        proximity: new ScaleableProximity(PICKUP_PROXIMITY_SOURCE.life),
       };
       this.lifes.push(visual);
       this.byName.set(visual.name, visual);
@@ -161,17 +203,46 @@ export class PickupSystem {
       scene.add(instance.root);
       const visual: PointVisual = {
         name: placement.rec.name,
+        sector: sectorOf(placement.rec.name),
         group: instance.root,
+        origin: placement.object.getWorldPosition(new THREE.Vector3()),
         center,
         floor: requiredPart(instance, 'P_Extra_Point_Floor'),
         satellites,
         trail,
         phase: 'orbit',
         phaseTime: 0,
+        activeSector: false,
+        proximityNear: false,
+        proximity: new ScaleableProximity(PICKUP_PROXIMITY_SOURCE.point),
       };
       this.points.push(visual);
       this.byName.set(visual.name, visual);
     }
+  }
+
+  /** Activate only the pickup scripts owned by the source Sector_NN group. */
+  setSector(sector: number): void {
+    for (const visual of this.lifes) {
+      visual.activeSector = visual.sector === sector;
+      visual.proximity.reset();
+      visual.group.visible = visual.activeSector && visual.available;
+    }
+    for (const visual of this.points) {
+      visual.activeSector = visual.sector === sector;
+      visual.proximityNear = false;
+      visual.proximity.reset();
+    }
+  }
+
+  /** Whether the source outer script currently permits its inner trigger. */
+  canCollect(name: string): boolean {
+    const visual = this.byName.get(name);
+    if (!visual) return false;
+    if ('satellites' in visual) {
+      return visual.activeSector && visual.proximityNear && visual.phase === 'orbit';
+    }
+    return visual.activeSector && visual.available && visual.group.visible;
   }
 
   /** Initial collection: hide the +100 center and start the 1000 ms fly-away. */
@@ -186,6 +257,7 @@ export class PickupSystem {
       visual.phaseTime = 0;
       for (const satellite of visual.satellites) satellite.previous.copy(satellite.object.position);
     } else {
+      visual.available = false;
       visual.group.visible = false;
     }
   }
@@ -193,11 +265,22 @@ export class PickupSystem {
   /** Fixed-step TT Extra movement and hit detection. */
   updateSimulation(dt: number, ballPosition: THREE.Vector3): PointPickupHit[] {
     const hits: PointPickupHit[] = [];
+    for (const visual of this.lifes) {
+      if (!visual.activeSector || !visual.available) continue;
+      const output = visual.proximity.updatePositions(ballPosition, visual.origin);
+      if (output === 'enterRange') visual.group.visible = true;
+      else if (output === 'exitRange') visual.group.visible = false;
+    }
     for (const visual of this.points) {
       if (!visual.group.visible || visual.phase === 'done') continue;
       const center = visual.center.position;
 
       if (visual.phase === 'orbit') {
+        if (!visual.activeSector) continue;
+        const output = visual.proximity.updatePositions(ballPosition, visual.origin);
+        if (output === 'enterRange') visual.proximityNear = true;
+        else if (output === 'exitRange') visual.proximityNear = false;
+        if (!visual.proximityNear) continue;
         const angle = POINT_ROTATION_SPEED * dt;
         for (let index = 0; index < visual.satellites.length; index++) {
           const satellite = visual.satellites[index];
@@ -271,7 +354,11 @@ export class PickupSystem {
 
     for (const visual of this.points) {
       visual.group.updateMatrixWorld(true);
-      visual.trail.update(dt, visual.satellites, visual.phase !== 'done' && visual.group.visible, pointScale);
+      const emitting =
+        visual.phase !== 'done' &&
+        visual.group.visible &&
+        (visual.phase !== 'orbit' || (visual.activeSector && visual.proximityNear));
+      visual.trail.update(dt, visual.satellites, emitting, pointScale);
     }
   }
 
@@ -291,9 +378,33 @@ export class PickupSystem {
   resetAfterFall(): void {
     this.checkpoint();
     for (const visual of this.lifes) {
+      if (!visual.activeSector) continue;
+      visual.available = true;
+      visual.proximity.reset();
       visual.group.visible = true;
       visual.elapsed = 0;
     }
+  }
+
+  debugState(): Record<string, unknown> {
+    return {
+      lifes: this.lifes.map((visual) => ({
+        name: visual.name,
+        sector: visual.sector,
+        activeSector: visual.activeSector,
+        available: visual.available,
+        visible: visual.group.visible,
+        position: visual.origin.toArray(),
+      })),
+      points: this.points.map((visual) => ({
+        name: visual.name,
+        sector: visual.sector,
+        activeSector: visual.activeSector,
+        proximityNear: visual.proximityNear,
+        phase: visual.phase,
+        position: visual.origin.toArray(),
+      })),
+    };
   }
 }
 

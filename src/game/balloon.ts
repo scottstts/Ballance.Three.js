@@ -8,8 +8,21 @@ import { FORCE_SCALE } from './constants.ts';
 import { Modul, type DynamicPart, type ModulContext } from './moduls/base.ts';
 import type { PartPhys } from './moduls/physTable.ts';
 import type { PrefabInstance } from './moduls/prefabs.ts';
+import type { ScaleableProximitySpec } from './proximity.ts';
 
 const WOOD = { friction: 0.7, elasticity: 0.4, surface: 'wood' as const };
+
+/** PE_Balloon's one-shot horizontal gate that wakes its frozen assembly. */
+export const BALLOON_WAKE_PROXIMITY_SOURCE = {
+  distance: 70,
+  exactnessMinDistance: 75,
+  exactnessMaxDistance: 100,
+  minimumFrameDelay: 10,
+  maximumFrameDelay: 60,
+  initialFrameDelay: 1,
+  axes: 5,
+  squaredDistance: true,
+} as const satisfies ScaleableProximitySpec;
 
 const PLATE_PHYS: PartPhys = {
   suffix: '',
@@ -236,6 +249,10 @@ export class BalloonPhysics extends Modul {
 
   syncVisuals(): void {
     for (const part of this.dynamicParts) this.syncPart(part);
+  }
+
+  isAwake(): boolean {
+    return this.awake;
   }
 
   debugState(): Record<string, { position: [number, number, number]; velocity: [number, number, number] }> {
