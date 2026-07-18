@@ -25,16 +25,39 @@ export interface UfoPathStep {
 export interface UfoUpdate {
   carryBall: boolean;
   playAnimationSound: boolean;
+  playFinalMusic: boolean;
   enteredHyperspace: boolean;
   complete: boolean;
+  soundPitch: number;
 }
 
 const NO_UFO_UPDATE: UfoUpdate = {
   carryBall: false,
   playAnimationSound: false,
+  playFinalMusic: false,
   enteredHyperspace: false,
   complete: false,
+  soundPitch: 1,
 };
+
+/** Exact PE_Balloon.nmo/UFO sound-control inputs. */
+export const UFO_SOUND_SOURCE = {
+  nearDistance: 30,
+  farDistance: 150,
+  minimumSpeed: 0,
+  maximumSpeed: 100,
+} as const;
+
+/** TT SpeedOMeter.Relative Speed followed by Calculator `a+1`. */
+export function ufoSoundPitch(absoluteSpeed: number): number {
+  const relative = THREE.MathUtils.clamp(
+    (absoluteSpeed - UFO_SOUND_SOURCE.minimumSpeed) /
+      (UFO_SOUND_SOURCE.maximumSpeed - UFO_SOUND_SOURCE.minimumSpeed),
+    0,
+    1,
+  );
+  return relative + 1;
+}
 
 /** Hide script-only helpers/UFO while retaining the authored physics hierarchy. */
 export function prepareBalloonInstance(instance: PrefabInstance): THREE.Group {
@@ -101,6 +124,7 @@ export class UfoFinale {
   private readonly velocity = new THREE.Vector3();
   private readonly target = new THREE.Vector3();
   private readonly localBall = new THREE.Vector3();
+  private readonly previousBodyPosition = new THREE.Vector3();
   private readonly spinAxis = new THREE.Vector3(0.05, 1, -0.05).normalize();
   private readonly tracks: { object: THREE.Object3D; track: ObjectAnimationRec }[] = [];
   private phase: 'idle' | 'path' | 'hyperspace' | 'complete' = 'idle';
@@ -160,9 +184,12 @@ export class UfoFinale {
 
     // TT Set Dynamic Position: per-tick spring toward the iterator target,
     // retaining the previous delta as damped velocity.
+    this.previousBodyPosition.copy(this.body.position);
     this.velocity.multiplyScalar(step.damping);
     this.velocity.addScaledVector(this.target.clone().sub(this.body.position), step.force);
     this.body.position.add(this.velocity);
+    const absoluteSpeed = this.body.position.distanceTo(this.previousBodyPosition) / dt;
+    const soundPitch = ufoSoundPitch(absoluteSpeed);
 
     // Original Per Second value is 2.6179938 rad/s (150 degrees/s). A handedness
     // flip negates the angle; the top receives the graph's inverse angle.
@@ -178,10 +205,13 @@ export class UfoFinale {
     }
 
     let playAnimationSound = false;
+    let playFinalMusic = false;
     let enteredHyperspace = false;
     this.rowTime += dt;
-    while (this.rowTime >= step.waitSeconds && this.phase === 'path') {
-      this.rowTime -= step.waitSeconds;
+    while (this.phase === 'path') {
+      const row = this.path[this.row];
+      if (this.rowTime < row.waitSeconds) break;
+      this.rowTime -= row.waitSeconds;
       this.row++;
       if (this.row >= this.path.length) {
         this.beginHyperspace();
@@ -189,15 +219,20 @@ export class UfoFinale {
         break;
       }
       const next = this.path[this.row];
-      if (next.startAnimation && this.animationTime < 0) this.animationTime = 0;
-      if (this.row === 11) playAnimationSound = true;
+      if (next.startAnimation && this.animationTime < 0) {
+        this.animationTime = 0;
+        playAnimationSound = true;
+      }
+      if (this.row === 11) playFinalMusic = true;
     }
 
     return {
       carryBall: this.row >= 7,
       playAnimationSound,
+      playFinalMusic,
       enteredHyperspace,
       complete: false,
+      soundPitch,
     };
   }
 

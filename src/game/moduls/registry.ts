@@ -189,7 +189,7 @@ class BridgeModul extends PhysicsModul {
       if (this.middleJoint) this.removeJoint(this.middleJoint);
       this.middleJoint = null;
       for (const dp of this.dynamicParts) dp.body.wakeUp();
-      this.ctx.emit({ kind: 'sound', name: 'Misc_RopeTears.wav', position: this.ctx.ball.position });
+      this.ctx.emit({ kind: 'sound', name: 'Misc_RopeTears.wav' });
     }
   }
 
@@ -250,7 +250,7 @@ class FanModul extends Modul {
     if (smokeTexture?.kind === 'texture') {
       void loadCkTexture(smokeTexture)?.then((texture) => this.particles.setSmokeTexture(texture));
     }
-    this.loop = ctx.attachLoop('Misc_Ventilator.wav', instance.root, 0.7);
+    this.loop = ctx.attachLoop('Misc_Ventilator.wav', instance.root, 1);
     this.loop.setDistanceRange(MODUL18_SOUND_RANGE.near, MODUL18_SOUND_RANGE.far);
     for (const [partName, obj] of instance.parts) {
       if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
@@ -313,6 +313,7 @@ class FanModul extends Modul {
     this.particles.update(dt, this.ctx.pointScale());
 
     const soundPosition = this.instance.root.getWorldPosition(new THREE.Vector3());
+    this.loop.setDistance(this.ctx.ball.position.distanceTo(soundPosition));
     const sound = this.soundProximity.updatePositions(this.ctx.ball.position, soundPosition);
     if (sound === 'enterRange') this.soundActive = true;
     else if (sound === 'exitRange') this.soundActive = false;
@@ -396,7 +397,7 @@ class TrafoModul extends Modul {
     if (this.ctx.ball.kind !== this.target && this.ctx.ball.position.distanceTo(position) < TRAFO_SOURCE.triggerDistance) {
       this.triggered = true;
       this.ctx.emit({ kind: 'trafo', ball: this.target, position, sourceMain, sourceShadow });
-      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', position: position.clone() });
+      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', restart: true });
     }
   }
 

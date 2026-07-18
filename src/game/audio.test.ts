@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
-import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import type { BehaviorRec, BehaviorLinkRec, NmoFile, ParameterRec, WaveSoundRec } from '../formats/ck2/types.ts';
 import {
   COLLISION_SOUND_SOURCE,
   LEVEL_THEMES,
@@ -14,6 +14,7 @@ import {
   levelFinalMusic,
   linearVolume,
   musicVariation,
+  proximityVolume,
   rollPitch,
   rollVolume,
 } from './audio.ts';
@@ -82,6 +83,21 @@ function stringValue(value: ParameterRec): string {
   return Buffer.from(value.valueBytes).toString('latin1').replace(/\0.*$/s, '');
 }
 
+function waveTargetName(file: NmoFile, node: BehaviorRec): string {
+  const targetIndex = node.headerData.at(-2) ?? -1;
+  const target = file.objects[targetIndex];
+  if (target?.kind !== 'parameter') throw new Error(`missing ${node.name} target`);
+  const resolved = resolve(file, target);
+  return file.objects[resolved.valueObjectIndex]?.name ?? resolved.name;
+}
+
+function links(file: NmoFile, parent: string): BehaviorLinkRec[] {
+  return behavior(file, parent).referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .filter((record): record is BehaviorLinkRec => record?.kind === 'behaviorLink');
+}
+
 describe('source-authored collision and rolling helpers', () => {
   it('normalizes collision speed against max without subtracting the minimum', () => {
     expect(collisionSpeedVolume(2.0001, 30)).toBeCloseTo(2.0001 / 30, 8);
@@ -103,6 +119,14 @@ describe('source-authored collision and rolling helpers', () => {
     expect(rollVolume(25)).toBe(1);
     expect(rollPitch(0)).toBe(0.5);
     expect(rollPitch(20)).toBeCloseTo(0.7, 12);
+  });
+
+  it('uses the flat linear gain from TT ProximityVolumeControl', () => {
+    expect(proximityVolume(0, 2, 25)).toBe(1);
+    expect(proximityVolume(2, 2, 25)).toBe(1);
+    expect(proximityVolume(13.5, 2, 25)).toBe(0.5);
+    expect(proximityVolume(25, 2, 25)).toBe(0);
+    expect(proximityVolume(100, 2, 25)).toBe(0);
   });
 });
 
@@ -185,6 +209,98 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
         expect(floatValue(parameter(sound, detector, 'Max Speed m/s'))).toBe(source.maxSpeed);
         expect(floatValue(parameter(sound, detector, 'Sleep afterwards'))).toBe(source.sleep);
         expect(integerValue(parameter(sound, detector, 'Use Collision ID'))).toBe(1);
+      }
+    });
+
+    it('decodes all 41 CKWaveSound objects with their exact flat settings', () => {
+      if (!sound) return;
+      const waves = sound.objects.filter((record): record is WaveSoundRec => record.kind === 'waveSound');
+      expect(waves).toHaveLength(41);
+      for (const wave of waves) {
+        expect(wave.waveType, wave.name).toBe(1);
+        expect(wave.streaming, wave.name).toBe(false);
+        expect(wave.priority, wave.name).toBe(0.5);
+        expect(wave.gain, wave.name).toBe(1);
+        expect(wave.pan, wave.name).toBe(0);
+        expect(wave.pitch, wave.name).toBe(1);
+        expect(wave.attachedEntityIndex, wave.name).toBe(-1);
+        expect(wave.position, wave.name).toEqual([0, 0, 0]);
+        expect(wave.direction, wave.name).toEqual([0, 0, 1]);
+      }
+      expect(waves.filter((wave) => wave.loop).map((wave) => wave.name)).toEqual(['Misc_Ventilator_01']);
+      expect(
+        Object.fromEntries(
+          waves
+            .filter((wave) => ['Misc_Lightning', 'Misc_StartLevel', 'Misc_Fall', 'Extra_Hit'].includes(wave.name))
+            .map((wave) => [wave.name, [wave.fileName, wave.soundLengthMs]]),
+        ),
+      ).toEqual({
+        Misc_Fall: ['Misc_Fall.wav', 5572],
+        Misc_StartLevel: ['Misc_StartLevel.wav', 4248],
+        Extra_Hit: ['Extra_Hit.wav', 501],
+        Misc_Lightning: ['Misc_Lightning.wav', 3459],
+      });
+    });
+
+    it('restarts every Simple Sound Messages wave on the source behavior tick', () => {
+      if (!sound) return;
+      const players = children(sound, 'Simple Sound Messages', 'Wave Player');
+      expect(players).toHaveLength(11);
+      expect(players.map((player) => waveTargetName(sound, player)).sort()).toEqual(
+        [
+          'Extra_Life_Blob',
+          'Menu_click',
+          'Menu_dong',
+          'Menu_load',
+          'Misc_Checkpoint',
+          'Misc_Fall',
+          'Misc_Lightning',
+          'Misc_StartLevel',
+          'Misc_Trafo',
+          'Misc_extraball',
+          'Music_Highscore Sound',
+        ].sort(),
+      );
+      for (const player of players) {
+        expect(floatValue(parameter(sound, player, 'Fade In')), player.name).toBe(0);
+        expect(floatValue(parameter(sound, player, 'Fade Out')), player.name).toBe(0);
+        expect(integerValue(parameter(sound, player, 'Loop')), player.name).toBe(0);
+      }
+
+      const owner = new Map<number, BehaviorRec>();
+      for (const player of players) {
+        for (const list of player.referenceLists) {
+          for (const index of list) if (sound.objects[index]?.kind === 'behaviorIo') owner.set(index, player);
+        }
+      }
+      const inbound = links(sound, 'Simple Sound Messages').filter((link) => owner.has(link.inputIndex));
+      const playDelays = inbound
+        .filter((link) => sound.objects[link.inputIndex]?.name === 'Play')
+        .map((link) => link.activationDelay)
+        .sort((a, b) => a - b);
+      const stopDelays = inbound
+        .filter((link) => sound.objects[link.inputIndex]?.name === 'Stop')
+        .map((link) => link.activationDelay);
+      expect(playDelays).toEqual([0, ...Array.from({ length: 10 }, () => 1)]);
+      expect(stopDelays).toEqual(Array.from({ length: 11 }, () => 0));
+      expect(floatValue(parameter(sound, children(sound, 'Simple Sound Messages', 'Delayer')[0], 'Time to Wait'))).toBe(
+        317,
+      );
+    });
+
+    it('uses flat full-volume sound instances for extras and wooden flaps', () => {
+      if (!sound) return;
+      const instances = [
+        ...children(sound, 'HitSound Woodenflaps', 'Play Sound Instance'),
+        ...children(sound, 'Extrapoint HitStart', 'Play Sound Instance'),
+        ...children(sound, 'Extrapoint HitPieces', 'Play Sound Instance'),
+      ];
+      expect(instances).toHaveLength(6);
+      for (const instance of instances) expect(integerValue(parameter(sound, instance, '2D'))).toBe(1);
+      for (const graph of ['Extrapoint HitStart', 'Extrapoint HitPieces']) {
+        for (const instance of children(sound, graph, 'Play Sound Instance')) {
+          expect(floatValue(parameter(sound, instance, 'Volume'))).toBe(1);
+        }
       }
     });
 

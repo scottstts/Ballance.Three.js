@@ -184,7 +184,17 @@ if (objects) {
       } else if (o.kind === 'entity2d') {
         console.log(
           `         flags=0x${o.flags.toString(16)} rect=${o.rect.join(',')} relative=${o.relativeRect.join(',')} ` +
-            `material=${o.materialIndex} parent=${o.parentIndex}`,
+          `material=${o.materialIndex} parent=${o.parentIndex}`,
+        );
+      } else if (o.kind === 'waveSound') {
+        console.log(
+          `         file=${JSON.stringify(o.fileName)} type=${o.waveType} flags=0x${o.flags.toString(16)} ` +
+            `loop=${o.loop} streaming=${o.streaming} lengthMs=${o.soundLengthMs} ` +
+            `priority=${o.priority} gain=${o.gain} pan=${o.pan} pitch=${o.pitch}`,
+        );
+        console.log(
+          `         cone=${o.cone.join(',')} distance=${o.minDistance},${o.maxDistance},${o.distanceModel} ` +
+            `attached=${o.attachedEntityIndex} position=${o.position.join(',')} direction=${o.direction.join(',')}`,
         );
       }
     }

@@ -13,6 +13,7 @@ import {
   BALLOON_SPRING,
   BALLOON_WAKE_PROXIMITY_SOURCE,
 } from './balloon.ts';
+import { decodeUfoPath, UFO_SOUND_SOURCE, ufoSoundPitch } from './finale.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -51,6 +52,13 @@ function target(file: NmoFile, behavior: BehaviorRec) {
   return resolved.valueObjectIndex >= 0 ? file.objects[resolved.valueObjectIndex] : null;
 }
 
+function targetName(file: NmoFile, behavior: BehaviorRec): string | null {
+  const parameter = file.objects[behavior.headerData.at(-2) ?? -1];
+  if (parameter?.kind !== 'parameter') return null;
+  const resolved = resolve(file, parameter);
+  return file.objects[resolved.valueObjectIndex]?.name ?? resolved.name;
+}
+
 function objectValue(file: NmoFile, parameter: ParameterRec | undefined) {
   if (!parameter || parameter.valueObjectIndex < 0) return null;
   return file.objects[parameter.valueObjectIndex] ?? null;
@@ -75,6 +83,10 @@ function vectorValue(parameter: ParameterRec | undefined): [number, number, numb
   if (!parameter || parameter.valueBytes.length < 12) return [Number.NaN, Number.NaN, Number.NaN];
   const view = new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset);
   return [view.getFloat32(0, true), view.getFloat32(4, true), view.getFloat32(8, true)];
+}
+
+function stringValue(parameter: ParameterRec | undefined): string {
+  return parameter ? Buffer.from(parameter.valueBytes).toString('latin1').replace(/\0.*$/s, '') : '';
 }
 
 function matchingSuffix(name: string, suffix: string): boolean {
@@ -245,5 +257,64 @@ describe.skipIf(!existsSync(sourcePath))('source-backed PE_Balloon physics', () 
       expect(definition, `${sourceTarget?.name} force ${direction.join(',')}`).toBeDefined();
       expect(definition?.value).toBeCloseTo(floatValue(input.get('Force Value')), 6);
     }
+  });
+
+  it('matches the UFO flat-loop distance and speed-controlled pitch graph', () => {
+    if (!file) return;
+    const ufo = file.byName.get('UFO')?.find((record): record is BehaviorRec => record.kind === 'behavior');
+    expect(ufo).toBeDefined();
+    if (!ufo) return;
+    const children = ufo.referenceLists.flat().map((index) => file.objects[index]);
+    const proximity = children.find(
+      (record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'TT ProximityVolumeControl',
+    );
+    const speedometer = children.find(
+      (record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'TT SpeedOMeter',
+    );
+    const calculator = children.find(
+      (record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Calculator',
+    );
+    expect(floatValue(proximity ? parameters(file, proximity).get('Near-Distance') : undefined)).toBe(
+      UFO_SOUND_SOURCE.nearDistance,
+    );
+    expect(floatValue(proximity ? parameters(file, proximity).get('Far-Distance') : undefined)).toBe(
+      UFO_SOUND_SOURCE.farDistance,
+    );
+    expect(floatValue(speedometer ? parameters(file, speedometer).get('Minimum Speed') : undefined)).toBe(
+      UFO_SOUND_SOURCE.minimumSpeed,
+    );
+    expect(floatValue(speedometer ? parameters(file, speedometer).get('Maximum Speed') : undefined)).toBe(
+      UFO_SOUND_SOURCE.maximumSpeed,
+    );
+    expect(stringValue(calculator ? parameters(file, calculator).get('expression') : undefined)).toBe('a+1');
+    expect(ufoSoundPitch(0)).toBe(1);
+    expect(ufoSoundPitch(50)).toBe(1.5);
+    expect(ufoSoundPitch(100)).toBe(2);
+    expect(ufoSoundPitch(200)).toBe(2);
+  });
+
+  it('keeps the three UFO wave players and their distinct authored triggers', () => {
+    if (!file) return;
+    const ufo = file.byName.get('UFO')?.find((record): record is BehaviorRec => record.kind === 'behavior');
+    const grab = file.byName.get('Greif Anim')?.find((record): record is BehaviorRec => record.kind === 'behavior');
+    expect(ufo).toBeDefined();
+    expect(grab).toBeDefined();
+    if (!ufo || !grab) return;
+    const ufoChildren = ufo.referenceLists.flat().map((index) => file.objects[index]);
+    const ufoPlayers = ufoChildren.filter(
+      (record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Wave Player',
+    );
+    const grabPlayers = grab.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .filter((record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Wave Player');
+    expect(ufoPlayers.map((player) => targetName(file, player)).sort()).toEqual(['Misc_UFO', 'Music_Final']);
+    expect(grabPlayers.map((player) => targetName(file, player))).toEqual(['Misc_UFO_anim']);
+
+    const rowTest = ufoChildren.find(
+      (record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Test',
+    );
+    expect(intValue(rowTest ? parameters(file, rowTest).get('B') : undefined)).toBe(11);
+    expect(decodeUfoPath(file).filter((step) => step.startAnimation)).toHaveLength(1);
   });
 });

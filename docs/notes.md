@@ -1180,3 +1180,36 @@ options subscreens are simplified (volume only).
   `assets.test.ts` verifies all 317 hashes and complete 12-level/26-prefab/
   62-sound coverage. `vite build` now creates a self-contained ~111 MiB `dist/`
   with 318 game files plus the APNG and no runtime reference to `Ballance_bin`.
+
+## 2026-07-18 CKWaveSound layout and flat mixer correction
+
+- Static decompilation of the shipped `CK2.dll` WaveSound constructor,
+  save/load, `SetType`, loop, streaming, and attachment paths recovered the
+  complete `CKWaveSound` state layout. The NMO parser now decodes filename,
+  length in milliseconds, flag/type bits, priority, gain/pan/pitch, cones,
+  min/max distance model, entity attachment, position, and direction. All 41
+  `Sound.nmo` waves are type 1 flat/background, gain 1, pan 0, pitch 1, and
+  unattached. Only `Misc_Ventilator_01` has the serialized loop bit.
+- One-shots previously emitted through `THREE.PositionalAudio` were wrong.
+  `Simple Sound Messages` uses direct flat Wave Players for lightning, level
+  start, fall, checkpoint, trafo, life blob, menu cues, and extra-ball. Each
+  message stops its existing player immediately and starts it one 66 Hz
+  behavior tick later; the port now uses reusable restart players with that
+  timing. `Play Sound Instance` in the extra-point and wooden-flap graphs has
+  `2D=1`; the two extra start and three satellite hit instances serialize
+  volume 1, so the former `Extra_Hit` 0.8 reduction was removed. The bridge
+  tear Wave Player and UFO grab sound are also flat.
+- Fan and UFO loops remain distance-reactive, but not spatially panned. Their
+  type-1 WaveSounds are modulated by `TT ProximityVolumeControl`: the fan uses
+  ball-to-emitter distance with a linear 2..25 range and gain 1; the UFO uses
+  `Cam_Pos` to body distance with a 30..150 range. Runtime loops are therefore
+  flat `THREE.Audio` objects with manually controlled linear gain. This also
+  removes the old fan 0.7 volume fudge.
+- `PE_Balloon.nmo/UFO` runs `TT SpeedOMeter` over 0..100 and Calculator `a+1`,
+  giving the loop pitch range 1..2. The grab script's own Wave Player starts
+  `Misc_UFO_anim` exactly when the one authored `Start Anim?` row begins.
+  Separately, iterator row 11 stops/starts `Music_Final` one behavior tick
+  later; the port had incorrectly used row 11 for `Misc_UFO_anim`. These are
+  now distinct runtime events. Binary-backed tests lock all 41 sound records,
+  flat-instance flags/volumes, direct-player restart edges, UFO targets,
+  distance inputs, speed range, and calculator expression.

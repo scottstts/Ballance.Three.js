@@ -31,7 +31,7 @@ import {
 } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TRAFO_SOURCE, TrafoAnim } from './effects.ts';
-import { prepareBalloonInstance, UfoFinale } from './finale.ts';
+import { prepareBalloonInstance, UFO_SOUND_SOURCE, UfoFinale } from './finale.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { fallLifeOutcome } from './lives.ts';
@@ -266,7 +266,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
             break;
           }
           case 'sound':
-            audio.play(ev.name, ev.position, ev.volume ?? 1, scene);
+            if (ev.restart) audio.restartFlat(ev.name, ev.volume ?? 1);
+            else audio.playFlat(ev.name, ev.volume ?? 1);
             break;
         }
       },
@@ -333,6 +334,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const balloonWakeProximity = new ScaleableProximity(BALLOON_WAKE_PROXIMITY_SOURCE);
   let balloonWakeProximityActive = false;
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
+  ufoLoop?.setDistanceRange(UFO_SOUND_SOURCE.nearDistance, UFO_SOUND_SOURCE.farDistance);
 
   const startBirth = () => {
     audio.setBallSoundsActive(false);
@@ -342,9 +344,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     lightning.start();
-    audio.play('Misc_Lightning.wav', ball.position, 1, scene);
+    audio.restartFlat('Misc_Lightning.wav', 1);
   };
-  audio.play('Misc_StartLevel.wav', ball.position, 1, scene);
+  audio.restartFlat('Misc_StartLevel.wav', 1);
   startBirth();
 
   const consumeFinishSkip = (): boolean => {
@@ -440,7 +442,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       ball.visual.visible = true;
     }
     pendingTrafo = null;
-    audio.play('Misc_Fall.wav', ball.position, 1, scene);
+    audio.restartFlat('Misc_Fall.wav', 1);
     const outcome = fallLifeOutcome(s.lives);
     s.set({ whiteFade: true });
     if (outcome.gameOver) {
@@ -502,7 +504,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       let carryPosition: THREE.Vector3 | null = null;
       if (ufoFinale?.active) {
         const ufo = ufoFinale.update(SIM_DT, ball.position);
-        if (ufo.playAnimationSound) audio.play('Misc_UFO_anim.wav', ufoFinale.ballCarryPosition(), 0.9, scene);
+        ufoLoop?.setDistance(ufoFinale.ballCarryPosition().distanceTo(rig.camera.position));
+        ufoLoop?.setPlaybackRate(ufo.soundPitch);
+        if (ufo.playAnimationSound) audio.playFlat('Misc_UFO_anim.wav', 1);
+        if (ufo.playFinalMusic) audio.playUfoFinal();
         if (ufo.enteredHyperspace) ufoLoop?.setActive(false);
         if (ufo.carryBall) {
           carryPosition = ufoFinale.ballCarryPosition();
@@ -661,7 +666,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           moduls.setSector(ev.sector);
           flames.setSector(ev.sector);
           pickups.setSector(ev.sector);
-          audio.play('Misc_Checkpoint.wav', pos, 1, scene);
+          audio.restartFlat('Misc_Checkpoint.wav', 1);
           // Last Stage starts the flat checkpoint loop and switches only the
           // theme graph Off. The independent atmosphere graph remains live.
           if (ev.sector === logic.sectorCount) {
@@ -692,7 +697,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             ufoFinale?.start();
-            ufoLoop?.setActive(true);
+            if (ufoFinale && ufoLoop) {
+              ufoLoop.setDistance(ufoFinale.ballCarryPosition().distanceTo(rig.camera.position));
+              // UFO graph stops the loop now and starts it one behavior tick later.
+              after(SIM_DT, () => ufoLoop.setActive(true));
+            }
           }
           break;
         }
@@ -701,12 +710,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           // outputs occur only when dispersed satellites catch the ball.
           s.set({ points: gameStore.getState().points + 100 });
           pickups.collect(ev.name);
-          audio.play('Extra_Start.wav', pos, 1, scene);
+          audio.playFlat('Extra_Start.wav', 1);
           break;
         }
         case 'extraLife':
           pickups.collect(ev.name);
-          audio.play('Extra_Life_Blob.wav', pos, 1, scene);
+          audio.restartFlat('Extra_Life_Blob.wav', 1);
           after(0.317, () => {
             gameStore.getState().set({ lives: gameStore.getState().lives + 1 });
             audio.playFlat('Misc_extraball.wav', 1);
@@ -716,7 +725,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     for (const _hit of pointHits) {
       gameStore.getState().set({ points: gameStore.getState().points + 20 });
-      audio.playFlat('Extra_Hit.wav', 0.8);
+      audio.playFlat('Extra_Hit.wav', 1);
     }
   };
 

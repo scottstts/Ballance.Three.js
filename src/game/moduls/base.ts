@@ -7,7 +7,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 import type { PhysicsWorld } from '../physics.ts';
 import type { Ball } from '../ball.ts';
-import type { Surface } from '../audio.ts';
+import type { DistanceLoopHandle, Surface } from '../audio.ts';
 import type { PrefabInstance } from './prefabs.ts';
 import type { PartPhys } from './physTable.ts';
 import type { MeshRec } from '../../formats/ck2/types.ts';
@@ -18,12 +18,12 @@ export interface ModulContext {
   ball: Ball;
   /** register a modul collider's sound surface */
   registerSurface: (colliderHandle: number, surface: Surface) => void;
-  /** looping positional sound bound to an object */
+  /** flat looping sound with source-authored distance gain */
   attachLoop: (
     name: string,
     target: THREE.Object3D,
     volume?: number,
-  ) => { setActive(on: boolean): void; setDistanceRange(near: number, far: number): void; dispose(): void };
+  ) => DistanceLoopHandle;
   /** perspective point-size scale used by source particle sprites */
   pointScale: () => number;
   /** fires gameplay events upward (pickups, trafo, checkpoints...) */
@@ -40,7 +40,7 @@ export type ModulEvent =
       sourceMain: THREE.Object3D;
       sourceShadow: THREE.Object3D | null;
     }
-  | { kind: 'sound'; name: string; position: THREE.Vector3; volume?: number };
+  | { kind: 'sound'; name: string; restart?: boolean; volume?: number };
 
 export interface DynamicPart {
   name: string;

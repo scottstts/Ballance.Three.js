@@ -27,6 +27,7 @@ import {
   type RGBA,
   type Sprite3dRec,
   type TextureRec,
+  type WaveSoundRec,
 } from './types.ts';
 
 function argbToRgba(v: number): RGBA {
@@ -727,6 +728,54 @@ function loadKeyedAnimation(base: ObjectBase, chunk: StateChunk): KeyedAnimation
   return rec;
 }
 
+function loadWaveSound(base: ObjectBase, chunk: StateChunk): WaveSoundRec {
+  const rec: WaveSoundRec = {
+    ...base,
+    kind: 'waveSound',
+    fileName: '',
+    saveOptions: 0,
+    soundLengthMs: 0,
+    flags: 0,
+    waveType: 1,
+    loop: false,
+    streaming: false,
+    priority: 0.5,
+    gain: 1,
+    pan: 0,
+    pitch: 1,
+    cone: [360, 360, 0],
+    minDistance: 10,
+    maxDistance: 20,
+    distanceModel: 0,
+    attachedEntityIndex: -1,
+    position: [0, 0, 0],
+    direction: [0, 0, 1],
+  };
+  if (chunk.seekIdentifier(Ident.SOUND_FILENAME) >= 8) {
+    rec.saveOptions = chunk.u32();
+    rec.fileName = chunk.string();
+  }
+  if (chunk.seekIdentifier(Ident.WAVESOUND_LENGTH) >= 4) rec.soundLengthMs = chunk.u32();
+  if (chunk.seekIdentifier(Ident.WAVESOUND_SETTINGS) < 96) return rec;
+  rec.flags = chunk.u32();
+  rec.waveType = rec.flags & 7;
+  rec.loop = (rec.flags & 8) !== 0;
+  rec.streaming = (rec.flags & 0x2000) !== 0;
+  rec.priority = chunk.f32();
+  rec.gain = chunk.f32();
+  rec.pan = chunk.f32();
+  rec.pitch = chunk.f32();
+  chunk.skipDwords(3);
+  rec.cone = [chunk.f32(), chunk.f32(), chunk.f32()];
+  rec.minDistance = chunk.f32();
+  rec.maxDistance = chunk.f32();
+  rec.distanceModel = chunk.u32();
+  rec.attachedEntityIndex = chunk.objectRef();
+  if (chunk.u32() === 12) rec.position = [chunk.f32(), chunk.f32(), chunk.f32()];
+  if (chunk.u32() === 12) rec.direction = [chunk.f32(), chunk.f32(), chunk.f32()];
+  return rec;
+}
+
 export function loadObjectRecord(
   index: number,
   id: number,
@@ -774,6 +823,8 @@ export function loadObjectRecord(
     case CKClassId.Light:
     case CKClassId.TargetLight:
       return loadLight(base, chunk);
+    case CKClassId.WaveSound:
+      return loadWaveSound(base, chunk);
     default:
       return { ...base, kind: 'other' };
   }

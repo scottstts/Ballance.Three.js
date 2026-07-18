@@ -6,17 +6,10 @@
  */
 import * as THREE from 'three';
 import { fetchGameBuffer } from '../engine/assets.ts';
-import type { BallKind } from './constants.ts';
+import { SIM_DT, type BallKind } from './constants.ts';
 import { ScaleableProximity } from './proximity.ts';
 
 export type Surface = 'stone' | 'wood' | 'metal' | 'dome';
-
-function configureLinearDistance(audio: THREE.PositionalAudio, near: number, far: number): void {
-  audio.setDistanceModel('linear');
-  audio.setRefDistance(near);
-  audio.setMaxDistance(far);
-  audio.setRolloffFactor(1);
-}
 
 const cap = (s: string): string => s[0].toUpperCase() + s.slice(1);
 
@@ -75,6 +68,13 @@ export function linearVolume(normalized: number): number {
   return 0.02 * Math.pow(50, normalized);
 }
 
+/** TT ProximityVolumeControl's full-near, silent-far linear gain. */
+export function proximityVolume(distance: number, near: number, far: number): number {
+  if (distance <= near) return 1;
+  if (distance >= far) return 0;
+  return (far - distance) / (far - near);
+}
+
 export function rollVolume(speed: number): number {
   return Math.min(1, Math.max(0, speed) * ROLL_SOUND_SOURCE.volumeFactor);
 }
@@ -89,6 +89,26 @@ interface RollContactState {
   touching: boolean;
   since: number;
   active: boolean;
+}
+
+interface DistanceLoopState {
+  audio: THREE.Audio | null;
+  target: THREE.Object3D;
+  wanted: boolean;
+  disposed: boolean;
+  volume: number;
+  distance: number;
+  near: number;
+  far: number;
+  playbackRate: number;
+}
+
+export interface DistanceLoopHandle {
+  setActive(on: boolean): void;
+  setDistance(distance: number): void;
+  setDistanceRange(near: number, far: number): void;
+  setPlaybackRate(rate: number): void;
+  dispose(): void;
 }
 
 /** per-level music theme (original assignment) */
@@ -129,6 +149,11 @@ type MusicChannel = 'atmo' | 'theme';
 export class AudioManager {
   readonly listener: THREE.AudioListener;
   private buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** Reusable direct Wave Player instances, keyed by the CKWaveSound name. */
+  private restartPlayers = new Map<string, THREE.Audio>();
+  private restartGenerations = new Map<string, number>();
+  /** Flat loops whose gain is driven by TT ProximityVolumeControl. */
+  private distanceLoops = new Set<DistanceLoopState>();
   /** always-playing roll loops keyed `${ball}:${surface}`, modulated only */
   private rollLoops = new Map<string, THREE.Audio>();
   private rollContacts = new Map<Surface, RollContactState>();
@@ -139,6 +164,7 @@ export class AudioManager {
   private atmoSource: AudioBufferSourceNode | null = null;
   private themeSource: AudioBufferSourceNode | null = null;
   private finalSource: AudioBufferSourceNode | null = null;
+  private finalCueGeneration = 0;
   private lastStageSource: AudioBufferSourceNode | null = null;
   private atmoTimer: ReturnType<typeof setTimeout> | null = null;
   private themeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -197,60 +223,75 @@ export class AudioManager {
     }
   }
 
-  /** looping positional effect bound to an object (fans etc.) */
+  /**
+   * Flat loop controlled by a source-authored distance. Ballance's fan and
+   * UFO sounds are CK_WAVESOUND_BACKGROUND objects: TT ProximityVolumeControl
+   * changes only their gain, without a spatial panner.
+   */
   createLoop(
     name: string,
     target: THREE.Object3D,
     volume = 1,
-  ): { setActive(on: boolean): void; setDistanceRange(near: number, far: number): void; dispose(): void } {
-    let audio: THREE.PositionalAudio | null = null;
-    let wanted = false;
-    let distanceRange: { near: number; far: number } | null = null;
+  ): DistanceLoopHandle {
+    const state: DistanceLoopState = {
+      audio: null,
+      target,
+      wanted: false,
+      disposed: false,
+      volume,
+      distance: 0,
+      near: 0,
+      far: Infinity,
+      playbackRate: 1,
+    };
+    this.distanceLoops.add(state);
     void this.load(name).then((buffer) => {
-      if (!buffer || this.disposed) return;
-      audio = new THREE.PositionalAudio(this.listener);
+      if (!buffer || this.disposed || state.disposed) return;
+      const audio = new THREE.Audio(this.listener);
+      state.audio = audio;
       audio.setBuffer(buffer);
       audio.setLoop(true);
-      audio.setRefDistance(25);
-      audio.setVolume(volume * this.sfxVolume);
-      if (distanceRange) configureLinearDistance(audio, distanceRange.near, distanceRange.far);
+      audio.setPlaybackRate(state.playbackRate);
       target.add(audio);
-      if (wanted) audio.play();
+      this.updateDistanceLoopVolume(state);
+      if (state.wanted) audio.play();
     });
     return {
       setActive: (on: boolean) => {
-        wanted = on;
-        if (!audio) return;
-        if (on && !audio.isPlaying) audio.play();
-        else if (!on && audio.isPlaying) audio.stop();
+        state.wanted = on;
+        if (!state.audio) return;
+        if (on && !state.audio.isPlaying) state.audio.play();
+        else if (!on && state.audio.isPlaying) state.audio.stop();
+      },
+      setDistance: (distance: number) => {
+        state.distance = Math.max(0, distance);
+        this.updateDistanceLoopVolume(state);
       },
       setDistanceRange: (near: number, far: number) => {
-        distanceRange = { near, far };
-        if (audio) configureLinearDistance(audio, near, far);
+        state.near = near;
+        state.far = Math.max(near, far);
+        this.updateDistanceLoopVolume(state);
+      },
+      setPlaybackRate: (rate: number) => {
+        state.playbackRate = Math.max(0.0001, rate);
+        state.audio?.setPlaybackRate(state.playbackRate);
       },
       dispose: () => {
-        if (audio?.isPlaying) audio.stop();
-        audio?.removeFromParent();
+        if (state.disposed) return;
+        state.disposed = true;
+        state.wanted = false;
+        if (state.audio?.isPlaying) state.audio.stop();
+        state.audio?.removeFromParent();
+        state.audio?.disconnect();
+        this.distanceLoops.delete(state);
       },
     };
   }
 
-  /** one-shot positional effect */
-  play(name: string, position: THREE.Vector3, volume = 1, parent?: THREE.Object3D): void {
-    void this.load(name).then((buffer) => {
-      if (!buffer || this.disposed) return;
-      const audio = new THREE.PositionalAudio(this.listener);
-      audio.setBuffer(buffer);
-      audio.setRefDistance(30);
-      audio.setVolume(volume * this.sfxVolume);
-      audio.position.copy(position);
-      const holder = parent ?? this.listener.parent;
-      holder?.add(audio);
-      audio.play();
-      audio.source?.addEventListener('ended', () => {
-        audio.removeFromParent();
-      });
-    });
+  private updateDistanceLoopVolume(state: DistanceLoopState): void {
+    if (!state.audio) return;
+    const attenuation = proximityVolume(state.distance, state.near, state.far);
+    state.audio.setVolume(state.volume * attenuation * this.sfxVolume);
   }
 
   /** Ball impact using physics_RT.dll's strict gate and speed/max output. */
@@ -285,6 +326,30 @@ export class AudioManager {
     });
   }
 
+  /**
+   * Direct Wave Player restart: stop the existing source now, then play it on
+   * the next 66 Hz behavior tick, matching Simple Sound Messages.nmo.
+   */
+  restartFlat(name: string, volume = 1): void {
+    const generation = (this.restartGenerations.get(name) ?? 0) + 1;
+    this.restartGenerations.set(name, generation);
+    const existing = this.restartPlayers.get(name);
+    if (existing?.isPlaying) existing.stop();
+    void this.load(name).then((buffer) => {
+      if (!buffer || this.disposed || this.restartGenerations.get(name) !== generation) return;
+      let audio = this.restartPlayers.get(name);
+      if (!audio) {
+        audio = new THREE.Audio(this.listener);
+        this.restartPlayers.set(name, audio);
+      } else if (audio.isPlaying) {
+        audio.stop();
+      }
+      audio.setBuffer(buffer);
+      audio.setVolume(volume * this.sfxVolume);
+      audio.play(SIM_DT);
+    });
+  }
+
   private ensureRollLoop(ball: BallKind, surface: Surface): THREE.Audio | null {
     const key = `${ball}:${surface}`;
     const existing = this.rollLoops.get(key);
@@ -303,6 +368,7 @@ export class AudioManager {
 
   /** Advance PhysicsCollDetection sleep timers on the fixed simulation clock. */
   updateSimulation(dt: number): void {
+    for (const state of this.distanceLoops) this.updateDistanceLoopVolume(state);
     for (const [surface, remaining] of this.hitSleep) {
       if (remaining > 0) this.hitSleep.set(surface, Math.max(0, remaining - dt));
     }
@@ -492,10 +558,25 @@ export class AudioManager {
 
   /** Level_Finish: play exactly one source-selected end wave. */
   playLevelFinal(level: number): void {
+    this.playFinalCue(levelFinalMusic(level));
+  }
+
+  /** PE_Balloon/UFO iterator row 11 starts the regular final cue. */
+  playUfoFinal(): void {
+    this.playFinalCue('Music_Final.wav', SIM_DT);
+  }
+
+  private playFinalCue(file: 'Music_Final.wav' | 'Music_LastFinal.wav', delay = 0): void {
     this.stopSource('finalSource');
-    const generation = this.musicGeneration;
-    void this.load(levelFinalMusic(level)).then((buffer) => {
-      if (!buffer || !this.musicGain || generation !== this.musicGeneration) return;
+    const musicGeneration = this.musicGeneration;
+    const cueGeneration = ++this.finalCueGeneration;
+    void this.load(file).then((buffer) => {
+      if (
+        !buffer ||
+        !this.musicGain ||
+        musicGeneration !== this.musicGeneration ||
+        cueGeneration !== this.finalCueGeneration
+      ) return;
       const source = this.listener.context.createBufferSource();
       source.buffer = buffer;
       source.connect(this.musicGain);
@@ -503,7 +584,7 @@ export class AudioManager {
       source.onended = () => {
         if (this.finalSource === source) this.finalSource = null;
       };
-      source.start();
+      source.start(this.listener.context.currentTime + delay);
     });
   }
 
@@ -548,6 +629,7 @@ export class AudioManager {
   /** Immediate graph teardown (level disposal), unlike End Music's fade. */
   stopMusic(): void {
     this.musicGeneration++;
+    this.finalCueGeneration++;
     this.musicActive = false;
     this.themeActive = false;
     this.musicFadingOut = false;
@@ -600,5 +682,18 @@ export class AudioManager {
       loop.disconnect();
     }
     this.rollLoops.clear();
+    for (const audio of this.restartPlayers.values()) {
+      if (audio.isPlaying) audio.stop();
+      audio.disconnect();
+    }
+    this.restartPlayers.clear();
+    this.restartGenerations.clear();
+    for (const loop of [...this.distanceLoops]) {
+      loop.disposed = true;
+      if (loop.audio?.isPlaying) loop.audio.stop();
+      loop.audio?.removeFromParent();
+      loop.audio?.disconnect();
+    }
+    this.distanceLoops.clear();
   }
 }

@@ -87,6 +87,10 @@ export const Ident = {
   TEX_USERMIPMAP: 0x00400000,
   TEX_OLDTEXONLY: 0x002ff000,
   TEX_ONLY: 0x00fff000,
+  // CKSound / CKWaveSound
+  SOUND_FILENAME: 0x00001000,
+  WAVESOUND_SETTINGS: 0x00400000,
+  WAVESOUND_LENGTH: 0x00800000,
   // CKLight
   LIGHT_DATA: 0x00400000,
   LIGHT_DATA2: 0x00800000,
@@ -336,6 +340,29 @@ export interface LightRec extends ObjectBase {
   lightPower: number;
 }
 
+export interface WaveSoundRec extends ObjectBase {
+  kind: 'waveSound';
+  fileName: string;
+  saveOptions: number;
+  soundLengthMs: number;
+  flags: number;
+  /** CK_WAVESOUND_TYPE is stored in the low three flag bits; 1 is flat/background. */
+  waveType: number;
+  loop: boolean;
+  streaming: boolean;
+  priority: number;
+  gain: number;
+  pan: number;
+  pitch: number;
+  cone: [number, number, number];
+  minDistance: number;
+  maxDistance: number;
+  distanceModel: number;
+  attachedEntityIndex: number;
+  position: [number, number, number];
+  direction: [number, number, number];
+}
+
 export interface ParameterRec extends ObjectBase {
   kind: 'parameter';
   /** Virtools parameter type GUID, when the parameter owns serialized data. */
@@ -420,6 +447,7 @@ export type CKRecord =
   | TextureRec
   | GroupRec
   | LightRec
+  | WaveSoundRec
   | DataArrayRec
   | ParameterRec
   | BehaviorLinkRec
