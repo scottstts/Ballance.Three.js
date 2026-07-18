@@ -112,6 +112,11 @@ class MenuAudio {
   highscoreMusic(): void {
     this.oneShot('Music_Highscore.wav', 0.7);
   }
+
+  /** intro sequence theme */
+  introMusic(): void {
+    this.oneShot('Music_Theme_4_1.wav', 0.6);
+  }
 }
 
 export const menuAudio = new MenuAudio();

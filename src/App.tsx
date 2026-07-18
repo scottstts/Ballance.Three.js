@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import GameCanvas from './GameCanvas.tsx';
 import { useGameStore } from './game/store.ts';
 import Hud from './ui/Hud.tsx';
+import IntroScreen from './ui/IntroScreen.tsx';
 import MenuBackdrop from './ui/MenuBackdrop.tsx';
 import {
   CreditsScreen,
@@ -48,6 +49,7 @@ export default function App() {
       {inGame && <GameCanvas key={`level-${level}`} level={level} />}
       {inGame && <Hud />}
       {inMenus && <MenuBackdrop />}
+      {phase === 'intro' && <IntroScreen />}
       {phase === 'menu' && <MainMenu />}
       {phase === 'levelselect' && <LevelSelect />}
       {phase === 'highscore' && <HighscoreScreen />}

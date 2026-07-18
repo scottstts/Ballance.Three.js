@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { BallKind } from './constants.ts';
 
 export type GamePhase =
+  | 'intro'
   | 'menu'
   | 'levelselect'
   | 'highscore'
@@ -107,7 +108,7 @@ export interface GameState {
 const initial = loadSave();
 
 export const useGameStore = create<GameState>((set, get) => ({
-  phase: 'menu',
+  phase: 'intro',
   level: 1,
   lives: 3,
   points: 1000,
