@@ -545,6 +545,8 @@ function loadParameter(base: ObjectBase, chunk: StateChunk): ParameterRec {
     valueVersion: 0,
     valueBytes: new Uint8Array(0),
     valueObjectIndex: -1,
+    managerGuid: null,
+    managerInt: null,
     destinationIndices: [],
     ownerIndex: -1,
     sharedIndex: -1,
@@ -556,8 +558,16 @@ function loadParameter(base: ObjectBase, chunk: StateChunk): ParameterRec {
   if (valueSize >= 8) {
     const end = chunk.cursor + valueSize / 4;
     rec.typeGuid = [chunk.u32(), chunk.u32()];
-    if (chunk.cursor < end) rec.valueVersion = chunk.u32();
-    if (chunk.cursor < end) {
+    // CKMessageType is not a normal versioned value. Virtools delegates its
+    // serialization to CKMessageManager as (manager GUID, integer index).
+    const isMessageType = rec.typeGuid[0] === 0x03881e12 && rec.typeGuid[1] === 0x5ba34e2b;
+    if (isMessageType && end - chunk.cursor >= 3) {
+      rec.managerGuid = [chunk.u32(), chunk.u32()];
+      rec.managerInt = chunk.i32();
+    } else if (chunk.cursor < end) {
+      rec.valueVersion = chunk.u32();
+    }
+    if (!isMessageType && chunk.cursor < end) {
       const remainingDwords = end - chunk.cursor;
       if (rec.valueVersion === 2 && remainingDwords === 1) {
         rec.valueObjectIndex = chunk.objectRef();

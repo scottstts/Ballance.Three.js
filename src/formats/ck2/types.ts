@@ -345,6 +345,9 @@ export interface ParameterRec extends ObjectBase {
   valueBytes: Uint8Array;
   /** Direct CK object reference used by version-2 object/sound parameters. */
   valueObjectIndex: number;
+  /** Manager-backed values are serialized as a manager GUID and integer. */
+  managerGuid: [number, number] | null;
+  managerInt: number | null;
   destinationIndices: number[];
   ownerIndex: number;
   sharedIndex: number;
@@ -426,8 +429,17 @@ export type CKRecord =
   | KeyedAnimationRec
   | OtherRec;
 
+export interface ManagerDataRec {
+  guid: [number, number];
+  /** Raw manager state retained for source archaeology and manager-backed values. */
+  chunk: StateChunk | null;
+}
+
 export interface NmoFile {
   info: FileInfo;
+  managers: ManagerDataRec[];
+  /** CKMessageManager registry; indices are the serialized CKMessageType values. */
+  messageTypes: string[];
   objects: CKRecord[];
   /** Raw per-object chunks retained for read-only format archaeology tools. */
   chunks: (StateChunk | null)[];

@@ -79,19 +79,34 @@ export const FLOOR_GROUPS: Record<string, FloorDef> = {
   Phys_FloorStopper: { friction: 0.7, elasticity: 0.3, surface: 'wood', hitSound: 'Hit_WoodenFlap.wav' },
 };
 
-/**
- * Camera rig — values from the original's serialized camera host (these
- * override the code defaults in the reference implementation).
- */
-export const CAM_NORMAL_Y = 30;
-export const CAM_NORMAL_Z = 17;
-export const CAM_SPACE_Y = 55;
-export const CAM_SPACE_Z = 14;
-export const CAM_ROTATE_TIME = 0.55; // seconds per 90° step
-export const CAM_LIFT_UP_TIME = 0.45; // overview raise
-export const CAM_LIFT_DOWN_TIME = 1.66; // overview drop
-/** per-axis SmoothDamp times: ball-follow target, camera position, look target */
-export const CAM_TARGET_SMOOTH: [number, number, number] = [0.2, 0.6, 0.2];
-export const CAM_POS_SMOOTH: [number, number, number] = [0.2, 0.3, 0.2];
-export const CAM_LOOK_SMOOTH: [number, number, number] = [0.16, 0.16, 0.16];
-export const CAM_FOV = 60;
+/** Camera.nmo's authored Cam_Pos translation after the Z handedness flip. */
+export const CAM_SLOT_OFFSET: readonly [number, number, number] = [
+  21.999879837036133,
+  34.99972915649414,
+  -0.000035961405956186354,
+];
+/** Camera.nmo's initial InGameCam world position after the Z handedness flip. */
+export const CAM_INITIAL_POSITION: readonly [number, number, number] = [
+  Math.fround(21.999588),
+  34.99931335449219,
+  -0.00004169824023847468,
+];
+
+/** Gameplay.nmo's two continuously-running TT Set Dynamic Position nodes. */
+export const CAM_TARGET_FORCE: readonly [number, number, number] = [10, 10, 10];
+export const CAM_TARGET_DAMPING: readonly [number, number, number] = [0, 0, 0];
+export const CAM_POSITION_FORCE: readonly [number, number, number] = [5, 0.800000011920929, 5];
+export const CAM_POSITION_OVERVIEW_FORCE: readonly [number, number, number] = [5, 2, 5];
+export const CAM_POSITION_DAMPING: readonly [number, number, number] = [0.5, 0.30000001192092896, 0.5];
+/** CamUp changes the controller offset Y to -50, placing the camera 50 units higher. */
+export const CAM_OVERVIEW_OFFSET: readonly [number, number, number] = [0, -50, 0];
+
+export const CAM_ROTATE_TIME = 0.25; // seconds per source-authored 90-degree step
+export const CAM_FOV = 58;
+export const CAM_NEAR = 3;
+export const CAM_FAR = 1200;
+
+/** Gameplay.nmo Deactivate Ball / New Ball timing, in seconds. */
+export const BALL_OFF_DELAY = 1;
+export const BALL_BIRTH_DELAY = 3;
+export const DEATH_FADE_DURATION = 2;

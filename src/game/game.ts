@@ -11,7 +11,14 @@ import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
 import { BalloonPhysics } from './balloon.ts';
 import { CamRig } from './camera.ts';
-import { FLOOR_GROUPS, SIM_DT, type BallKind } from './constants.ts';
+import {
+  BALL_BIRTH_DELAY,
+  BALL_OFF_DELAY,
+  DEATH_FADE_DURATION,
+  FLOOR_GROUPS,
+  SIM_DT,
+  type BallKind,
+} from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TRAFO_SOURCE, TrafoAnim } from './effects.ts';
 import { prepareBalloonInstance, UfoFinale } from './finale.ts';
@@ -53,6 +60,9 @@ export interface GameDebug {
   level: LevelLogic;
   scene: BuiltScene;
   three: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
+  cameraTarget(): { x: number; y: number; z: number };
+  cameraYaw(): number;
   audio(): Record<string, unknown>;
 }
 
@@ -66,9 +76,7 @@ const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
 
-const DEATH_DELAY = 2.0; // fall (~1s) + white fade before respawn
 const POINT_TICK = 0.5; // seconds per -1 point
-const BIRTH_TIME = 1.0; // spawn lightning; control + countdown start after
 const LIFE_BONUS = 200; // original: each remaining life is worth 200 points
 
 export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
@@ -155,7 +163,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   scene.add(ballShadow.mesh);
 
   const rig = new CamRig(4 / 3);
-  rig.resetTo(ball.position, spawn.yaw);
   const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
@@ -296,12 +303,17 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // simple sim-time one-shot timer queue
   const timers: { t: number; fn: () => void }[] = [];
   const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
+  let finishSkyFade = -1;
   // final-sector ambient from the balloon (Music_EndCheckpoint loop)
   const balloonAmbient = balloonVisual ? audio.createLoop('Music_EndCheckpoint.wav', balloonVisual, 0.9) : null;
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
 
   const startBirth = () => {
-    birthTimer = BIRTH_TIME;
+    birthTimer = BALL_BIRTH_DELAY;
+    ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    ball.collider.setEnabled(false);
+    ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
     lightning.start();
     audio.play('Misc_Lightning.wav', ball.position, 1, scene);
   };
@@ -327,6 +339,16 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       pm.depthWrite = false;
     }
   }
+  const skyLayerColors = skyLayer instanceof THREE.Mesh ? skyLayer.geometry.getAttribute('color') : null;
+  const setSkyLayerFilter = (value: number) => {
+    if (!(skyLayerColors instanceof THREE.BufferAttribute)) return;
+    for (let index = 0; index < skyLayerColors.count; index++) {
+      skyLayerColors.setXYZ(index, value, value, value);
+    }
+    skyLayerColors.needsUpdate = true;
+  };
+  // Levelinit.nmo/init SkyLayer sets the prelit filtering color to 200/255.
+  setSkyLayerFilter(0.7843137979507446);
   // the layer follows the camera horizontally (UV-compensated) so its edge
   // can never come into view, keeping the authored cloud density
   const skyLayerSize = new THREE.Vector2(1, 1);
@@ -351,10 +373,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     const rp = logic.spawnFor(logic.currentSector);
     ball.setKind(logic.sectorBallKind);
     ball.teleport(rp.position);
-    rig.resetTo(rp.position, rp.yaw);
+    rig.rebindTarget();
     moduls.resetSector(logic.currentSector);
-    s.set({ phase: 'playing', ballKind: logic.sectorBallKind, whiteFade: false });
+    s.set({ phase: 'playing', ballKind: logic.sectorBallKind });
     startBirth();
+    // The two-second source curve is at full white while the ball is swapped;
+    // its second half reveals the stationary three-second birth sequence.
+    after(DEATH_FADE_DURATION - BALL_OFF_DELAY, () => gameStore.getState().set({ whiteFade: false }));
   };
 
   const die = () => {
@@ -371,12 +396,18 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     pendingTrafo = null;
     audio.play('Misc_Fall.wav', ball.position, 1, scene);
     const lives = s.lives - 1;
+    s.set({ whiteFade: true });
     if (lives <= 0) {
       s.set({ lives: 0 });
-      // original: camera stops following after 1.5s and just watches the fall
-      after(1.5, () => {
-        rig.mode = 'lookOnly';
+      rig.setNavigationActive(false);
+      after(BALL_OFF_DELAY, () => {
+        ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+        ball.collider.setEnabled(false);
+        ball.visual.visible = false;
       });
+      after(DEATH_FADE_DURATION, () => gameStore.getState().set({ whiteFade: false }));
+      // Gameplay_Events detaches Cam_Pos after its 2000 ms Game Over delay.
+      after(DEATH_FADE_DURATION, () => rig.detachSlot());
       after(2.5, () => {
         audio.stopMusic();
         gameStore.getState().set({ phase: 'gameover' });
@@ -385,12 +416,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       deathTimer = Infinity; // gameover timer takes over
     } else {
       s.set({ lives, phase: 'dead' });
-      deathTimer = DEATH_DELAY;
-      // original: camera freezes after ~1s while the sector resets
-      after(1.0, () => {
-        rig.mode = 'frozen';
-        gameStore.getState().set({ whiteFade: true });
-      });
+      deathTimer = BALL_OFF_DELAY;
     }
   };
 
@@ -485,6 +511,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     if (birthTimer > 0 || pendingTrafo) {
       if (birthTimer > 0) {
         birthTimer -= SIM_DT;
+        if (birthTimer <= 0) {
+          birthTimer = 0;
+          ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+          ball.collider.setEnabled(true);
+          ball.body.wakeUp();
+        }
       }
       pushDir.set(0, 0, 0);
     } else {
@@ -570,10 +602,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           balloonAmbient?.setActive(false);
           audio.stopMusic();
           balloonPhysics?.launch();
-          // camera: follow briefly, then hold position and watch the ascent
-          after(0.6, () => {
-            rig.mode = 'lookOnly';
-          });
+          // Gameplay_Events turns navigation off and reparents Cam_Pos to null:
+          // its world slot freezes while InGameCam keeps looking at Cam_Target.
+          rig.setNavigationActive(false);
+          rig.detachSlot();
+          rig.setClippingPlanes(3, 2500);
+          finishSkyFade = 0;
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             ufoFinale?.start();
@@ -626,6 +660,12 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const present = (frameDt: number) => {
     ball.syncVisual();
     rig.update(frameDt, ball.position, input.state, gameStore.getState().settings.invertCameraRotation);
+    if (finishSkyFade >= 0) {
+      finishSkyFade = Math.min(3, finishSkyFade + frameDt);
+      // Gameplay_Events/fadeout Sky linearly filters SkyLayer from 200/255
+      // to black over exactly 3000 ms.
+      setSkyLayerFilter(0.7843137979507446 * (1 - finishSkyFade / 3));
+    }
     const v = ball.body.linvel();
     const speed = Math.hypot(v.x, v.y, v.z);
     audio.updateRoll(ball.kind, contactSurfaces(), speed, frameDt);
@@ -724,6 +764,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       level: logic,
       scene: built,
       three: scene,
+      camera: rig.camera,
+      cameraTarget: () => rig.targetPosition,
+      cameraYaw: () => rig.yaw,
       audio: () => audio.debugState(),
     };
   }

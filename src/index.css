@@ -358,12 +358,27 @@ body,
   background: #fff;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.6s ease;
   z-index: 18;
 }
 
 .white-fade-on {
-  opacity: 1;
+  animation: death-white-pulse 2s linear both;
+}
+
+/* Gameplay.nmo Deactivate Ball: 2000 ms curve, full white around Ball Off. */
+@keyframes death-white-pulse {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ---------- menu screens (original band + capsule sprites) ---------- */

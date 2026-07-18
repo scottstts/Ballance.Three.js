@@ -159,13 +159,21 @@ ballance-web/
    types with distinct mass / push force / friction / restitution / damping — decode the
    original Physicalize and controller graphs rather than guessing. Falling below the sector kill
    plane → `Pieces_*` death effect → life lost → respawn at current checkpoint.
-2. **Camera rig.** The iconic scheme: camera follows at fixed offset; Shift+←/→ rotates in
-   90° steps around the ball; Space lifts the camera for overview while held. Smooth lag on
-   follow, slerp on rotation.
+2. **Camera rig.** `Camera.nmo` authors the 58° 4:3 target camera (near 3, far 1200), its
+   22-unit horizontal / 35-unit vertical slot, and the target/orientation hierarchy.
+   `Gameplay.nmo` supplies two `TT Set Dynamic Position` controllers: the target follows the
+   ball at force `(10,10,10)`, while the camera follows the rotated slot at force
+   `(5,.8,5)` and damping `(.5,.3,.5)`. The plugin DLL's exact recurrence is implemented,
+   rather than a generic SmoothDamp. Shift+←/→ applies the source two-key CK2dCurve over
+   250 ms in 90° steps. Space immediately switches vertical force to 2 and offset Y to -50;
+   releasing it restores force .8 and offset 0. Camera orientation persists across deaths.
+   `Level_Finish` disables navigation and reparents `Cam_Pos` to null: its world slot freezes
+   while the target controller keeps tracking the ball, producing the source finish framing.
 3. **Sector/checkpoint system.** Levels are partitioned into `Sector_XX`. Reaching a
    checkpoint (`PC_TwoFlames`) completes the sector: previous sector's moduls deactivate,
    next sector's activate/reset. Death resets the active sector's moduls. End = touch the
-   balloon (`PE_Balloon`) → fly-off animation → score tally.
+   balloon (`PE_Balloon`) → source multi-body fly-off, fixed-position/look-target camera,
+   three-second `SkyLayer` prelit fade, then score tally.
 4. **Trafos.** `P_Trafo_{Paper,Wood,Stone}` transform the ball type on contact, with the
    `AnimTrafo` ring animation and old-ball piece burst. The lightning sphere belongs only
    to ball birth/respawn.

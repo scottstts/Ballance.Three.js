@@ -216,6 +216,18 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
 
   it('decodes authored behavior graphs, links, IO, and typed parameters', () => {
     const gameplay = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/Gameplay.nmo')));
+    expect(gameplay.messageTypes[9]).toBe('Checkpoint reached');
+    expect(gameplay.messageTypes[11]).toBe('Level_Finish');
+    expect(gameplay.messageTypes[12]).toBe('Game Over');
+    expect(gameplay.messageTypes[20]).toBe('Counter inactive');
+    const finishMessage = gameplay.objects[5310];
+    expect(finishMessage.kind).toBe('parameter');
+    if (finishMessage.kind === 'parameter') {
+      expect(finishMessage.managerGuid).toEqual([0x466a0fac, 0]);
+      expect(finishMessage.managerInt).toBe(11);
+      expect(finishMessage.valueVersion).toBe(0);
+      expect(finishMessage.valueBytes).toHaveLength(0);
+    }
     const light = gameplay.byName.get('Light_Ingame')?.[0];
     expect(light?.kind).toBe('light');
     if (light?.kind === 'light') {

@@ -11,6 +11,7 @@ import {
   type FileInfo,
   type GroupRec,
   type Entity3dLikeRec,
+  type ManagerDataRec,
   type NmoFile,
 } from './types.ts';
 import { loadObjectRecord } from './objects.ts';
@@ -55,6 +56,14 @@ interface TableEntry {
 
 function inflate(src: Uint8Array, unpackedSize: number): Uint8Array {
   return unzlibSync(src, { out: new Uint8Array(unpackedSize) });
+}
+
+function decodeMessageTypes(managers: ManagerDataRec[]): string[] {
+  const manager = managers.find(({ guid }) => guid[0] === 0x466a0fac && guid[1] === 0);
+  const chunk = manager?.chunk;
+  if (!chunk || chunk.seekIdentifier(83) < 4) return [];
+  const count = chunk.u32();
+  return Array.from({ length: count }, () => chunk.string());
 }
 
 export function parseNmo(buffer: ArrayBuffer | Uint8Array): NmoFile {
@@ -122,12 +131,17 @@ export function parseNmo(buffer: ArrayBuffer | Uint8Array): NmoFile {
   }
   const d = new ByteReader(data);
 
-  // manager chunks: skip
+  // Manager state precedes the object chunks. Retaining it is necessary for
+  // manager-backed parameters such as CKMessageType: those values are saved as
+  // (manager GUID, integer), while the message-name registry itself lives in
+  // base.cmo's message-manager chunk.
+  const managers: ManagerDataRec[] = [];
   for (let i = 0; i < info.managerCount; i++) {
-    d.skip(8); // guid
+    const guid: [number, number] = [d.u32(), d.u32()];
     const len = d.u32();
-    d.skip(len);
+    managers.push({ guid, chunk: len > 0 ? StateChunk.fromBuffer(d.raw(len)) : null });
   }
+  const messageTypes = decodeMessageTypes(managers);
 
   // object chunks
   const chunks: (StateChunk | null)[] = new Array(info.objectCount).fill(null);
@@ -156,7 +170,7 @@ export function parseNmo(buffer: ArrayBuffer | Uint8Array): NmoFile {
     arr.push(o);
   }
 
-  return { info, objects, chunks, groups, entities, byName };
+  return { info, managers, messageTypes, objects, chunks, groups, entities, byName };
 }
 
 export { CKClassId };

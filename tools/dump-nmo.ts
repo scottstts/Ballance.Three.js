@@ -30,6 +30,11 @@ const toFilter = toFilterText === undefined ? null : Number(toFilterText);
 const file = parseNmo(readFileSync(path));
 
 function parameterValue(parameter: ParameterRec): string {
+  if (parameter.managerGuid && parameter.managerInt !== null) {
+    const manager = parameter.managerGuid.map((value) => value.toString(16).padStart(8, '0')).join(':');
+    const message = parameter.managerGuid[0] === 0x466a0fac ? file.messageTypes[parameter.managerInt] : undefined;
+    return `manager=${manager} int=${parameter.managerInt}` + (message === undefined ? '' : ` value=${JSON.stringify(message)}`);
+  }
   if (parameter.valueObjectIndex >= 0) {
     const object = file.objects[parameter.valueObjectIndex];
     return `object=[${parameter.valueObjectIndex}]${JSON.stringify(object?.name ?? '')}`;

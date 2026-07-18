@@ -255,8 +255,9 @@ corrections — several earlier assumptions were WRONG:
   Extra_Hit.wav.
 - **Death/birth**: falling plays Misc_Fall.wav, the ball keeps falling, the screen
   fades WHITE, respawn at the EXACT reset point (no +4 drop) with the lightning
-  sphere + Misc_Lightning.wav; control and the point countdown only start after
-  the ~1s birth. The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
+  sphere + Misc_Lightning.wav; Ball Off occurs at 1s and the replacement stays
+  unphysicalized for the source's 3s birth delay before control/countdown resume.
+  The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
   bursts at swap) — not to death. Trafo visual = AnimTrafo.nmo ring cage
   (4 Ringparts + Bars + additive Flashfield) spun procedurally for 2.3s.
 - **Scoring**: final level score = level*100 + remaining points + 200*lives, shown
@@ -268,8 +269,10 @@ corrections — several earlier assumptions were WRONG:
   TriMeshFlags.FIX_INTERNAL_EDGES (=144) or flat floors feel bumpy. Push X/Z are
   INDEPENDENT axes — diagonals are sqrt(2) stronger, do NOT normalize. The paper
   ball is physicalized as its crumpled MESH (BallRadius 0) → convex hull, both
-  player and loose props. Camera vertical FOV is 60 (was 75 — wrong). Camera
-  lift: 0.8s up / 1.3s down. UpForce/DownForce in the ball table are debug-only.
+  player and loose props. The older camera values recorded here were later
+  disproved by Camera.nmo, Gameplay.nmo, and TT_Toolbox_RT.dll; see the
+  source-exact camera section below. UpForce/DownForce in the ball table are
+  debug-only.
 - **Beware prefab-vs-NMO naming**: the Unity rebuild renamed some parts (its
   "P_Modul_01_Filter" is the NMOs
 ## Full-scope fidelity audit round (sky table, original UI, IVP semantics)
@@ -322,8 +325,9 @@ corrections — several earlier assumptions were WRONG:
   Extra_Hit.wav.
 - **Death/birth**: falling plays Misc_Fall.wav, the ball keeps falling, the screen
   fades WHITE, respawn at the EXACT reset point (no +4 drop) with the lightning
-  sphere + Misc_Lightning.wav; control and the point countdown only start after
-  the ~1s birth. The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
+  sphere + Misc_Lightning.wav; Ball Off occurs at 1s and the replacement stays
+  unphysicalized for the source's 3s birth delay before control/countdown resume.
+  The shatter pieces + Pieces_*.wav belong to the TRAFO (old ball
   bursts at swap) — not to death. Trafo visual = AnimTrafo.nmo ring cage
   (4 Ringparts + Bars + additive Flashfield) spun procedurally for 2.3s.
 - **Scoring**: final level score = level*100 + remaining points + 200*lives, shown
@@ -335,8 +339,10 @@ corrections — several earlier assumptions were WRONG:
   TriMeshFlags.FIX_INTERNAL_EDGES (=144) or flat floors feel bumpy. Push X/Z are
   INDEPENDENT axes — diagonals are sqrt(2) stronger, do NOT normalize. The paper
   ball is physicalized as its crumpled MESH (BallRadius 0) -> convex hull, both
-  player and loose props. Camera vertical FOV is 60 (was 75 — wrong). Camera
-  lift: 0.8s up / 1.3s down. UpForce/DownForce in the ball table are debug-only.
+  player and loose props. The older camera values recorded here were later
+  disproved by Camera.nmo, Gameplay.nmo, and TT_Toolbox_RT.dll; see the
+  source-exact camera section below. UpForce/DownForce in the ball table are
+  debug-only.
 - **Beware prefab-vs-NMO naming**: the Unity rebuild renamed some parts (its
   "P_Modul_01_Filter" is the NMO's "P_Modul_01_Filler"; its "P_Modul_41_Box" is
   the NMO's "P_Modul_41"). NMO names are authoritative here.
@@ -356,17 +362,11 @@ options subscreens are simplified (volume only).
 
 ## Wave-2 audit round (camera prefab values, endgame, menus, coverage)
 
-- **Camera runtime values live in the serialized camera host, NOT the code
-  defaults**: rotate 0.55s (not 0.3), overview up 0.45s / down 1.66s (not
-  0.8/1.3), overview Z 14 (not 8). Follow is per-axis critically-damped
-  SmoothDamp in two stages — ball-follow target {0.2, 0.6, 0.2}, camera
-  position {0.2, 0.3, 0.2} — plus an independent look target {0.16}. The
-  CamFollowSpeed=0.05 constant is dead code in the original. Rotate easing
-  curve keys: (0,0.0067) (0.497,0.58) (1,1). Push direction follows the
-  LIVE rotating orientation (continuous, never snapped).
-- **Death camera**: follow for ~1s, then freeze (respawn path) or switch to
-  look-only (game-over path, 1.5s). Finish: follow 0.6s then look-only while
-  the balloon carries the ball up.
+- **Superseded camera audit:** the values previously recorded here came from a
+  secondary rebuild and are not present in the shipped camera graphs. The
+  source-exact Camera.nmo/Gameplay.nmo/DLL recovery below replaces them. In
+  particular, the original has no SmoothDamp, independent look target,
+  timed overview lift, or death/finish follow freeze.
 - **Balloon finale**: buoyancy decays (~0.15 -> 0.10 -> 0 over 43s) so the
   rise DEcelerates; the ball rides along; the win tally appears 6s after the
   pass. Port approximates with rate = max(0.35, 3.1*exp(-t/16)).
@@ -685,6 +685,66 @@ options subscreens are simplified (volume only).
   phases, convergence to the target, 16 wood pieces, wood-to-stone replacement,
   source mesh restoration, final shadow alpha, texture offset, and zero errors.
   Source-backed trafo regressions bring the suite to 57 tests.
+
+## 2026-07-18 source-exact camera controller
+
+- `Camera.nmo` and `Gameplay.nmo` are byte-identical in source1 and the
+  statically extracted source2 installer. `Camera.nmo` authors `Cam_Target`,
+  `Cam_OrientRef`, `Cam_Orient`, `Cam_Pos`, and `InGameCam`; the initial camera
+  slot is `(21.99987984,34.99972916,-0.00003596)` after handedness conversion.
+  The target-camera chunk is perspective, vertical FOV 58 degrees, aspect 4:3,
+  near 3, far 1200. The level-end graph temporarily changes far to 2500.
+- `Gameplay_Ingame` continuously runs two `TT Set Dynamic Position` nodes.
+  `Cam_Target` follows the ball-position frame with force `(10,10,10)` and zero
+  damping. `InGameCam` follows `Cam_Pos` with force `(5,.8,5)` and damping
+  `(.5,.3,.5)`. Holding CamUp switches only force Y to 2 and offset Y to -50;
+  there is no lift timer and the horizontal distance remains 22.
+- Static x86 recovery of `TT_Toolbox_RT.dll` at `0x10004a80` established the
+  exact per-axis recurrence: `new = current + (followed-current-offset) * force
+  * frameSeconds + (current-previous) * damping`, followed by
+  `previous=current`. This is a discrete inertial spring, not SmoothDamp.
+- Cam Navigation rotates `Cam_Orient` in 90-degree steps over exactly 250 ms.
+  Its decoded CK2dCurve is `(0,0,-.0456438474) -> (1,1,1.13457529)`.
+  The source initial slot is global +X, so initial Up force is global -X and
+  Right is global -Z after the Virtools-to-Three handedness flip. Reset-point
+  orientation is unrelated. Camera orientation persists across ball falls;
+  Ball Off only toggles the target controller Off/On to reinitialize its stored
+  previous position. Both dynamic controllers continue during death and the
+  balloon/UFO finish. On `Level_Finish`, however, `Gameplay_Events` disables
+  Cam Navigation and reparents `Cam_Pos` to null while preserving its world
+  transform. The camera-position controller therefore settles on a fixed slot
+  while `Cam_Target` keeps tracking the moving ball: this is the source-authored
+  finish look-at framing, not a timer-invented camera mode.
+- `camera.test.ts` parses both source graphs and locks all serialized values,
+  plus unit-tests the recovered DLL recurrence, initial projection/placement,
+  movement axes, 250 ms quarter turn, immediate overview response, and the
+  world-preserving finish/Game Over slot detachment.
+- Live deterministic death/respawn validation exposed a lifecycle dependency:
+  the exact camera correctly followed the falling ball far below the course, but
+  the old shortened respawn exposed play before it could return. `Deactivate
+  Ball` actually runs a four-key 2000 ms white pulse, unphysicalizes/swaps at
+  1000 ms, then `New Ball` waits 3000 ms before physicalizing. The port now uses
+  those source intervals, keeps the ball kinematic/non-colliding during birth,
+  and lets the continuing camera controllers settle behind the white pulse.
+- Virtools `CKMessageType` values are manager-backed integers, not ordinary
+  versioned parameters. The parser now retains manager state, decodes the
+  `CKMessageManager` string table, and exposes `(manager GUID, int)` values.
+  This directly identifies Gameplay event 11 as `Level_Finish`, 12 as
+  `Game Over`, 14/16 as Ball/Cam navigation deactivation, and 20 as
+  `Counter inactive`; `dump-nmo` prints names instead of guessed IDs.
+- The finish branch detaches `Cam_Pos` after two behavior ticks, changes the
+  camera clip to 3/2500, and runs `fadeout Sky` for 3000 ms. Despite its name,
+  its exact target is the level's `SkyLayer` entity: Levelinit first sets all
+  four prelit vertices to filtering color `(200/255,200/255,200/255,1)`, then
+  Gameplay linearly filters them to black. The port now initializes and fades
+  that buffer directly. Game Over disables camera navigation immediately and
+  performs the same null-parent detach after its authored 2000 ms delay.
+- Live deterministic validation moved the finish target 106.30 units while
+  the camera traveled exactly 0, confirmed the normal `SkyLayer` baseline is
+  exactly `0.7843137979507446`, and confirmed the three-second finish value is
+  zero. The Game Over target likewise moved 106.30 units after detachment while
+  the already-settled camera changed only 0.0074 units of residual spring
+  convergence. No browser errors remained; the tab and Vite server were closed.
 
 ## 2026-07-18 source-exact ball pieces
 
