@@ -1,8 +1,10 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { skyLetter } from '../../engine/assets.ts';
+import { LEVEL_LIGHT_COLORS, skyLetter, skyTranslation } from '../../engine/assets.ts';
+import { materialToThree, SCENE_AMBIENT } from '../../engine/convert.ts';
 import { FLOOR_GROUPS } from '../../game/constants.ts';
 import { decodeCk2dCurve, evalCurve } from '../../game/curve.ts';
 import { decodeUfoPath } from '../../game/finale.ts';
@@ -105,6 +107,18 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
     for (const m of textured) {
       if (m.kind !== 'material') continue;
       expect(file.objects[m.textureIndex].classId).toBe(CKClassId.Texture);
+    }
+
+    const floorWood = file.byName.get('Floor_Wood')?.find((record) => record.kind === 'material');
+    expect(floorWood?.kind).toBe('material');
+    if (floorWood?.kind === 'material') {
+      const material = materialToThree(floorWood, { prelit: false, texture: null });
+      expect(material).toBeInstanceOf(THREE.MeshPhongMaterial);
+      if (material instanceof THREE.MeshPhongMaterial) {
+        expect(material.emissive.r).toBeCloseTo(floorWood.emissive[0] + floorWood.ambient[0] * SCENE_AMBIENT, 8);
+        expect(material.specular.r).toBeCloseTo(floorWood.specular[0], 8);
+        expect(material.shininess).toBeCloseTo(floorWood.specularPower, 8);
+      }
     }
   });
 
@@ -377,6 +391,34 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
       expect(Array.from({ length: 12 }, (_, index) => `Sky_${skyLetter(index + 1)}`)).toEqual(
         allLevel.rows.map((row) => row[3]),
       );
+
+      const floats = (objectIndex: unknown): number[] => {
+        const parameter = levelinit.objects[Number(objectIndex)];
+        expect(parameter?.kind).toBe('parameter');
+        if (parameter?.kind !== 'parameter') return [];
+        const view = new DataView(
+          parameter.valueBytes.buffer,
+          parameter.valueBytes.byteOffset,
+          parameter.valueBytes.byteLength,
+        );
+        return Array.from(
+          { length: parameter.valueBytes.byteLength / 4 },
+          (_, index) => view.getFloat32(index * 4, true),
+        );
+      };
+      for (let index = 0; index < allLevel.rows.length; index++) {
+        const light = floats(allLevel.rows[index][4]);
+        const lightHex =
+          ((Math.round(light[0] * 255) << 16) |
+            (Math.round(light[1] * 255) << 8) |
+            Math.round(light[2] * 255)) >>>
+          0;
+        expect(LEVEL_LIGHT_COLORS[index + 1] ?? 0xffffff).toBe(lightHex);
+
+        const translation = floats(allLevel.rows[index][5]);
+        expect(skyTranslation(index + 1)[0]).toBeCloseTo(translation[0], 7);
+        expect(skyTranslation(index + 1)[1]).toBeCloseTo(translation[1], 7);
+      }
     }
 
     const floors = levelinit.byName.get('Physicalize_Floors')?.[0];
@@ -395,6 +437,23 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
     }
 
     const base = parseNmo(readFileSync(join(GAME_DIR, 'base.cmo')));
+    const levelChunk = base.chunks[0];
+    const renderSettings = levelChunk.data.findIndex(
+      (value, index) => value === 0x00080000 && levelChunk.data[index + 3] === 0x000f0f0f,
+    );
+    expect(renderSettings).toBeGreaterThanOrEqual(0);
+    expect(Array.from(levelChunk.data.slice(renderSettings + 2, renderSettings + 11))).toEqual([
+      0xff808080,
+      0x000f0f0f,
+      0,
+      0,
+      0x3f800000,
+      0x42c80000,
+      0x3f800000,
+      0xffffffff,
+      0xffffffff,
+    ]);
+    expect(SCENE_AMBIENT).toBe(15 / 255);
     const level1 = base.byName.get('DB_Highscore_Lv01')?.[0];
     const level12 = base.byName.get('DB_Highscore_Lv12')?.[0];
     expect(level1?.kind).toBe('dataArray');

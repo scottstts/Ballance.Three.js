@@ -38,6 +38,32 @@ export function levelPath(level: number): string {
 /** Original per-level sky set assignment (from the level definitions). */
 const SKY_LETTERS = ['L', 'E', 'A', 'F', 'C', 'H', 'D', 'G', 'K', 'B', 'J', 'I'];
 
+/**
+ * Original `AllLevel.Skytranslation` values. `Gameplay_Sky` feeds the
+ * selected vector through `Per Second` into `Texture Scroller` unchanged.
+ */
+const SKY_TRANSLATIONS = [
+  [0.01, 0.01],
+  [-0.01, 0.005],
+  [0.02, 0.01],
+  [-0.01, 0.005],
+  [0.01, 0.005],
+  [-0.01, 0.005],
+  [-0.005, -0.005],
+  [0.01, 0],
+  [-0.005, 0.01],
+  [0.02, 0.01],
+  [0.01, 0.01],
+  [0.01, 0.04],
+] as const;
+
+/** Original `AllLevel.Light` colors; unlisted levels are pure white. */
+export const LEVEL_LIGHT_COLORS: Readonly<Record<number, number>> = { 9: 0xe9e9e9, 12: 0x969696 };
+
 export function skyLetter(level: number): string {
   return SKY_LETTERS[level - 1] ?? 'A';
+}
+
+export function skyTranslation(level: number): readonly [number, number] {
+  return SKY_TRANSLATIONS[level - 1] ?? [0, 0];
 }

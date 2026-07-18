@@ -160,8 +160,9 @@ Append-only scratchpad of things learned during the port. Read this first when r
      Fix: set emissiveMap = map. This single fix cured the washed-out balls/crates.
 - Balls.nmo references texture names with no disk file (BallWood.bmp vs Ball_Wood.bmp):
   the pixels are EMBEDDED in the NMO; loader must fall back file->embedded->raw.
-- Light rig for D3D-era energy: ambient 0.32 warm + sun 0.95 + fill 0.18 (materials add
-  their own emissive lift; keep total near 1 or textures wash out).
+- Historical screenshot calibration (superseded by the binary recovery below):
+  ambient 0.32 warm + sun 0.95 + fill 0.18. Do not restore this invented rig;
+  the source has one directional light and CKScene ambient #0F0F0F.
 - Effects built from original assets: Particle_Flames.bmp sprites (pink flames, big one
   on armed checkpoints, extinguish on crossing), Ball_LightningSphere1-3.bmp additive
   sphere during trafo (2.3s, then ball swap), Ball_<Kind>_pieceNN meshes for death
@@ -210,15 +211,15 @@ Append-only scratchpad of things learned during the port. Read this first when r
 Sourced by parallel read-only audits of the Unity Rebuild + original data. Key
 corrections — several earlier assumptions were WRONG:
 
-- **Per-level sky assignment is NOT sequential.** The real table (from the level
-  definitions) is L1=L, L2=F, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B,
-  L11=J, L12=I ("E" is never used, "F" three times). assets.ts skyLetter now
-  holds this table. The warm orange look of refs 1/2 is Sky L (Level 1).
-- **Original lighting = ONE white light + ambient, no gameplay fog.** Light_Ingame
-  (Gameplay.nmo): white point light, no falloff, at (-5,15,3.6) — approximated as
-  a white directional from that bearing + white ambient 0.34. Levels tint the
-  light: L9 #E9E9E9, L12 #969696 (LEVEL_LIGHT_COLORS). The old warm 3-light rig
-  and the sky-sampled gameplay fog were port inventions — removed.
+- **Per-level sky assignment is NOT sequential.** The primary `AllLevel` table is
+  L1=L, L2=E, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B, L11=J,
+  L12=I. All twelve A–L sets are used once. An earlier complementary-port audit
+  incorrectly reported L2=F; the original NMO and `assets.ts` use E.
+- **Original lighting = ONE white directional light + fixed-function ambient, no
+  gameplay fog.** `Light_Ingame` is active+specular at (-5,15,3.6), and its
+  matrix forward row gives the direction. Levels tint it only at L9 #E9E9E9 and
+  L12 #969696. The CKScene render settings later proved the ambient is #0F0F0F,
+  combined with each material's separate ambient color; 0.34 was an approximation.
 - **Scenery placements are gray dummies.** PC_TwoFlames_NN / PS_FourFlames_NN /
   PE_Balloon(Levelende)_NN in level NMOs are untextured stand-ins; the textured
   prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
@@ -280,15 +281,15 @@ corrections — several earlier assumptions were WRONG:
 Sourced by parallel read-only audits of the Unity Rebuild + original data. Key
 corrections — several earlier assumptions were WRONG:
 
-- **Per-level sky assignment is NOT sequential.** The real table (from the level
-  definitions) is L1=L, L2=F, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B,
-  L11=J, L12=I ("E" is never used, "F" three times). assets.ts skyLetter now
-  holds this table. The warm orange look of refs 1/2 is Sky L (Level 1).
-- **Original lighting = ONE white light + ambient, no gameplay fog.** Light_Ingame
-  (Gameplay.nmo): white point light, no falloff, at (-5,15,3.6) — approximated as
-  a white directional from that bearing + white ambient 0.34. Levels tint the
-  light: L9 #E9E9E9, L12 #969696 (LEVEL_LIGHT_COLORS). The old warm 3-light rig
-  and the sky-sampled gameplay fog were port inventions — removed.
+- **Per-level sky assignment is NOT sequential.** The primary `AllLevel` table is
+  L1=L, L2=E, L3=A, L4=F, L5=C, L6=H, L7=D, L8=G, L9=K, L10=B, L11=J,
+  L12=I. All twelve A–L sets are used once. An earlier complementary-port audit
+  incorrectly reported L2=F; the original NMO and `assets.ts` use E.
+- **Original lighting = ONE white directional light + fixed-function ambient, no
+  gameplay fog.** `Light_Ingame` is active+specular at (-5,15,3.6), and its
+  matrix forward row gives the direction. Levels tint it only at L9 #E9E9E9 and
+  L12 #969696. The CKScene render settings later proved the ambient is #0F0F0F,
+  combined with each material's separate ambient color; 0.34 was an approximation.
 - **Scenery placements are gray dummies.** PC_TwoFlames_NN / PS_FourFlames_NN /
   PE_Balloon(Levelende)_NN in level NMOs are untextured stand-ins; the textured
   prefabs live in PH/PC_TwoFlames.nmo etc. game.ts hides the dummies and
@@ -857,3 +858,41 @@ options subscreens are simplified (volume only).
   `Music_LastFinal.wav` for level 12. There were zero browser errors; the tab
   and Vite server were closed. The full gate passes with 87 tests plus lint,
   typecheck, and production build (the usual chunk-size warning only).
+## 2026-07-18 open HUD parity finding: life count
+
+- **TODO — life-count HUD is not source-identical yet.** In the user-provided
+  side-by-side, the port shows three silver balls with a wide gap before the
+  outer cradle, while the original shows four tighter balls and nests the last
+  ball inside the cradle opening. Recover the source HUD behavior before fixing:
+  verify whether the display intentionally renders `stored lives + 1`, then
+  match the exact ball spacing, inner-hook position, and cradle overlap from
+  `Button01_special.tga` / the original UI graph. Do not mark HUD parity complete
+  until both the count semantics and layout match.
+
+## 2026-07-18 source-exact scene light and SkyLayer drift
+
+- `base.cmo` object 0 contains an embedded CKScene. Its
+  `CK_STATESAVE_SCENERENDERSETTINGS` (`0x00080000`) payload is background
+  `0xFF808080`, ambient `0x000F0F0F`, fog mode/color 0, start 1, end 100,
+  density 1, and two null object IDs. Static disassembly of the shipped
+  `CK2.dll` CKScene Save/Load routines confirms that exact field order. The
+  prior Three `AmbientLight(..., 0.34)` was not source-authored.
+- D3D/Virtools stores ambient separately per material. Three's AmbientLight
+  would multiply diffuse instead, so `materialToThree` folds
+  `material.ambient * (15/255)` into the texture-modulated emissive term and
+  removes the global AmbientLight. Active `Light_Ingame` has Specular enabled;
+  powered materials now use their full source specular color rather than the
+  previous arbitrary 0.5 scale.
+- `Levelinit.nmo/AllLevel` Skytranslation vectors are literal per-second UV
+  rates because `Gameplay.nmo/Gameplay_Sky` routes the selected row through
+  `animate SkyLayer -> Per Second -> Texture Scroller`. The twelve vectors are
+  `( .01,.01),(-.01,.005),(.02,.01),(-.01,.005),(.01,.005),(-.01,.005),
+  (-.005,-.005),(.01,0),(-.005,.01),(.02,.01),(.01,.01),(.01,.04)`.
+  The former universal `.008,.008` drift was invented.
+- The three authority files (`base.cmo`, `Levelinit.nmo`, `Gameplay.nmo`) have
+  identical SHA-256 hashes in source1 and the statically extracted source2.
+  Regression tests derive sky letters, light colors, sky rates, ambient bytes,
+  material ambient, and specular from those originals. Live Level 1 measured
+  ~(.020,.020) over 2 s; Level 12 measured ~(.020,.080), with only the #969696
+  directional light. Captures are `screenshots/lighting-level{1,12}-source.png`;
+  the browser tab and Vite server were closed after validation.

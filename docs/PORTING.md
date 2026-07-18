@@ -195,7 +195,16 @@ ballance-web/
    Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`.
 7. **Menus/UI in React.** Main menu (optionally rendering the converted `MenuLevel` 3D tower
    behind it), level select with unlock progression, pause, options, tutorial text from
-   `Text/*.txt`, HUD (lives, points, sector).
+   `Text/*.txt`, and the original sprite-font HUD (points and lives). The life display still
+   has an open parity defect: source count semantics and the exact hook/ball/cradle overlap
+   must be recovered; see `docs/notes.md`.
+8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
+   ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
+   renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term
+   instead of using Three's diffuse-based `AmbientLight`. `Light_Ingame` remains the single
+   active+specular directional source, tinted only by the `AllLevel.Light` values for levels
+   9 and 12. `SkyLayer` uses the twelve `AllLevel.Skytranslation` vectors through the
+   source `Per Second -> Texture Scroller` behavior rather than a common guessed rate.
 
 ### 4.4 Moduls present in this install (each = one TS behavior class)
 

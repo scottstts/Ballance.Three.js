@@ -3,8 +3,14 @@
  * the fixed-step (66 Hz) simulation loop with sector/checkpoint/life rules.
  */
 import * as THREE from 'three';
-import { levelPath, loadNmo, skyLetter } from '../engine/assets.ts';
-import { addLightRig, LEVEL_LIGHT_COLORS } from '../engine/viewer.ts';
+import {
+  LEVEL_LIGHT_COLORS,
+  levelPath,
+  loadNmo,
+  skyLetter,
+  skyTranslation,
+} from '../engine/assets.ts';
+import { addLightRig } from '../engine/viewer.ts';
 import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
 import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
@@ -379,6 +385,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // the layer follows the camera horizontally (UV-compensated) so its edge
   // can never come into view, keeping the authored cloud density
   const skyLayerSize = new THREE.Vector2(1, 1);
+  const skyDrift = skyTranslation(level);
   if (skyLayer instanceof THREE.Mesh) {
     skyLayer.geometry.computeBoundingBox();
     const bb = skyLayer.geometry.boundingBox;
@@ -722,10 +729,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       for (const m of mats) {
         const map = (m as THREE.MeshPhongMaterial).map;
         if (map) {
-          // keep the clouds world-anchored while the plane tracks the camera,
-          // plus the original 0.008/s drift on both axes
-          map.offset.x = (map.offset.x + (dx / skyLayerSize.x) * map.repeat.x + frameDt * 0.008) % 1;
-          map.offset.y = (map.offset.y + (dz / skyLayerSize.y) * map.repeat.y + frameDt * 0.008) % 1;
+          // Keep the clouds world-anchored while the plane tracks the camera,
+          // then apply this level's source-authored Texture Scroller rate.
+          map.offset.x = (map.offset.x + (dx / skyLayerSize.x) * map.repeat.x + frameDt * skyDrift[0]) % 1;
+          map.offset.y = (map.offset.y + (dz / skyLayerSize.y) * map.repeat.y + frameDt * skyDrift[1]) % 1;
         }
       }
     }

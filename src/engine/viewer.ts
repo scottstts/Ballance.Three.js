@@ -16,14 +16,11 @@ export interface ViewerHandle {
 
 /**
  * Original lighting: a single pure-white directional light (Light_Ingame)
- * plus fixed-function ambient. Its source matrix is decoded from Gameplay.nmo.
+ * with the fixed-function scene/material ambient already folded into materials.
+ * Its source matrix is decoded from Gameplay.nmo.
  * Levels 9 and 12 tint the light (E9E9E9 / 969696) per the original data.
  */
-export const LEVEL_LIGHT_COLORS: Record<number, number> = { 9: 0xe9e9e9, 12: 0x969696 };
-
 export function addLightRig(scene: THREE.Scene, tint = 0xffffff): void {
-  const ambient = new THREE.AmbientLight(tint, 0.34);
-  scene.add(ambient);
   const source = new THREE.DirectionalLight(tint, 1);
   source.position.set(-5.1707215, 15.2553339, -3.6059473);
   // Virtools local +Z is the light direction; convert its world forward row

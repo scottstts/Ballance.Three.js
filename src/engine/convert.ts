@@ -6,6 +6,9 @@
 import * as THREE from 'three';
 import type { MaterialRec, MeshRec } from '../formats/ck2/types.ts';
 
+/** `base.cmo` CKScene render setting: 0x000f0f0f. */
+export const SCENE_AMBIENT = 15 / 255;
+
 /** Virtools row-vector matrix (rows: right/up/forward/pos) -> three column-vector matrix in RH space. */
 export function vxMatrixToThree(m: Float32Array, out = new THREE.Matrix4()): THREE.Matrix4 {
   out.set(
@@ -127,17 +130,25 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
   if (prelit) {
     mat = new THREE.MeshBasicMaterial({ ...common, color: new THREE.Color(1, 1, 1) });
   } else {
-    // D3D semantics: specularPower 0 disables the specular term entirely,
-    // and emissive is modulated by the texture (three adds it raw, so tint
-    // it through emissiveMap when a texture exists)
+    // D3D fixed-function lighting keeps a separate per-material ambient.
+    // Three's AmbientLight would multiply the diffuse color instead, so fold
+    // the exact sceneAmbient * materialAmbient term into the texture-modulated
+    // emissive term. specularPower 0 disables specular entirely.
     const specOn = !!rec && rec.specularPower > 0;
+    const emissive = rec
+      ? new THREE.Color(
+          rec.emissive[0] + rec.ambient[0] * SCENE_AMBIENT,
+          rec.emissive[1] + rec.ambient[1] * SCENE_AMBIENT,
+          rec.emissive[2] + rec.ambient[2] * SCENE_AMBIENT,
+        )
+      : new THREE.Color(0, 0, 0);
     mat = new THREE.MeshPhongMaterial({
       ...common,
       color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
-      emissive: rec ? new THREE.Color(rec.emissive[0], rec.emissive[1], rec.emissive[2]) : new THREE.Color(0, 0, 0),
+      emissive,
       emissiveMap: texture,
       specular: specOn
-        ? new THREE.Color(rec.specular[0] * 0.5, rec.specular[1] * 0.5, rec.specular[2] * 0.5)
+        ? new THREE.Color(rec.specular[0], rec.specular[1], rec.specular[2])
         : new THREE.Color(0, 0, 0),
       shininess: specOn ? rec.specularPower : 30,
     });
