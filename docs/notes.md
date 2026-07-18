@@ -818,3 +818,42 @@ options subscreens are simplified (volume only).
   12.8/13.1 s and 25.8/26.1 s, rejected an early Enter, accepted Space after
   the fade, and changed dead to gameover only after 2 s. There were no browser
   errors; the tab and Vite server were closed afterward.
+
+## 2026-07-18 source-exact music and last-stage audio
+
+- The old scheduler came from a complementary Unity rebuild and contradicted
+  the shipped `Sound.nmo`: it alternated atmosphere/theme in a single queue,
+  weighted atmosphere 70%, randomized its gain, and forbade repeated themes.
+  None of those rules exists in the original graph, so they were removed.
+- `Music_Manager` runs two independent graphs. `Music_Atmo` draws a uniform
+  0–15 s delay, then one of three equal-weight atmosphere waves. `Music_Theme`
+  is enabled after an exact 7000 ms and independently draws 0–50 s before one
+  of three equal-weight per-level waves. Both Random Switch nodes serialize
+  `Forbid twice the same=0`, and each graph draws a new delay only after its
+  wave ends. The graphs can overlap.
+- `Levelinit.nmo/AllLevel` is the primary authority for the theme assignment:
+  `1,5,2,3,1,5,4,2,3,1,3,4`. Its `load Music_ThemeXX` graph reads Music column
+  7 and constructs all three `Music_Theme_<N>_<1..3>.wav` objects. The matching
+  complementary mapping was retained only after this direct confirmation.
+- Start/End Music operate on the whole `All_Musicfiles` group with exact 1000 ms
+  linear fades. End Music prevents new scheduled waves; the browser tears the
+  now-inaudible sources down after the fade for resource hygiene.
+- `last Checkpoint reached` switches only `Music_Theme.Off`; atmosphere remains
+  live. `Music_EndCheckpoint` is a flat loop, not positional balloon audio.
+  `TT Scaleable Proximity` starts with `Last Check=true`, samples after random
+  inclusive 5–20-frame delays, enters below 200 units, and exits above 250.
+  Ball Off disables the sampler and re-enables it after exactly 3000 ms.
+- `Play EndMusic` compares CurrentLevel to max Level with comparison mode 1
+  (Equal). Levels 1–11 play only `Music_Final`; level 12 plays only the 7.686 s
+  `Music_LastFinal`. The former invented level-12 follow-up `Music_Final` was
+  removed. The ending wave and atmosphere remain in the music group; the
+  checkpoint loop stops one behavior tick after `Level_Finish`.
+- `audio.test.ts` parses `Sound.nmo`, `Levelinit.nmo`, and `Musicfiles.nmo` to
+  lock every scheduler delay, selector coefficient/repeat flag, fade, theme,
+  last-stage proximity value, frame delay, loop flag, group member, and ending
+  selector. Deterministic browser traversal confirmed theme-only shutdown,
+  the saved initial proximity window, exit/re-entry hysteresis, and the finish
+  overlap. Network capture fetched only `Music_Final.wav` for level 11 and only
+  `Music_LastFinal.wav` for level 12. There were zero browser errors; the tab
+  and Vite server were closed. The full gate passes with 87 tests plus lint,
+  typecheck, and production build (the usual chunk-size warning only).

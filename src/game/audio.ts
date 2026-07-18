@@ -1,8 +1,8 @@
 /**
  * Audio: original WAVs via Web Audio. Impact and rolling sounds follow the
  * original per-surface collision model (thresholds, delays, speed curves as
- * in the original's IVP collision/contact detectors); music plays the
- * level's theme variations with pauses.
+ * in the original's IVP collision/contact detectors). Music reproduces the
+ * two independent Sound.nmo schedulers and its final-sector state machine.
  */
 import * as THREE from 'three';
 import { fetchGameBuffer } from '../engine/assets.ts';
@@ -59,6 +59,40 @@ export const LEVEL_THEMES: Record<number, number> = {
   1: 1, 2: 5, 3: 2, 4: 3, 5: 1, 6: 5, 7: 4, 8: 2, 9: 3, 10: 1, 11: 3, 12: 4,
 };
 
+/** Exact values serialized by Sound.nmo/Music_Manager. Seconds unless noted. */
+export const MUSIC_SOURCE = {
+  atmoDelayMin: 0,
+  atmoDelayMax: 15,
+  themeActivationDelay: 7,
+  themeDelayMin: 0,
+  themeDelayMax: 50,
+  fadeDuration: 1,
+  lastStageEnterDistance: 200,
+  lastStageExitDistance: 250,
+  lastStageMinFrameDelay: 5,
+  lastStageMaxFrameDelay: 20,
+} as const;
+
+export type MusicVariation = 1 | 2 | 3;
+
+/** Sound.nmo Random Switch: three equal coefficients, repeats permitted. */
+export function musicVariation(random: number): MusicVariation {
+  return (Math.min(2, Math.floor(THREE.MathUtils.clamp(random, 0, 0.999999999) * 3)) + 1) as MusicVariation;
+}
+
+/** Play EndMusic selects one mutually-exclusive wave by CurrentLevel==maxLevel. */
+export function levelFinalMusic(level: number): 'Music_Final.wav' | 'Music_LastFinal.wav' {
+  return level === 12 ? 'Music_LastFinal.wav' : 'Music_Final.wav';
+}
+
+/** TT Scaleable Proximity chooses an inclusive integer frame delay. */
+export function lastStageFrameDelay(random: number): number {
+  const span = MUSIC_SOURCE.lastStageMaxFrameDelay - MUSIC_SOURCE.lastStageMinFrameDelay + 1;
+  return MUSIC_SOURCE.lastStageMinFrameDelay + Math.min(span - 1, Math.floor(THREE.MathUtils.clamp(random, 0, 1) * span));
+}
+
+type MusicChannel = 'atmo' | 'theme';
+
 export class AudioManager {
   readonly listener: THREE.AudioListener;
   private buffers = new Map<string, Promise<AudioBuffer | null>>();
@@ -67,9 +101,22 @@ export class AudioManager {
   private rollContacts = new Map<Surface, RollContactState>();
   private hitSleep = new Map<Surface, number>();
   private musicGain: GainNode | null = null;
-  private musicSource: AudioBufferSourceNode | null = null;
-  private musicTimer: ReturnType<typeof setTimeout> | null = null;
-  private musicMutedUntil = 0;
+  private atmoSource: AudioBufferSourceNode | null = null;
+  private themeSource: AudioBufferSourceNode | null = null;
+  private finalSource: AudioBufferSourceNode | null = null;
+  private lastStageSource: AudioBufferSourceNode | null = null;
+  private atmoTimer: ReturnType<typeof setTimeout> | null = null;
+  private themeTimer: ReturnType<typeof setTimeout> | null = null;
+  private themeActivationTimer: ReturnType<typeof setTimeout> | null = null;
+  private fadeStopTimer: ReturnType<typeof setTimeout> | null = null;
+  private musicGeneration = 0;
+  private musicActive = false;
+  private themeActive = false;
+  private musicFadingOut = false;
+  private theme = 1;
+  private lastStage = false;
+  private lastStageNear = false;
+  private lastStageCheckFrames = 0;
   private disposed = false;
   sfxVolume = 1;
   musicVolume = 1;
@@ -99,7 +146,11 @@ export class AudioManager {
 
   setMusicVolume(volume: number): void {
     this.musicVolume = volume;
-    if (this.musicGain) this.musicGain.gain.value = volume;
+    if (this.musicGain && !this.musicFadingOut) {
+      const now = this.listener.context.currentTime;
+      this.musicGain.gain.cancelScheduledValues(now);
+      this.musicGain.gain.setValueAtTime(volume, now);
+    }
   }
 
   /** looping positional effect bound to an object (fans etc.) */
@@ -233,77 +284,209 @@ export class AudioManager {
   }
 
   /**
-   * Music scheduler, following the original: theme tracks and atmo tracks
-   * alternate on 10-30s intervals — after each track there is a 20-30s lull
-   * (10-20s for atmos), ~70% of slots play an atmo (at half-to-full volume),
-   * and the same theme variation never repeats back to back.
+   * Start Sound.nmo's two independent schedulers. Atmospheres wait a fresh
+   * uniform 0..15 s before every play. The theme graph is enabled after 7 s,
+   * then independently waits 0..50 s. Both selectors are equal-weight and
+   * explicitly allow the same variation twice in succession.
    */
   startMusic(level: number): void {
     this.stopMusic();
-    const theme = LEVEL_THEMES[level] ?? 1;
+    if (this.disposed) return;
+    this.musicActive = true;
+    this.themeActive = false;
+    this.musicFadingOut = false;
+    this.theme = LEVEL_THEMES[level] ?? 1;
+    const generation = this.musicGeneration;
     const ctx = this.listener.context;
     this.musicGain = ctx.createGain();
-    this.musicGain.gain.value = this.musicVolume;
+    this.musicGain.gain.setValueAtTime(0, ctx.currentTime);
+    this.musicGain.gain.linearRampToValueAtTime(this.musicVolume, ctx.currentTime + MUSIC_SOURCE.fadeDuration);
     this.musicGain.connect(ctx.destination);
-    let lastVariation = 0;
-    const playNext = () => {
-      if (this.disposed || !this.musicGain) return;
-      if (performance.now() < this.musicMutedUntil) {
-        this.musicTimer = setTimeout(playNext, 5000);
+    this.scheduleMusic('atmo', generation);
+    this.themeActivationTimer = setTimeout(() => {
+      this.themeActivationTimer = null;
+      if (!this.musicActive || generation !== this.musicGeneration) return;
+      this.themeActive = true;
+      this.scheduleMusic('theme', generation);
+    }, MUSIC_SOURCE.themeActivationDelay * 1000);
+
+    // Virtools has already loaded these CKWaveSound objects before the graph
+    // starts. Begin browser decoding eagerly so a zero-delay draw stays close.
+    for (let variation = 1; variation <= 3; variation++) {
+      void this.load(`Music_Atmo_${variation}.wav`);
+      void this.load(`Music_Theme_${this.theme}_${variation}.wav`);
+    }
+  }
+
+  private scheduleMusic(channel: MusicChannel, generation: number): void {
+    if (!this.musicActive || generation !== this.musicGeneration) return;
+    if (channel === 'theme' && !this.themeActive) return;
+    const min = channel === 'atmo' ? MUSIC_SOURCE.atmoDelayMin : MUSIC_SOURCE.themeDelayMin;
+    const max = channel === 'atmo' ? MUSIC_SOURCE.atmoDelayMax : MUSIC_SOURCE.themeDelayMax;
+    const timer = setTimeout(() => {
+      if (channel === 'atmo') this.atmoTimer = null;
+      else this.themeTimer = null;
+      if (!this.musicActive || generation !== this.musicGeneration) return;
+      if (channel === 'theme' && !this.themeActive) return;
+      const variation = musicVariation(Math.random());
+      const file = channel === 'atmo'
+        ? `Music_Atmo_${variation}.wav`
+        : `Music_Theme_${this.theme}_${variation}.wav`;
+      this.playScheduledMusic(channel, file, generation);
+    }, (min + Math.random() * (max - min)) * 1000);
+    if (channel === 'atmo') this.atmoTimer = timer;
+    else this.themeTimer = timer;
+  }
+
+  private playScheduledMusic(channel: MusicChannel, file: string, generation: number): void {
+    void this.load(file).then((buffer) => {
+      if (!buffer || !this.musicGain || !this.musicActive || generation !== this.musicGeneration) {
+        this.scheduleMusic(channel, generation);
         return;
       }
-      const isAtmo = Math.random() > 0.3;
-      let file: string;
-      let gain = 1;
-      if (isAtmo) {
-        file = `Music_Atmo_${1 + Math.floor(Math.random() * 3)}.wav`;
-        gain = 0.5 + Math.random() * 0.5;
-      } else {
-        let variation = 1 + Math.floor(Math.random() * 3);
-        if (variation === lastVariation) variation = (variation % 3) + 1;
-        lastVariation = variation;
-        file = `Music_Theme_${theme}_${variation}.wav`;
-      }
-      void this.load(file).then((buffer) => {
-        if (!buffer || this.disposed || !this.musicGain) return;
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        const g = ctx.createGain();
-        g.gain.value = gain;
-        src.connect(g);
-        g.connect(this.musicGain);
-        src.start();
-        this.musicSource = src;
-        src.onended = () => {
-          this.musicSource = null;
-          const gap = isAtmo ? 10000 + Math.random() * 10000 : 20000 + Math.random() * 10000;
-          this.musicTimer = setTimeout(playNext, gap);
-        };
-      });
-    };
-    playNext();
+      if (channel === 'theme' && !this.themeActive) return;
+      const source = this.listener.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.musicGain);
+      if (channel === 'atmo') this.atmoSource = source;
+      else this.themeSource = source;
+      source.onended = () => {
+        if (channel === 'atmo' && this.atmoSource === source) this.atmoSource = null;
+        if (channel === 'theme' && this.themeSource === source) this.themeSource = null;
+        this.scheduleMusic(channel, generation);
+      };
+      source.start();
+    });
   }
 
-  /** keep the scheduler quiet for a while (final-sector balloon ambient) */
-  muteMusicFor(seconds: number): void {
-    this.musicMutedUntil = performance.now() + seconds * 1000;
+  /** Last Checkpoint: stop only the theme graph and begin the flat loop. */
+  enterLastStage(): void {
+    this.lastStage = true;
+    this.themeActive = false;
+    this.clearTimer('themeTimer');
+    this.stopSource('themeSource');
+    this.lastStageNear = true;
+    this.lastStageCheckFrames = lastStageFrameDelay(Math.random());
+    this.setLastStageLoop(true);
+  }
+
+  /** Apply TT Scaleable Proximity's exact 200/250-unit hysteresis. */
+  updateLastStageDistance(distance: number): void {
+    if (!this.lastStage) return;
+    this.lastStageCheckFrames--;
+    if (this.lastStageCheckFrames > 0) return;
+    this.lastStageCheckFrames = lastStageFrameDelay(Math.random());
+    if (this.lastStageNear && distance > MUSIC_SOURCE.lastStageExitDistance) {
+      this.lastStageNear = false;
+      this.setLastStageLoop(false);
+    } else if (!this.lastStageNear && distance < MUSIC_SOURCE.lastStageEnterDistance) {
+      this.lastStageNear = true;
+      this.setLastStageLoop(true);
+    }
+  }
+
+  private setLastStageLoop(on: boolean): void {
+    if (!on) {
+      this.stopSource('lastStageSource');
+      return;
+    }
+    if (this.lastStageSource || !this.musicGain || !this.musicActive) return;
+    const generation = this.musicGeneration;
+    void this.load('Music_EndCheckpoint.wav').then((buffer) => {
+      if (
+        !buffer ||
+        !this.musicGain ||
+        !this.musicActive ||
+        !this.lastStage ||
+        !this.lastStageNear ||
+        generation !== this.musicGeneration
+      ) return;
+      const source = this.listener.context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(this.musicGain);
+      this.lastStageSource = source;
+      source.start();
+    });
+  }
+
+  stopLastStageAmbient(): void {
+    this.lastStageNear = false;
+    this.stopSource('lastStageSource');
+  }
+
+  /** Level_Finish: play exactly one source-selected end wave. */
+  playLevelFinal(level: number): void {
+    this.stopSource('finalSource');
+    const generation = this.musicGeneration;
+    void this.load(levelFinalMusic(level)).then((buffer) => {
+      if (!buffer || !this.musicGain || generation !== this.musicGeneration) return;
+      const source = this.listener.context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.musicGain);
+      this.finalSource = source;
+      source.onended = () => {
+        if (this.finalSource === source) this.finalSource = null;
+      };
+      source.start();
+    });
+  }
+
+  /** End Music message: source-authored one-second group fade. */
+  endMusic(): void {
+    if (!this.musicGain) return;
+    this.musicActive = false;
+    this.themeActive = false;
+    this.musicFadingOut = true;
+    this.clearTimer('atmoTimer');
+    this.clearTimer('themeTimer');
+    this.clearTimer('themeActivationTimer');
+    const now = this.listener.context.currentTime;
+    this.musicGain.gain.cancelScheduledValues(now);
+    this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+    this.musicGain.gain.linearRampToValueAtTime(0, now + MUSIC_SOURCE.fadeDuration);
+    this.fadeStopTimer = setTimeout(() => {
+      this.fadeStopTimer = null;
+      this.stopMusic();
+    }, MUSIC_SOURCE.fadeDuration * 1000);
+  }
+
+  private clearTimer(field: 'atmoTimer' | 'themeTimer' | 'themeActivationTimer' | 'fadeStopTimer'): void {
+    const timer = this[field];
+    if (timer) clearTimeout(timer);
+    this[field] = null;
+  }
+
+  private stopSource(field: 'atmoSource' | 'themeSource' | 'finalSource' | 'lastStageSource'): void {
+    const source = this[field];
+    if (!source) return;
+    source.onended = null;
     try {
-      this.musicSource?.stop();
+      source.stop();
     } catch {
       /* already stopped */
     }
-    this.musicSource = null;
+    source.disconnect();
+    this[field] = null;
   }
 
+  /** Immediate graph teardown (level disposal), unlike End Music's fade. */
   stopMusic(): void {
-    if (this.musicTimer) clearTimeout(this.musicTimer);
-    this.musicTimer = null;
-    try {
-      this.musicSource?.stop();
-    } catch {
-      /* already stopped */
-    }
-    this.musicSource = null;
+    this.musicGeneration++;
+    this.musicActive = false;
+    this.themeActive = false;
+    this.musicFadingOut = false;
+    this.lastStage = false;
+    this.lastStageNear = false;
+    this.lastStageCheckFrames = 0;
+    this.clearTimer('atmoTimer');
+    this.clearTimer('themeTimer');
+    this.clearTimer('themeActivationTimer');
+    this.clearTimer('fadeStopTimer');
+    this.stopSource('atmoSource');
+    this.stopSource('themeSource');
+    this.stopSource('finalSource');
+    this.stopSource('lastStageSource');
     this.musicGain?.disconnect();
     this.musicGain = null;
   }
@@ -316,7 +499,22 @@ export class AudioManager {
     }
     const loops: Record<string, number> = {};
     for (const [k, loop] of this.rollLoops) loops[k] = Number(loop.getVolume().toFixed(3));
-    return { contacts, loops };
+    return {
+      contacts,
+      loops,
+      music: {
+        active: this.musicActive,
+        atmoPlaying: this.atmoSource !== null,
+        themeActive: this.themeActive,
+        themePlaying: this.themeSource !== null,
+        theme: this.theme,
+        lastStage: this.lastStage,
+        lastStageNear: this.lastStageNear,
+        lastStageCheckFrames: this.lastStageCheckFrames,
+        lastStagePlaying: this.lastStageSource !== null,
+        finalPlaying: this.finalSource !== null,
+      },
+    };
   }
 
   dispose(): void {

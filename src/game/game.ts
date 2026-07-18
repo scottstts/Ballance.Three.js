@@ -124,6 +124,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   // pieces; the textured versions live in PH/*.nmo (as the original loads)
   bootStage('scenery');
   let balloonInstance: PrefabInstance | null = null;
+  let levelEndPosition: THREE.Vector3 | null = null;
   for (const { group, prefab } of [
     { group: 'PC_Checkpoints', prefab: 'PC_TwoFlames' },
     { group: 'PS_Levelstart', prefab: 'PS_FourFlames' },
@@ -136,11 +137,15 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       e.object.visible = false;
       const inst = instantiatePrefab(p, e.object.matrix);
       scene.add(inst.root);
-      if (group === 'PE_Levelende') balloonInstance = inst;
+      if (group === 'PE_Levelende') {
+        balloonInstance = inst;
+        e.object.updateWorldMatrix(true, false);
+        levelEndPosition = e.object.getWorldPosition(new THREE.Vector3());
+      }
     }
   }
   for (const e of groupEntities(built, 'PR_Resetpoints')) e.object.visible = false;
-  const balloonVisual = balloonInstance ? prepareBalloonInstance(balloonInstance) : null;
+  if (balloonInstance) prepareBalloonInstance(balloonInstance);
   const ufoFinale = level === 12 && balloonInstance ? new UfoFinale(await loadPrefab('PE_Balloon'), balloonInstance) : null;
 
   bootStage('ball');
@@ -310,8 +315,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   let finishElapsed = -1;
   let finishEnded = false;
   let finishScore = 0;
-  // final-sector ambient from the balloon (Music_EndCheckpoint loop)
-  const balloonAmbient = balloonVisual ? audio.createLoop('Music_EndCheckpoint.wav', balloonVisual, 0.9) : null;
+  let lastStageProximityDelay = 0;
   const ufoLoop = ufoFinale && balloonInstance ? audio.createLoop('Misc_UFO.wav', balloonInstance.root, 1) : null;
 
   const startBirth = () => {
@@ -432,7 +436,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
       // Gameplay_Events detaches Cam_Pos after its 2000 ms Game Over delay.
       after(DEATH_FADE_DURATION, () => rig.detachSlot());
       after(GAME_OVER_MENU_DELAY, () => {
-        audio.stopMusic();
+        audio.endMusic();
         gameStore.getState().set({ phase: 'gameover' });
       });
       s.set({ phase: 'dead' });
@@ -445,6 +449,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
 
   const simStep = () => {
     const s = gameStore.getState();
+    lastStageProximityDelay = Math.max(0, lastStageProximityDelay - SIM_DT);
     for (let i = timers.length - 1; i >= 0; i--) {
       timers[i].t -= SIM_DT;
       if (timers[i].t <= 0) {
@@ -602,7 +607,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
 
     const pos = ball.position;
+    if (lastStageProximityDelay === 0 && levelEndPosition) {
+      audio.updateLastStageDistance(pos.distanceTo(levelEndPosition));
+    }
     if (logic.isOutOfWorld(pos)) {
+      // Last Stage disables its proximity behavior on Ball Off and enables it
+      // again after the source-authored 3000 ms Delayer.
+      if (logic.currentSector === logic.sectorCount) lastStageProximityDelay = 3;
       die();
       return;
     }
@@ -616,12 +627,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           moduls.setSector(ev.sector);
           flames.setSector(ev.sector);
           audio.play('Misc_Checkpoint.wav', pos, 1, scene);
-          // entering the final sector: the balloon hums its ambient and the
-          // background music stays out of the way (original: 70s mute)
+          // Last Stage starts the flat checkpoint loop and switches only the
+          // theme graph Off. The independent atmosphere graph remains live.
           if (ev.sector === logic.sectorCount) {
             balloonPhysics?.wake();
-            balloonAmbient?.setActive(true);
-            audio.muteMusicFor(70);
+            audio.enterLastStage();
           }
           break;
         }
@@ -632,8 +642,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           finishEnded = false;
           // Clear movement/menu edges accumulated before `3 keys` is active.
           consumeFinishSkip();
-          balloonAmbient?.setActive(false);
-          audio.stopMusic();
+          // Play EndMusic selects exactly one flat wave. Its sibling Nop stops
+          // the checkpoint loop one behavior tick after Level_Finish.
+          audio.playLevelFinal(level);
+          after(SIM_DT, () => audio.stopLastStageAmbient());
           balloonPhysics?.launch();
           // Gameplay_Events turns navigation off and reparents Cam_Pos to null:
           // its world slot freezes while InGameCam keeps looking at Cam_Target.
@@ -644,10 +656,6 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           if (level === 12) {
             ufoFinale?.start();
             ufoLoop?.setActive(true);
-            audio.play('Music_LastFinal.wav', pos, 0.9, scene);
-            after(5.5, () => audio.play('Music_Final.wav', ball.position, 0.9, scene));
-          } else {
-            audio.play('Music_Final.wav', pos, 0.9, scene);
           }
           break;
         }

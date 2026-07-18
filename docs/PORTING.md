@@ -186,9 +186,13 @@ ballance-web/
    original sprites outward for 1000 ms, then pursues the ball using the shipped
    `TT_Gravity_RT.dll` Verlet update. Each real satellite contact adds +20 (220 total), while
    checkpoint crossing discards any remaining satellites. Point extras never reappear.
-6. **Audio logic.** Impact sounds chosen by (ball material × surface material × impact
-   speed); rolling loops cross-faded by contact material with velocity-scaled volume/pitch;
-   per-level music themes with variation shuffling and atmo layers.
+6. **Audio logic.** Impact sounds are chosen by (ball material × surface material × impact
+   speed), and rolling loops use the source contact delays plus velocity curves. `Sound.nmo`
+   runs atmosphere (uniform 0–15 s delay) and theme (enabled after 7 s, uniform 0–50 s delay)
+   as independent equal-weight three-track schedulers with immediate repeats allowed. The
+   last checkpoint switches only the theme off; its flat loop uses the serialized 200/250
+   proximity hysteresis and random 5–20-frame checks. Both Start/End Music fades are 1 s.
+   Levels 1–11 finish with `Music_Final`; level 12 selects only `Music_LastFinal`.
 7. **Menus/UI in React.** Main menu (optionally rendering the converted `MenuLevel` 3D tower
    behind it), level select with unlock progression, pause, options, tutorial text from
    `Text/*.txt`, HUD (lives, points, sector).
