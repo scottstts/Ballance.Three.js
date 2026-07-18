@@ -326,3 +326,16 @@ corrections — several earlier assumptions were WRONG:
 - **Beware prefab-vs-NMO naming**: the Unity rebuild renamed some parts (its
   "P_Modul_01_Filter" is the NMO's "P_Modul_01_Filler"; its "P_Modul_41_Box" is
   the NMO's "P_Modul_41"). NMO names are authoritative here.
+
+## Corrections to earlier "remaining deltas" (now closed)
+
+The older delta list is superseded — as of the fidelity-audit round: the menu IS
+the 3D menu tower with the original sprite/font UI (not DOM-styled), the trafo
+uses the AnimTrafo.nmo ring cage + old-ball piece burst (not the lightning
+sphere — that is the birth effect), extra points fly staggered (+100 then six
++20 with Extra_Hit), and death-by-fall no longer shatters (Misc_Fall + white
+fade + falling ball, per the original). Still-open approximations: balloon
+fly-off is a kinematic rise (not the original multi-body flight), L12 UFO is
+sound-only (no UFO model exists in the original data), tutorial arrows
+(Tutorial.nmo) and the intro logo sequence (Intro.nmo) are not implemented,
+options subscreens are simplified (volume only).
