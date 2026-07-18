@@ -170,9 +170,12 @@ ballance-web/
    `Level_Finish` disables navigation and reparents `Cam_Pos` to null: its world slot freezes
    while the target controller keeps tracking the ball, producing the source finish framing.
 3. **Sector/checkpoint system.** Levels are partitioned into `Sector_XX`. Reaching a
-   checkpoint (`PC_TwoFlames`) completes the sector: previous sector's moduls deactivate,
-   next sector's activate/reset. Death resets the active sector's moduls. End = touch the
-   balloon (`PE_Balloon`) → source multi-body fly-off, fixed-position/look-target camera,
+   checkpoint (`PC_TwoFlames`) completes the sector: its source `TT Scaleable Proximity`
+   checks a strict 6.5-unit all-axis sphere around the big flame, whose prefab-local centre is
+   `(0,1.49484575,0)`. The previous sector's moduls deactivate and the next sector's
+   activate/reset. Death resets the active sector's moduls. End = enter the strict 1-unit
+   all-axis sphere around `PE_Balloon_Platform` → source multi-body fly-off,
+   fixed-position/look-target camera,
    three-second `SkyLayer` prelit fade, then the source `Wait` graph. Levels 1–11 send
    `End Level` after another 10 seconds; level 12 waits 23 seconds. Escape, Enter, or Space
    can skip only that post-fade wait. `base.cmo` routes `End Level` to `Menu_Score`.
@@ -181,8 +184,9 @@ ballance-web/
    to ball birth/respawn.
 5. **Scoring/lives.** Level point budget counts down at the original two points/second;
    remaining points bank at level end. `P_Extra_Life` uses its source 2-second CK2dCurve
-   bob/squash animation, awards one life after 317 ms, and reappears when the active section
-   restarts. `P_Extra_Point` activates inside the authored 3-unit radius for +100, sends six
+   bob/squash animation, collects inside the authored strict 4.5-unit all-axis sphere, awards
+   one life after 317 ms, and reappears when the active section restarts. `P_Extra_Point`
+   activates inside the authored strict 3-unit sphere for +100, sends six
    original sprites outward for 1000 ms, then pursues the ball using the shipped
    `TT_Gravity_RT.dll` Verlet update. Each real satellite contact adds +20 (220 total), while
    checkpoint crossing discards any remaining satellites. Point extras never reappear.

@@ -19,12 +19,16 @@ export interface ResetPoint {
   yaw: number;
 }
 
-const CHECKPOINT_RADIUS = 5;
-const CHECKPOINT_HEIGHT = 8;
-const PICKUP_RADIUS = 4;
-const PICKUP_HEIGHT = 6;
-/** TT Extra's authored Activationdistance. */
-const EXTRA_POINT_ACTIVATION_DISTANCE_SQUARED = 3 * 3;
+/** Exact all-axis trigger spheres from the original prefab behavior graphs. */
+export const LEVEL_TRIGGER_SOURCE = {
+  checkpointDistance: 6.5,
+  /** PC_TwoFlames uses its big-flame frame rather than the prefab root. */
+  checkpointTargetOffset: [0, 1.4948457479476929, 0] as const,
+  extraLifeDistance: 4.5,
+  /** TT Extra's authored Activationdistance. */
+  extraPointDistance: 3,
+  finishDistance: 1,
+} as const;
 /** total of the six +20 orbit balls and the +100 center ball */
 export const EXTRA_POINT_VALUE = 220;
 
@@ -33,9 +37,9 @@ export class LevelLogic {
   currentSector = 1;
   /** ball kind to restore on respawn (kind held when the sector was reached) */
   sectorBallKind: BallKind = 'wood';
-  private checkpoints: (BuiltEntity | null)[] = [];
+  private checkpoints: (THREE.Vector3 | null)[] = [];
   private resetPoints: (ResetPoint | null)[] = [];
-  private balloon: BuiltEntity | null;
+  private balloon: THREE.Vector3 | null;
   private depthBoxes: THREE.Box3[] = [];
   private pickupsPoint: BuiltEntity[] = [];
   private pickupsLife: BuiltEntity[] = [];
@@ -49,7 +53,9 @@ export class LevelLogic {
     const cps = groupEntities(built, 'PC_Checkpoints');
     for (const e of cps) {
       const n = trailingNumber(e.rec.name);
-      if (n !== null) this.checkpoints[n + 1] = e;
+      if (n !== null) {
+        this.checkpoints[n + 1] = sourceTargetPosition(e.object, LEVEL_TRIGGER_SOURCE.checkpointTargetOffset);
+      }
     }
     // reset points: PR_Resetpoint_NN = spawn of sector NN
     for (const e of groupEntities(built, 'PR_Resetpoints')) {
@@ -60,7 +66,7 @@ export class LevelLogic {
     const start = groupEntities(built, 'PS_Levelstart')[0];
     if (start && !this.resetPoints[1]) this.resetPoints[1] = resetPointFrom(start);
 
-    this.balloon = groupEntities(built, 'PE_Levelende')[0] ?? null;
+    this.balloon = groupEntities(built, 'PE_Levelende')[0]?.object.position.clone() ?? null;
 
     const sectorNames = [...built.groups.keys()].filter((n) => /^Sector_\d+$/.test(n));
     this.sectorCount = Math.max(sectorNames.length, this.resetPoints.length - 1);
@@ -104,7 +110,7 @@ export class LevelLogic {
     // next checkpoint only (original: checkpoints activate in order)
     const nextSector = this.currentSector + 1;
     const cp = this.checkpoints[nextSector];
-    if (cp && cylinderContains(cp.object.position, ballPos, CHECKPOINT_RADIUS, CHECKPOINT_HEIGHT)) {
+    if (cp && sphereContains(cp, ballPos, LEVEL_TRIGGER_SOURCE.checkpointDistance)) {
       this.currentSector = nextSector;
       this.sectorBallKind = currentBall;
       events.push({ kind: 'checkpoint', sector: nextSector });
@@ -113,7 +119,7 @@ export class LevelLogic {
     if (
       this.balloon &&
       this.currentSector >= this.sectorCount &&
-      cylinderContains(this.balloon.object.position, ballPos, CHECKPOINT_RADIUS + 2, CHECKPOINT_HEIGHT + 4)
+      sphereContains(this.balloon, ballPos, LEVEL_TRIGGER_SOURCE.finishDistance)
     ) {
       events.push({ kind: 'finish' });
     }
@@ -121,7 +127,7 @@ export class LevelLogic {
     for (const p of this.pickupsPoint) {
       if (this.collected.has(p.rec.name)) continue;
       // TT Extra performs a true 3D distance check at Activationdistance=3.
-      if (p.object.position.distanceToSquared(ballPos) < EXTRA_POINT_ACTIVATION_DISTANCE_SQUARED) {
+      if (sphereContains(p.object.position, ballPos, LEVEL_TRIGGER_SOURCE.extraPointDistance)) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
         events.push({ kind: 'extraPoint', amount: EXTRA_POINT_VALUE, name: p.rec.name });
@@ -129,7 +135,7 @@ export class LevelLogic {
     }
     for (const p of this.pickupsLife) {
       if (this.collected.has(p.rec.name)) continue;
-      if (cylinderContains(p.object.position, ballPos, PICKUP_RADIUS, PICKUP_HEIGHT)) {
+      if (sphereContains(p.object.position, ballPos, LEVEL_TRIGGER_SOURCE.extraLifeDistance)) {
         this.collected.add(p.rec.name);
         hidePlacement(p);
         events.push({ kind: 'extraLife', name: p.rec.name });
@@ -153,11 +159,16 @@ function resetPointFrom(e: BuiltEntity): ResetPoint {
   return { position: pos, yaw };
 }
 
-function cylinderContains(center: THREE.Vector3, p: THREE.Vector3, radius: number, height: number): boolean {
-  const dx = p.x - center.x;
-  const dz = p.z - center.z;
-  const dy = p.y - center.y;
-  return dx * dx + dz * dz <= radius * radius && dy > -height * 0.5 && dy < height;
+export function sphereContains(center: THREE.Vector3, point: THREE.Vector3, distance: number): boolean {
+  return center.distanceToSquared(point) < distance * distance;
+}
+
+function sourceTargetPosition(
+  root: THREE.Object3D,
+  offset: readonly [number, number, number],
+): THREE.Vector3 {
+  root.updateWorldMatrix(true, false);
+  return root.localToWorld(new THREE.Vector3(offset[0], offset[1], offset[2]));
 }
 
 /** Placement roots: entities whose name is the group prefix + _NN. */

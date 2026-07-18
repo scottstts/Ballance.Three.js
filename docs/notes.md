@@ -952,3 +952,34 @@ options subscreens are simplified (volume only).
   `1 -> .502 -> 0`; there were zero errors (only Rapier's known deprecated-init
   warning). Capture: `screenshots/hud-score-source.png`. The tab and Vite server
   were closed afterward.
+
+## 2026-07-18 source-exact gameplay trigger spheres
+
+- The level loop formerly approximated checkpoints, extra lives, and the level
+  end with hand-sized vertical cylinders. The primary prefab graphs provide the
+  actual trigger building blocks. `PC_TwoFlames_MF Script` collects at a strict
+  6.5-unit `TT Scaleable Proximity` around `PC_TwoFlames_Flame_Big`, not around
+  the placement origin; that target has prefab-local offset
+  `(0,1.4948457479,0)`. `P_Extra_Life_MF Script` uses 4.5 units around its
+  origin, `P_Extra_Point_MF Script/TT Extra` uses activation distance 3, and
+  `PE_Balloon Script` uses only 1 unit around the identity-positioned
+  `PE_Balloon_Platform`.
+- All three `TT Scaleable Proximity` collection nodes serialize
+  `Barycenter?=false`, `Check Axis:=7` (XYZ), and `Squared Distance?=true`.
+  Consequently these are strict Euclidean spheres; points on the exact radius
+  are outside. The other 60-unit life, 70-unit checkpoint/balloon, and 80-unit
+  point proximities in the same prefabs drive visibility or behavior wake-up,
+  not collection, and must not be substituted for the inner triggers.
+- The four authority prefabs are byte-identical between source1 and the
+  statically extracted source2 payload. `levelTriggers.test.ts` parses the
+  originals and locks each target, distance, axis/barycenter/squared flag, the
+  checkpoint offset, and strict boundary behavior.
+- Deterministic browser traversal teleported through every ordered checkpoint
+  in all 12 levels (sector counts `4/5/5/5/5/5/5/5/5/5/6/8`) and then entered
+  every one-unit platform sphere; all 12 transitioned from `playing` to
+  `finished`. The point flow delivered its +100 center and six +20 satellites
+  (the observed net +211 includes nine normal countdown ticks), and the life
+  flow delivered exactly one life after its delay. There were zero browser
+  errors; only Rapier's known deprecated-init warning appeared. The browser and
+  dev server were closed afterward. The full gate passes with 99 tests plus
+  lint, typecheck, and production build (the usual chunk-size warning only).
