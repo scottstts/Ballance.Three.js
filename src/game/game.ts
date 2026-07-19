@@ -11,7 +11,7 @@ import {
   skyTranslation,
 } from '../engine/assets.ts';
 import { addLightRig } from '../engine/viewer.ts';
-import { buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
+import { bakeRailEnvironmentUvs, buildScene, groupEntities, type BuiltScene } from '../engine/sceneBuilder.ts';
 import { buildSky } from '../engine/sky.ts';
 import { AudioManager, type Surface } from './audio.ts';
 import { Ball } from './ball.ts';
@@ -130,6 +130,8 @@ export async function startGame(
   const file = await loadNmo(levelPath(level));
   bootStage('build-scene');
   const built: BuiltScene = await buildScene(file);
+  // Levelinit's one-shot TT_ReflectionMapping bake over Phys_FloorRails.
+  bakeRailEnvironmentUvs(built);
   partLoaded();
   scene.add(built.root);
   bootStage('sky');

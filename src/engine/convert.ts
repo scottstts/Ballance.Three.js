@@ -84,7 +84,7 @@ function sortFacesByMaterial(mesh: MeshRec): number[] {
   return order;
 }
 
-const BLEND_MAP: Record<number, THREE.BlendingDstFactor> = {
+export const BLEND_MAP: Record<number, THREE.BlendingDstFactor> = {
   1: THREE.ZeroFactor,
   2: THREE.OneFactor,
   3: THREE.SrcColorFactor,
@@ -102,23 +102,58 @@ export interface MaterialBuildOptions {
   texture: THREE.Texture | null;
   /** texture uses color-key transparency (needs alpha cutout) */
   colorKeyed?: boolean;
-  /** original texture name (drives the spherical-environment material path) */
+  /** original texture name */
   textureName?: string;
+  /**
+   * VX_EFFECT texture-coordinate generation resolved from the material's
+   * effect parameter: CK2_3D maps TexGen Type 2 "Reflect" to
+   * D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR and Type 3 "Chrome" to
+   * D3DTSS_TCI_CAMERASPACENORMAL, both through diag(0.4,-0.4) + (0.5,0.5).
+   */
+  effectTexGen?: 'reflect' | 'chrome' | null;
+}
+
+/**
+ * Per-frame camera-space texture generation matching the engine's texgen
+ * setup: u = 0.4*x + 0.5, v = -0.4*y + 0.5 over the camera-space normal
+ * (Chrome) or reflection vector (Reflect). View-space x/y agree between the
+ * mirrored-Z scene and the original D3D camera space, and textures load with
+ * flipY=false, so the D3D constants apply verbatim.
+ */
+function applyTexGen(mat: THREE.Material, mode: 'reflect' | 'chrome'): void {
+  const vertexMath =
+    mode === 'chrome'
+      ? `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
+  vTexGenUv = vec2( 0.4 * texgenNormal.x + 0.5, -0.4 * texgenNormal.y + 0.5 );`
+      : `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
+  vec3 texgenEye = normalize( mvPosition.xyz );
+  vec3 texgenReflected = 2.0 * dot( texgenNormal, texgenEye ) * texgenNormal - texgenEye;
+  vTexGenUv = vec2( 0.4 * texgenReflected.x + 0.5, -0.4 * texgenReflected.y + 0.5 );`;
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vTexGenUv;')
+      .replace('#include <fog_vertex>', `#include <fog_vertex>\n{\n${vertexMath}\n}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vTexGenUv;')
+      .replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+  diffuseColor *= texture2D( map, vTexGenUv );
+#endif`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#ifdef USE_EMISSIVEMAP
+  totalEmissiveRadiance *= texture2D( emissiveMap, vTexGenUv ).rgb;
+#endif`,
+      );
+  };
+  mat.customProgramCacheKey = () => `ck-texgen-${mode}`;
 }
 
 export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOptions): THREE.Material {
   const { prelit, texture } = opts;
   const diffuse = rec?.diffuse ?? [1, 1, 1, 1];
-
-  // D3D spherical environment mapping (rails, trafo shells) -> matcap
-  if (texture && opts.textureName?.toLowerCase().includes('environment')) {
-    const mat = new THREE.MeshMatcapMaterial({
-      matcap: texture,
-      color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
-      side: rec?.twoSided ? THREE.DoubleSide : THREE.FrontSide,
-    });
-    return mat;
-  }
 
   const common = {
     map: texture,
@@ -176,6 +211,7 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
     // color-keyed textures need a cutout to avoid dark fringes
     mat.alphaTest = 0.5;
   }
+  if (texture && opts.effectTexGen) applyTexGen(mat, opts.effectTexGen);
   return mat;
 }
 

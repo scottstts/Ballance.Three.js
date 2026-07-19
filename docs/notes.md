@@ -1825,6 +1825,41 @@ sequence, and complete option subscreens are all implemented below.
   friction .7/.4) have no recovered Physicalize backing - audit what makes
   the original fan grid solid.
 
+## 2026-07-19 VX_EFFECT, mesh channels, and the rail reflection recovery
+
+- The material effect save is chunk identifier 0x10000 (the port's
+  MAT_DATA5): an object ref to the effect parameter followed by the
+  VX_EFFECT enum. MAT_DATA3 (0x4000) never occurs in shipped materials -
+  the old parser read effect 0 for everything. Exactly 18 materials carry
+  effects: trafo shells + AnimTrafo rings + UFO env (TexGen Reflect 2),
+  menu rails + dome env (TexGen Chrome 3), and I_DomeEnvironment
+  (effect 2 = TexGen with referential, NULL referential = camera, Reflect).
+- CK2_3D maps Reflect to D3D CAMERASPACEREFLECTIONVECTOR and Chrome to
+  CAMERASPACENORMAL, both via texture matrix diag(0.4,-0.4) + (0.5,0.5).
+  Implemented as an onBeforeCompile texgen (u=0.4x+0.5, v=-0.4y+0.5 over
+  view-space normal/reflection). Textures load flipY=false, so the D3D
+  constants apply verbatim; view-space x/y agree across the mirrored-Z
+  conversion, and for Reflect the eye vector's x/y products cancel the
+  mirror too.
+- CKMesh MATERIAL CHANNELS (mesh chunk 0x4000) are extra blended passes:
+  [count] then per channel [matRef][flags][srcBlend][dstBlend][uvCount]
+  [uvs]. Dome + UFO Top/Body each own one Zero/SrcColor (multiplicative)
+  channel over PE_Ufo_env / P_DomeEnvironment. Rendered as a child mesh
+  with CustomBlending Zero/SrcColor, depthWrite off; prefab instantiation
+  carries the overlay children.
+- LEVEL rails have NO effect. Levelinit's `set Env. Mapping` runs
+  TT_ReflectionMapping once per Phys_FloorRails member: a CPU bake of the
+  mesh base UVs from the invisible FixCube at the world origin
+  (V=normalize(camLocal-pos), R=2(N.V)N-V, u=(R.x+1)/2, v=(R.z+1)/2 in
+  entity-local ORIGINAL space; the mirrored port uses v=(1-R.z)/2). Level
+  rail reflections are static origin bakes that do NOT track the camera;
+  shared meshes re-bake per member (last member wins, same as source).
+  Non-grouped rail meshes keep their file-authored UVs. The former matcap
+  heuristic (texture name contains "environment") was removed.
+- The rail materials render as ordinary lit Phong with their authored
+  colors (Rail diffuse .392/.463/.522, specular .824 power 10, emissive
+  .486/.525/.588, ModulateAlpha) - "rails render flat white" is closed.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was

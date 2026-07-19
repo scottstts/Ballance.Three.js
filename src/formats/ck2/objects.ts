@@ -222,11 +222,27 @@ function loadMesh(base: ObjectBase, chunk: StateChunk): MeshRec {
     faceCount: 0,
     faceIndices: new Uint16Array(0),
     faceMaterials: new Uint16Array(0),
+    channels: [],
   };
   if (chunk.dataVersion < 9) return rec; // pre-mesh-change format not used by Ballance
 
   if (chunk.seekIdentifier(Ident.MESH_FLAGS) >= 0) {
     rec.flags = chunk.u32();
+  }
+  // CKMesh material channels: extra blended render passes with their own
+  // UVs (Ballance uses them for the dome/UFO environment overlays).
+  if (chunk.seekIdentifier(Ident.MESH_CHANNELS) >= 0) {
+    const channelCount = chunk.u32();
+    for (let channel = 0; channel < channelCount; channel++) {
+      const materialIndex = chunk.objectRef();
+      const flags = chunk.u32();
+      const sourceBlend = chunk.u32();
+      const destBlend = chunk.u32();
+      const uvCount = chunk.u32();
+      const uvs = new Float32Array(uvCount * 2);
+      for (let i = 0; i < uvCount * 2; i++) uvs[i] = chunk.f32();
+      rec.channels.push({ materialIndex, flags, sourceBlend, destBlend, uvs });
+    }
   }
   if (chunk.seekIdentifier(Ident.MESH_MATERIALS) >= 0) {
     const count = chunk.u32();
@@ -356,6 +372,7 @@ function loadMaterial(base: ObjectBase, chunk: StateChunk): MaterialRec {
     alphaFunc: 8,
     alphaRef: 0,
     effect: 0,
+    effectParameterIndex: -1,
   };
   if (chunk.seekIdentifier(Ident.MAT_DATA) >= 0 && chunk.dataVersion >= 5) {
     rec.diffuse = argbToRgba(chunk.u32());
@@ -393,7 +410,11 @@ function loadMaterial(base: ObjectBase, chunk: StateChunk): MaterialRec {
     mix2 >>>= 8;
     rec.alphaRef = mix2 & 0xff;
   }
-  if (chunk.seekIdentifier(Ident.MAT_DATA3) >= 0) {
+  // The effect save lives under 0x10000: an object ref to the effect
+  // parameter (TexGen Type / TexGen Params) followed by the VX_EFFECT enum.
+  // (No shipped material carries the older MAT_DATA3 payload.)
+  if (chunk.seekIdentifier(Ident.MAT_DATA5) >= 0) {
+    rec.effectParameterIndex = chunk.objectRef();
     rec.effect = chunk.u32();
   }
   return rec;

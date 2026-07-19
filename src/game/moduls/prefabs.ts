@@ -75,6 +75,15 @@ export function instantiatePrefab(prefab: Prefab, placementMatrix: THREE.Matrix4
     let obj: THREE.Object3D;
     if (part.object instanceof THREE.Mesh) {
       obj = new THREE.Mesh(part.object.geometry, part.object.material);
+      // Carry CKMesh material-channel overlays (dome/UFO environment pass).
+      for (const child of part.object.children) {
+        if (child instanceof THREE.Mesh && child.name.endsWith('(channel)')) {
+          const overlay = new THREE.Mesh(child.geometry, child.material);
+          overlay.name = child.name;
+          overlay.renderOrder = child.renderOrder;
+          obj.add(overlay);
+        }
+      }
     } else if (part.object instanceof THREE.Sprite) {
       obj = new THREE.Sprite(part.object.material);
     } else {

@@ -68,6 +68,7 @@ export const Ident = {
   GROUP_ALL: 0x000fffff,
   // CKMesh
   MESH_FLAGS: 0x00002000,
+  MESH_CHANNELS: 0x00004000,
   MESH_FACES: 0x00010000,
   MESH_VERTICES: 0x00020000,
   MESH_LINES: 0x00040000,
@@ -288,6 +289,18 @@ export interface MeshRec extends ObjectBase {
   faceCount: number;
   faceIndices: Uint16Array;
   faceMaterials: Uint16Array;
+  /** CKMesh material channels: an extra blended render pass per channel */
+  channels: MeshChannel[];
+}
+
+export interface MeshChannel {
+  /** file index of the channel material */
+  materialIndex: number;
+  flags: number;
+  sourceBlend: number;
+  destBlend: number;
+  /** per-vertex channel UVs (may be overridden per frame by the material's TexGen) */
+  uvs: Float32Array;
 }
 
 export interface MaterialRec extends ObjectBase {
@@ -314,7 +327,10 @@ export interface MaterialRec extends ObjectBase {
   zFunc: number;
   alphaFunc: number;
   alphaRef: number;
+  /** VX_EFFECT: 0 none, 1 TexGen, 2 TexGen with referential, 3 bump, ... */
   effect: number;
+  /** object ref to the effect parameter (TexGen Type / TexGen Params) */
+  effectParameterIndex: number;
 }
 
 export interface EmbeddedBitmap {
