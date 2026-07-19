@@ -401,7 +401,7 @@ options subscreens are simplified (volume only).
   anywhere); pause = Restart Level / Exit Level; game over = Restart Level /
   Home; options = Graphics / Controls / Sound subscreens (single Music
   Volume slider; Clouds? yes/no toggle); highscore = per-level top-10 with
-  names+dates seeded by "Mr. Default" 2004/8/8 (4000..400, L12 7000..3600),
+  names seeded by "Mr. Default" (4000..400, L12 7000..3600),
   with a post-win 'New highscore entry!' name input. All implemented; the
   win screen shows the tally then the entry then Next Level/Restart
   Level/Home.
@@ -1542,3 +1542,25 @@ options subscreens are simplified (volume only).
   not qualify. The source temporarily inserts `xxxxxxxxxxxxxxxxxxxx`, sorts,
   then replaces that marker with `LastPlayer`; the browser achieves the same
   visible top-ten result while preserving the exact submitted name.
+- The leaderboard rank is not dynamic text. `M_Highscore_Number01..10` are ten
+  separate 16x16 crops along the top of `M_Button_Inactive`, each with its own
+  normalized rectangle over `M_Highscore_Place01..10`. The row graph draws only
+  player and score with `GameFont_03` (`Scale=.35,.4`, Text Properties bit 1),
+  shifts the player by normalized X `.035`, and right-aligns the score with
+  margins `(2,2,10,2)`. The title and entry score/title use `GameFont_01`
+  (`.45,.55`); the live entry string uses `GameFont_02` (`.7,.8`) and left
+  alignment. Source-locked layout tests now cover every rank sprite, crop,
+  font scale, offset, alignment, and margin.
+- The complete shared font-role pass replaces arbitrary browser pixel heights:
+  `GameFont_01` is `.45,.55` for primary capsule labels; `GameFont_02` is
+  `.7,.8` for screen titles and the live highscore input; `GameFont_03` is
+  `.35,.4` for compact rows/fields; inactive level entries use gray
+  `GameFont_03a` at the same scale; `Menu_Score` uses `GameFont_04` at `.6,.6`.
+  Each source node has Text Properties bit 1 and therefore rasterizes from the
+  512-square `Font_1` atlas relative to the current centered 4:3 render target,
+  with the white-to-black grade and shipped shadow rather than CSS type.
+- `M_Opt_Keys_Key1..6` are separate right-side text targets, not text sharing a
+  flex row with `M_Opt_Keys_Field1..6`. Their exact rectangles start at
+  normalized X `.504999876`, while field labels remain left-aligned with two
+  pixel margins. `M_Opt_Gra_ResField` and `M_Opt_Sound_VolField` are static
+  `M_Button_Up` surfaces; they must not be rendered permanently in hover state.

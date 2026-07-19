@@ -237,8 +237,17 @@ ballance-web/
    entry restores `DB_Options.LastPlayer` (shipped as `name`), displays the current
    score as `<value> Points` in `M_HighEntry_Score`, accepts at most the serialized nine
    characters, and writes the exact string back without web-only trimming or substitution.
-   Qualification is the source's strict greater-than comparison against row ten. The Graphics
-   Synch toggle follows its two shipped `Time Settings` branches: browser display sync when on,
+   Qualification is the source's strict greater-than comparison against row ten. Highscore rows
+   use the ten `M_Highscore_Number01..10` atlas sprites, `GameFont_03` player/score text,
+   the normalized `.035` player-name offset, and the authored right-aligned score margin;
+   the web port does not synthesize rank digits or percentage-based text columns. The shared
+   menu renderer also retains the source font roles: `GameFont_01` for capsules,
+   `GameFont_02` for titles/name input, `GameFont_03` for compact fields, gray
+   `GameFont_03a` for inactive level labels, and `GameFont_04` for the score tally.
+   All use the serialized screen-proportional scale, white-to-black grading, and shadow path.
+   Control values occupy their own `M_Opt_Keys_Key1..6` rectangles instead of an invented
+   flexbox column, and static option fields keep `M_Button_Up` until an authored hover edge.
+   The Graphics Synch toggle follows its two shipped `Time Settings` branches: browser display sync when on,
    or a 60 FPS presentation limit when off; neither changes the independent 66 Hz simulation.
    Control remapping is restricted to the 72 `Language.nmo/all_keys` entries and displays that
    table's exact English labels. Unsupported keys leave the waiter active and Escape cancels,

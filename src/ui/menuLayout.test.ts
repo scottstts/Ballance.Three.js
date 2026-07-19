@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
-import type { Entity2dRec, NmoFile } from '../formats/ck2/types.ts';
+import type { BehaviorRec, Entity2dRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import { atlasCropFromUv } from './hudLayout.ts';
 import {
   CONFIRM_RECTS,
@@ -17,6 +17,7 @@ import {
   MENU_ATLAS_UV_SOURCE,
   MENU_BACK_RECT,
   MENU_BAND_RECT,
+  MENU_FONT_SOURCE,
   OPTIONS_RECTS,
   SCORE_RECTS,
   creditTextWait,
@@ -35,6 +36,77 @@ function entity2d(file: NmoFile, name: string): Entity2dRec {
 
 function materialName(file: NmoFile, name: string): string | undefined {
   return file.objects[entity2d(file, name).materialIndex]?.name;
+}
+
+function behavior(file: NmoFile, name: string): BehaviorRec {
+  const found = file.byName.get(name)?.find((record): record is BehaviorRec => record.kind === 'behavior');
+  if (!found) throw new Error(`missing source behavior ${name}`);
+  return found;
+}
+
+function children(file: NmoFile, parent: BehaviorRec, name: string): BehaviorRec[] {
+  return parent.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .filter((record): record is BehaviorRec => record?.kind === 'behavior' && record.name === name);
+}
+
+function parameters(file: NmoFile, owner: BehaviorRec): ParameterRec[] {
+  return owner.referenceLists
+    .flat()
+    .map((index) => file.objects[index])
+    .filter((record): record is ParameterRec => record?.kind === 'parameter');
+}
+
+function resolve(file: NmoFile, parameter: ParameterRec): ParameterRec {
+  let current = parameter;
+  const seen = new Set([current.index]);
+  while (current.sourceIndex >= 0 || current.sharedIndex >= 0) {
+    const index = current.sourceIndex >= 0 ? current.sourceIndex : current.sharedIndex;
+    if (seen.has(index)) break;
+    const next = file.objects[index];
+    if (next?.kind !== 'parameter') break;
+    seen.add(index);
+    current = next;
+  }
+  return current;
+}
+
+function parameter(file: NmoFile, owner: BehaviorRec, name: string): ParameterRec {
+  const found = parameters(file, owner).find((record) => record.name === name);
+  if (!found) throw new Error(`missing source parameter ${owner.name}/${name}`);
+  return resolve(file, found);
+}
+
+function floats(parameter: ParameterRec): number[] {
+  const view = new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset);
+  return Array.from({ length: parameter.valueBytes.byteLength / 4 }, (_, index) => view.getFloat32(index * 4, true));
+}
+
+function int(parameter: ParameterRec): number {
+  return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getInt32(0, true);
+}
+
+function string(parameter: ParameterRec): string {
+  return Buffer.from(parameter.valueBytes).toString('latin1').replace(/\0.*$/s, '');
+}
+
+function sourceFont(file: NmoFile, fontName: string): BehaviorRec {
+  const fonts = behavior(file, 'Fonts');
+  const create = children(file, fonts, 'TT CreateFontEx').find(
+    (node) => string(parameter(file, node, 'Font Name')) === fontName,
+  );
+  if (!create) throw new Error(`missing source font ${fontName}`);
+  const output = parameters(file, create).find(
+    (record) => record.name === 'Font' && record.sourceIndex < 0 && record.sharedIndex < 0,
+  );
+  if (!output) throw new Error(`missing source font output ${fontName}`);
+  const properties = children(file, fonts, 'Set Font Properties').find((node) => {
+    const input = parameters(file, node).find((record) => record.name === 'Font');
+    return input?.sourceIndex === output.index;
+  });
+  if (!properties) throw new Error(`missing source properties ${fontName}`);
+  return properties;
 }
 
 describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
@@ -66,6 +138,9 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
       expect(HIGHSCORE_RECTS.rows[index]).toEqual(
         entity2d(menu, `M_Highscore_Place${String(index + 1).padStart(2, '0')}`).rect,
       );
+      expect(HIGHSCORE_RECTS.ranks[index]).toEqual(
+        entity2d(menu, `M_Highscore_Number${String(index + 1).padStart(2, '0')}`).rect,
+      );
     }
 
     expect(CONFIRM_RECTS.question).toEqual(entity2d(menu, 'M_YesNo_TextSprite').rect);
@@ -86,6 +161,41 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     }
   });
 
+  it('uses the source highscore fonts, text offsets, alignments, and margins', () => {
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_01'), 'Scale'))).toEqual(
+      MENU_FONT_SOURCE.primary.scale,
+    );
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_02'), 'Scale'))).toEqual(
+      MENU_FONT_SOURCE.input.scale,
+    );
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_03'), 'Scale'))).toEqual(
+      MENU_FONT_SOURCE.row.scale,
+    );
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_03a'), 'Scale'))).toEqual(
+      MENU_FONT_SOURCE.inactive.scale,
+    );
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_03a'), 'Color'))).toEqual(
+      MENU_FONT_SOURCE.inactive.colorLinear,
+    );
+    expect(floats(parameter(menu, sourceFont(menu, 'GameFont_04'), 'Scale'))).toEqual(
+      MENU_FONT_SOURCE.utility.scale,
+    );
+
+    const highscore = children(menu, behavior(menu, 'Menu_Highscore'), 'Highscore')[0];
+    const init = children(menu, behavior(menu, 'Menu_Highscore'), 'Init')[0];
+    const display = children(menu, highscore, 'Text Display')[0];
+    const texts = children(menu, display, '2D Text');
+    const player = texts.find((node) => int(parameter(menu, node, 'Alignment')) === 1);
+    const score = texts.find((node) => int(parameter(menu, node, 'Alignment')) === 2);
+    if (!player || !score) throw new Error('missing source highscore row text');
+
+    expect(floats(parameter(menu, init, 'Name_X_Off'))).toEqual(MENU_FONT_SOURCE.highscoreNameOffset);
+    expect(floats(parameter(menu, player, 'Margins'))).toEqual(MENU_FONT_SOURCE.margins);
+    expect(floats(parameter(menu, score, 'Margins'))).toEqual(MENU_FONT_SOURCE.highscoreScoreMargins);
+    expect(int(parameter(menu, player, 'Text Properties')) & 1).toBe(1);
+    expect(int(parameter(menu, score, 'Text Properties')) & 1).toBe(1);
+  });
+
   it('uses the serialized options and credits rectangles', () => {
     expect(OPTIONS_RECTS.title).toEqual(entity2d(menu, 'M_Options_Title').rect);
     expect(OPTIONS_RECTS.back).toEqual(entity2d(menu, 'M_Options_But_Back').rect);
@@ -97,6 +207,7 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     expect(OPTIONS_RECTS.graphics.cloudsField).toEqual(entity2d(menu, 'M_Opt_Gra_CloudsField').rect);
     for (let index = 0; index < OPTIONS_RECTS.controls.fields.length; index++) {
       expect(OPTIONS_RECTS.controls.fields[index]).toEqual(entity2d(menu, `M_Opt_Keys_Field${index + 1}`).rect);
+      expect(OPTIONS_RECTS.controls.values[index]).toEqual(entity2d(menu, `M_Opt_Keys_Key${index + 1}`).rect);
     }
     expect(OPTIONS_RECTS.controls.invertField).toEqual(entity2d(menu, 'M_Opt_Keys_Inv_Field').rect);
     expect(OPTIONS_RECTS.sound.field).toEqual(entity2d(menu, 'M_Opt_Sound_VolField').rect);
@@ -136,6 +247,11 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     expect(MENU_ATLAS_UV_SOURCE.buttonMedium).toEqual(entity2d(menu, 'M_Pause_But_Back').relativeRect);
     expect(MENU_ATLAS_UV_SOURCE.levelButton).toEqual(entity2d(menu, 'M_Start_But_01').relativeRect);
     expect(MENU_ATLAS_UV_SOURCE.highscoreRow).toEqual(entity2d(menu, 'M_Highscore_Place01').relativeRect);
+    for (let index = 0; index < MENU_ATLAS_UV_SOURCE.highscoreRanks.length; index++) {
+      expect(MENU_ATLAS_UV_SOURCE.highscoreRanks[index]).toEqual(
+        entity2d(menu, `M_Highscore_Number${String(index + 1).padStart(2, '0')}`).relativeRect,
+      );
+    }
     expect(MENU_ATLAS_UV_SOURCE.highscorePrevious).toEqual(entity2d(menu, 'M_Highscore_But_1').relativeRect);
     expect(MENU_ATLAS_UV_SOURCE.highscoreNext).toEqual(entity2d(menu, 'M_Highscore_But_2').relativeRect);
     expect(MENU_ATLAS_UV_SOURCE.confirmSmall).toEqual(entity2d(menu, 'M_YesNo_But_Yes').relativeRect);
@@ -155,5 +271,9 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     expect(atlasCropFromUv(MENU_ATLAS_UV_SOURCE.buttonMedium)).toEqual({ x: 61, y: 192, w: 161, h: 60 });
     expect(atlasCropFromUv(MENU_ATLAS_UV_SOURCE.levelButton)).toEqual({ x: 0, y: 63, w: 166, h: 32 });
     expect(atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreRow)).toEqual({ x: 0, y: 16, w: 256, h: 28 });
+    expect(atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreRanks[0])).toEqual({ x: 0, y: 0, w: 16, h: 16 });
+    expect(atlasCropFromUv(MENU_ATLAS_UV_SOURCE.highscoreRanks[9])).toEqual({ x: 144, y: 0, w: 16, h: 16 });
+    expect(MENU_FONT_SOURCE.highscoreNameOffset).toEqual([0.03500000014901161, 0]);
+    expect(MENU_FONT_SOURCE.highscoreScoreMargins).toEqual([2, 2, 10, 2]);
   });
 });

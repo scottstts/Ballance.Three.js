@@ -4,7 +4,17 @@
  * the original screen set (Start/Highscore/Options+subscreens/Credits, the
  * pause and win/fail flows with their exact English strings).
  */
-import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react';
+import {
+  Fragment,
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   CONTROL_ROWS,
   SCREEN_MODES,
@@ -30,10 +40,13 @@ import {
   LARGE_MENU_BUTTON_RECTS,
   LEVEL_BUTTON_RECTS,
   MENU_BACK_RECT,
+  MENU_FONT_SOURCE,
   OPTIONS_RECTS,
   SCORE_RECTS,
   creditTextWait,
+  menuFontShadowOffset,
   menuBandRectStyle,
+  type MenuFontRole,
   type CreditBlock,
   type MenuRect,
 } from './menuLayout.ts';
@@ -41,6 +54,61 @@ import { useOgui } from './useOgui.ts';
 import type { Ogui } from './ogui.ts';
 
 type ButtonPiece = 'buttonLarge' | 'buttonMedium' | 'levelButton' | 'confirmSmall';
+
+const MenuSourceSizeContext = createContext<readonly [number, number]>([640, 480]);
+
+function sourceMenuSize(): readonly [width: number, height: number] {
+  if (typeof window === 'undefined') return [0, 0];
+  const width = Math.min(window.innerWidth, window.innerHeight * (4 / 3));
+  return [width, width * (3 / 4)];
+}
+
+function useSourceMenuSize(): readonly [width: number, height: number] {
+  const [size, setSize] = useState(sourceMenuSize);
+  useEffect(() => {
+    const update = () => setSize(sourceMenuSize());
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  return size;
+}
+
+function SourceMenuText({
+  ogui,
+  text,
+  role,
+  className,
+}: {
+  ogui: Ogui;
+  text: string;
+  role: MenuFontRole;
+  className?: string;
+}) {
+  const sourceSize = useContext(MenuSourceSizeContext);
+  const font = MENU_FONT_SOURCE[role];
+  const image = ogui.text(text, 32, 'color' in font ? font.color : MENU_FONT_SOURCE.color, MENU_FONT_SOURCE.endColor, {
+    scaleX: font.scale[0],
+    scaleY: font.scale[1],
+    screenWidth: sourceSize[0],
+    screenHeight: sourceSize[1],
+  });
+  const [shadowX, shadowY] = menuFontShadowOffset();
+  return (
+    <img
+      className={`og-source-font${className ? ` ${className}` : ''}`}
+      src={image.url}
+      style={{
+        width: image.w,
+        height: image.h,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        filter: `drop-shadow(${shadowX}px ${shadowY}px 0 ${MENU_FONT_SOURCE.shadowColor})`,
+      }}
+      alt=""
+      draggable={false}
+    />
+  );
+}
 
 /** capsule button built from the original atlas piece + bitmap-font label */
 export function MenuButton({
@@ -64,7 +132,7 @@ export function MenuButton({
   const piece = requestedPiece ?? (medium ? 'buttonMedium' : 'buttonLarge');
   const compact = medium || piece !== 'buttonLarge';
   const img = ogui.piece[disabled ? `${piece}Disabled` : hover ? `${piece}Hover` : piece] ?? ogui.piece[piece];
-  const text = ogui.text(label, compact ? 22 : 26);
+  const role: MenuFontRole = piece === 'levelButton' ? (disabled ? 'inactive' : 'row') : piece === 'confirmSmall' ? 'row' : 'primary';
   const activate = () => {
     if (disabled) return;
     menuAudio.click();
@@ -85,7 +153,7 @@ export function MenuButton({
         if (event.key === 'Enter' || event.key === ' ') activate();
       }}
     >
-      <img className="og-button-label" src={text.url} style={{ height: compact ? '45%' : '42%' }} alt="" draggable={false} />
+      <SourceMenuText ogui={ogui} text={label} role={role} className="og-button-label" />
     </div>
   );
 }
@@ -102,6 +170,7 @@ export function MenuBand({
   style?: CSSProperties;
   transparent?: boolean;
 }) {
+  const sourceSize = useSourceMenuSize();
   useEffect(() => {
     menuAudio.startAtmo();
     return () => {
@@ -110,11 +179,13 @@ export function MenuBand({
     };
   }, []);
   return (
+    <MenuSourceSizeContext.Provider value={sourceSize}>
     <div className="og-screen" style={{ cursor: `url(${ogui.cursor}) 1 1, auto`, ...style }}>
       <div className="og-source-stage">
         <div className={`og-band${transparent ? ' og-band-transparent' : ''}`}>{children}</div>
       </div>
     </div>
+    </MenuSourceSizeContext.Provider>
   );
 }
 
@@ -257,23 +328,30 @@ export function HighscoreScreen({
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-title" style={menuBandRectStyle(HIGHSCORE_RECTS.title)}>
-        <img src={ogui.text(`Highscore Level ${level}`, 28).url} alt="" draggable={false} />
+        <SourceMenuText ogui={ogui} text={`Highscore Level ${level}`} role="primary" />
       </div>
       <SpriteButton ogui={ogui} piece="highscorePrevious" rect={HIGHSCORE_RECTS.previous} label="Previous level" disabled={level <= 1} onClick={() => setLevel(level - 1)} />
       <SpriteButton ogui={ogui} piece="highscoreNext" rect={HIGHSCORE_RECTS.next} label="Next level" disabled={level >= maxLevel} onClick={() => setLevel(level + 1)} />
       {table.map((e, i) => (
+        <Fragment key={i}>
           <div
-            key={i}
             className="og-source-score-row"
             style={{
               ...menuBandRectStyle(HIGHSCORE_RECTS.rows[i]),
               backgroundImage: `url(${ogui.piece.highscoreRow})`,
             }}
           >
-            <img src={ogui.text(String(i + 1), 18).url} alt="" draggable={false} />
-            <img className="og-score-name" src={ogui.text(e.name, 18).url} alt="" draggable={false} />
-            <img src={ogui.text(String(e.score), 18).url} alt="" draggable={false} />
+            <SourceMenuText ogui={ogui} text={e.name} role="row" className="og-score-name" />
+            <SourceMenuText ogui={ogui} text={String(e.score)} role="row" />
           </div>
+          <div
+            className="og-source-score-rank"
+            style={{
+              ...menuBandRectStyle(HIGHSCORE_RECTS.ranks[i]),
+              backgroundImage: `url(${ogui.piece[`highscoreRank${i + 1}`]})`,
+            }}
+          />
+        </Fragment>
         ))}
       <SourceButton
         rect={HIGHSCORE_RECTS.exit}
@@ -315,15 +393,15 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
 
   if (!ogui) return null;
   const title = page === 'root' ? 'Options' : page === 'graphics' ? 'Graphics' : page === 'controls' ? 'Controls' : 'Sound';
-  const field = (rect: MenuRect, label: string, active = false) => (
+  const field = (rect: MenuRect, label: string) => (
     <div
       className="og-source-option-field"
       style={{
         ...menuBandRectStyle(rect),
-        backgroundImage: `url(${ogui.piece[active ? 'optionFieldHover' : 'optionField']})`,
+        backgroundImage: `url(${ogui.piece.optionField})`,
       }}
     >
-      <img src={ogui.text(label, 20).url} alt="" draggable={false} />
+      <SourceMenuText ogui={ogui} text={label} role="row" />
     </div>
   );
   const choice = (rect: MenuRect, label: 'Yes' | 'No', selected: boolean, apply: () => void) => (
@@ -333,7 +411,7 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-title" style={menuBandRectStyle(OPTIONS_RECTS.title)}>
-        <img src={ogui.text(title, 30).url} alt="" draggable={false} />
+        <SourceMenuText ogui={ogui} text={title} role="input" />
       </div>
       {page === 'root' && (
         <>
@@ -344,13 +422,9 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
       )}
       {page === 'graphics' && (
         <>
-          {field(OPTIONS_RECTS.graphics.resolutionField, 'Screen Resolution', true)}
+          {field(OPTIONS_RECTS.graphics.resolutionField, 'Screen Resolution')}
           <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.graphics.resolutionText)}>
-            <img
-              src={ogui.text(`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`, 18).url}
-              alt=""
-              draggable={false}
-            />
+            <SourceMenuText ogui={ogui} text={`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`} role="row" />
           </div>
           <SpriteButton
             ogui={ogui}
@@ -379,24 +453,27 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
       {page === 'controls' && (
         <>
           {CONTROL_ROWS.map(({ setting, label }, index) => (
-            <div
-              key={setting}
-              role="button"
-              aria-label={`${label}: ${displayKey(settings[setting])}`}
-              tabIndex={0}
-              className={`og-source-key-field${listening === setting ? ' og-key-listening' : ''}`}
-              style={{
-                ...menuBandRectStyle(OPTIONS_RECTS.controls.fields[index]),
-                backgroundImage: `url(${ogui.piece[listening === setting ? 'keyFieldHover' : 'keyField']})`,
-              }}
-              onClick={() => {
-                menuAudio.click();
-                setListening(setting);
-              }}
-            >
-              <img src={ogui.text(label, 18).url} alt="" draggable={false} />
-              <img src={ogui.text(displayKey(settings[setting]), 18).url} alt="" draggable={false} />
-            </div>
+            <Fragment key={setting}>
+              <div
+                role="button"
+                aria-label={`${label}: ${displayKey(settings[setting])}`}
+                tabIndex={0}
+                className={`og-source-key-field${listening === setting ? ' og-key-listening' : ''}`}
+                style={{
+                  ...menuBandRectStyle(OPTIONS_RECTS.controls.fields[index]),
+                  backgroundImage: `url(${ogui.piece[listening === setting ? 'keyFieldHover' : 'keyField']})`,
+                }}
+                onClick={() => {
+                  menuAudio.click();
+                  setListening(setting);
+                }}
+              >
+                <SourceMenuText ogui={ogui} text={label} role="row" />
+              </div>
+              <div className="og-source-key-value" style={menuBandRectStyle(OPTIONS_RECTS.controls.values[index])}>
+                <SourceMenuText ogui={ogui} text={displayKey(settings[setting])} role="row" />
+              </div>
+            </Fragment>
           ))}
           {field(OPTIONS_RECTS.controls.invertField, 'Invert Rotation?')}
           {choice(OPTIONS_RECTS.controls.invertYes, 'Yes', settings.invertCameraRotation, () => updateSettings({ invertCameraRotation: true }))}
@@ -405,9 +482,9 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
       )}
       {page === 'sound' && (
         <>
-          {field(OPTIONS_RECTS.sound.field, 'Music Volume', true)}
+          {field(OPTIONS_RECTS.sound.field, 'Music Volume')}
           <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.sound.text)}>
-            <img src={ogui.text(String(Math.round(settings.musicVolume * 100)), 18).url} alt="" draggable={false} />
+            <SourceMenuText ogui={ogui} text={String(Math.round(settings.musicVolume * 100))} role="row" />
           </div>
           <SpriteButton
             ogui={ogui}
@@ -446,7 +523,7 @@ function ConfirmScreen({
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-confirm-question" style={menuBandRectStyle(CONFIRM_RECTS.question)}>
-        <img src={ogui.text(question, 20).url} alt={question} draggable={false} />
+        <SourceMenuText ogui={ogui} text={question} role="row" />
       </div>
       <SourceButton rect={CONFIRM_RECTS.yes} ogui={ogui} piece="confirmSmall" label="Yes" onClick={onConfirm} />
       <SourceButton rect={CONFIRM_RECTS.no} ogui={ogui} piece="confirmSmall" label="No" onClick={onCancel} />
@@ -751,12 +828,12 @@ function SourceScorePanel({
         <div className="og-source-score-line" style={menuBandRectStyle(SCORE_RECTS.line)} />
         {SCORE_LABELS.map((label, index) => (
           <div key={label} className="og-source-score-text og-source-score-label" style={menuBandRectStyle(SCORE_RECTS.labels[index])}>
-            <img src={ogui.text(label, index === 3 ? 22 : 20).url} alt="" draggable={false} />
+            <SourceMenuText ogui={ogui} text={label} role="utility" />
           </div>
         ))}
         {values.map((value, index) => (
           <div key={index} className="og-source-score-text og-source-score-value" style={menuBandRectStyle(SCORE_RECTS.values[index])}>
-            <img src={ogui.text(String(value), index === 3 ? 22 : 20).url} alt="" draggable={false} />
+            <SourceMenuText ogui={ogui} text={String(value)} role="utility" />
           </div>
         ))}
       </div>
@@ -782,16 +859,16 @@ function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: num
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-entry-title" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.title)}>
-        <img src={ogui.text('New highscore entry!', 22).url} alt="" draggable={false} />
+        <SourceMenuText ogui={ogui} text="New highscore entry!" role="primary" />
       </div>
       <div className="og-source-entry-score" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.score)}>
-        <img src={ogui.text(`${total} Points`, 22).url} alt="" draggable={false} />
+        <SourceMenuText ogui={ogui} text={`${total} Points`} role="primary" />
       </div>
       <div className="og-source-entry-field" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.name)}>
         <div className="og-source-entry-value" aria-hidden="true">
-          {name.slice(0, caret) && <img src={ogui.text(name.slice(0, caret), 22).url} alt="" draggable={false} />}
+          {name.slice(0, caret) && <SourceMenuText ogui={ogui} text={name.slice(0, caret)} role="input" />}
           <span className="og-source-entry-caret" />
-          {name.slice(caret) && <img src={ogui.text(name.slice(caret), 22).url} alt="" draggable={false} />}
+          {name.slice(caret) && <SourceMenuText ogui={ogui} text={name.slice(caret)} role="input" />}
         </div>
         <input
           ref={inputRef}

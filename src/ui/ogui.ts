@@ -84,6 +84,10 @@ const PIECES: Record<string, PieceDef> = {
   livesCurl: { atlas: 'special', x: 47, y: 119, w: 58, h: 61 },
 };
 
+for (const [index, uv] of MENU_ATLAS_UV_SOURCE.highscoreRanks.entries()) {
+  PIECES[`highscoreRank${index + 1}`] = { atlas: 'special', ...atlasCropFromUv(uv) };
+}
+
 export interface TextImage {
   url: string;
   w: number;
