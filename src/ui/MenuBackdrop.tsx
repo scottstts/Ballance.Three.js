@@ -39,7 +39,13 @@ export default function MenuBackdrop() {
     const scene = new THREE.Scene();
     const fogColor = new THREE.Color(0xbed7e3);
     addLightRig(scene);
-    const camera = new THREE.PerspectiveCamera(54.4322227, 4 / 3, 20, 550);
+    // 0.9500215054 rad horizontal at 4:3 -> vertical for three.
+    const camera = new THREE.PerspectiveCamera(
+      (2 * Math.atan(Math.tan(0.9500215054 / 2) * (3 / 4)) * 180) / Math.PI,
+      4 / 3,
+      20,
+      550,
+    );
     camera.position.set(0, 40, 95);
     const camTarget = new THREE.Vector3();
     let cameraSource: MenuCameraSource | null = null;
@@ -57,7 +63,15 @@ export default function MenuBackdrop() {
       scene.add(built.root);
       built.root.updateMatrixWorld(true);
       cameraSource = decodedCamera;
-      camera.fov = decodedCamera.fieldOfViewDegrees;
+      // Virtools FOVs are HORIZONTAL (m00 = cot(fov/2)); convert to three's
+      // vertical angle at the authored aspect.
+      camera.fov =
+        (2 *
+          Math.atan(
+            Math.tan(((decodedCamera.fieldOfViewDegrees * Math.PI) / 180) / 2) / decodedCamera.aspectRatio,
+          ) *
+          180) /
+        Math.PI;
       camera.aspect = decodedCamera.aspectRatio;
       camera.near = decodedCamera.nearPlane;
       camera.far = decodedCamera.farPlane;

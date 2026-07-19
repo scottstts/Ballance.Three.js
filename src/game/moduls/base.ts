@@ -295,7 +295,11 @@ export abstract class Modul {
 
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(pos.x, pos.y, pos.z)
-      .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w });
+      .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
+      // IVP simulates every object continuously; Rapier needs CCD opted in.
+      // Without it, pushed props (loose stone balls) can drive through the
+      // thin guardrail tubes that IVP's concave statics always stop.
+      .setCcdEnabled(true);
     if (phys.startFrozen) bodyDesc.setSleeping(true);
     const body = world.createRigidBody(bodyDesc);
     this.ctx.physics.setIvpDamping(body, phys.linearDamp ?? 0.1, phys.rotDamp ?? 0.1);

@@ -13,6 +13,7 @@ import {
   BALL_OFF_DELAY,
   CAM_FAR,
   CAM_FOV,
+  CAM_FOV_HORIZONTAL_RAD,
   CAM_INITIAL_POSITION,
   CAM_NEAR,
   CAM_OVERVIEW_OFFSET,
@@ -187,7 +188,14 @@ describe.skipIf(!existsSync(cameraPath) || !existsSync(gameplayPath))('camera bi
     const chunk = camera.chunks[inGameCam.index];
     expect(chunk.seekIdentifier(0x0fc00000)).toBe(24);
     expect(chunk.u32()).toBe(1); // perspective
-    expect(THREE.MathUtils.radToDeg(chunk.f32())).toBeCloseTo(CAM_FOV, 5);
+    // The serialized angle is a Virtools HORIZONTAL fov (the engine builds
+    // m00 = cot(fov/2), m11 = m00 * w/h); CAM_FOV is its vertical conversion
+    // at the authored 4:3 aspect.
+    expect(chunk.f32()).toBeCloseTo(CAM_FOV_HORIZONTAL_RAD, 7);
+    expect(CAM_FOV).toBeCloseTo(
+      (2 * Math.atan(Math.tan(CAM_FOV_HORIZONTAL_RAD / 2) * (3 / 4)) * 180) / Math.PI,
+      10,
+    );
     expect(chunk.f32()).toBe(1); // orthographic zoom, retained by CKCamera
     expect(chunk.u32()).toBe(0x00030004); // 4:3
     expect(chunk.f32()).toBe(CAM_NEAR);

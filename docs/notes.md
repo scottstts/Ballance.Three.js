@@ -1919,6 +1919,48 @@ sequence, and complete option subscreens are all implemented below.
   already implemented; noted here because the tutorial hold sits in front
   of it only on level 1.
 
+## 2026-07-19 TT Sky re-recovery - the prior SkyAround analysis used the wrong DLL
+
+- CORRECTION: prototype GUID 36691920:3b261630 is "TT Sky" in
+  TT_Gravity_RT.dll (decl 0x10004f30, execute 0x10005180), NOT
+  TT_Toolbox_RT's unused "TT SkyAround" (different GUID). The 2026-07-18
+  "shipped TT SkyAround recovery" note stands corrected by this section.
+- Exact construction: sector angles are i*(2pi/n) + 5pi/4 (float 0x407B53D2
+  = 3.9269909858703613) - the walls sit PERPENDICULAR to the axes (Back
+  faces original -Z = port +Z), not as a rotated diamond. Side quads span
+  y +- h/2 with the quadratic chord height; radius baked into vertices; the
+  entity copies the camera's FULL position every frame (Y included); sky is
+  VX_PRELITMESH (unlit) with all vertex colors = the Vertex Color input
+  ([1,1,1,1] in both callers). Bottom fan per sector is (corner, center,
+  next corner) with sequential indices and cap UVs u = x/len*0.70710+0.5,
+  v = -z/len*0.70710+0.5 (constant 0x3F350481; diagonal corners land on the
+  0/1 edges). Distortion has only an UPPER clamp to 1.
+- Distortion is consumed by the PRE-RENDER callback (0x10006220): the sky
+  alone renders through a widened projection, newFov = fov + (pi-fov) *
+  distortion over the HORIZONTAL fov read from the live matrix (m00 =
+  cot(fov/2), m11 = m00*w/h); the post-render callback restores the saved
+  projection. Gameplay: 58 -> 76.30 degrees horizontal; menu: 70.20. This
+  compresses the sky into the distant-dome look and keeps the open-top rim
+  off screen below ~14.5 degrees of pitch - the port's triangle artifact
+  came from the missing 5pi/4 rotation (a rim corner dead ahead at 35.26
+  degrees elevation) plus rendering the sky 1:1 with the scene camera.
+  Implemented via onBeforeRender/onAfterRender on the sky mesh with a
+  dedicated shader program (customProgramCacheKey) so the projection
+  uniform re-uploads around the sky draw.
+- Virtools FOVs are HORIZONTAL. Camera.nmo's 1.0122909545898438 rad (58
+  degrees) converts to 45.148 degrees vertical at 4:3; the port had been
+  rendering 58 vertical (13 degrees too wide). Same for the menu camera
+  (0.9500215054 rad horizontal). CAM_FOV is now the derived vertical and
+  CAM_FOV_HORIZONTAL_RAD locks the serialized angle.
+- Loose-prop fence pass-through (user report): every guardrail entity is in
+  Phys_FloorRails (solid trimeshes; the player ball bounces off the bars in
+  deterministic tests), prop meshes are centered, and the sector-4 pen's
+  drop edge is authored open. The one mechanical difference from the player
+  ball was continuous collision: IVP simulates continuously for every
+  object, so all dynamic modul bodies now enable CCD (the player already
+  had it). If a pass-through persists after this, the specific fence
+  location is needed to reproduce.
+
 ## 2026-07-19 top-level script coverage census
 
 - Enumerated every top-level (unreferenced) behavior script in base.cmo,

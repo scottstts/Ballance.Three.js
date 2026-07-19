@@ -114,7 +114,14 @@ export const CAM_POSITION_DAMPING: readonly [number, number, number] = [0.5, 0.3
 export const CAM_OVERVIEW_OFFSET: readonly [number, number, number] = [0, -50, 0];
 
 export const CAM_ROTATE_TIME = 0.25; // seconds per source-authored 90-degree step
-export const CAM_FOV = 58;
+/**
+ * Camera.nmo serializes 1.0122909545898438 rad (58 degrees) as a Virtools
+ * HORIZONTAL field of view: the shipped render engine builds its projection
+ * as m00 = cot(fov/2), m11 = m00 * width/height. Three.js cameras take the
+ * VERTICAL angle, so convert at the authored 4:3 aspect.
+ */
+export const CAM_FOV_HORIZONTAL_RAD = 1.0122909545898438;
+export const CAM_FOV = (2 * Math.atan(Math.tan(CAM_FOV_HORIZONTAL_RAD / 2) * (3 / 4)) * 180) / Math.PI;
 export const CAM_NEAR = 3;
 export const CAM_FAR = 1200;
 
