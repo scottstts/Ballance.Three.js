@@ -151,7 +151,11 @@ if (objects) {
           console.log(`         trailing ${o.trailingData.map((value) => `0x${value.toString(16)}`).join(' ')}`);
         }
       } else if (o.kind === 'objectAnimation') {
-        console.log(`         entity=${o.entityIndex} length=${o.length} rotationKeys=${o.rotationKeys.length}`);
+        console.log(
+          `         entity=${o.entityIndex} length=${o.length} ` +
+            `positionKeys=${o.positionKeys.length} rotationKeys=${o.rotationKeys.length} ` +
+            `scaleKeys=${o.scaleKeys.length} flags=0x${o.animationFlags.toString(16)}`,
+        );
         for (const key of o.rotationKeys) {
           console.log(`         t=${key.time} q=${key.quaternion.join(',')} tcb=${key.tension},${key.continuity},${key.bias}`);
         }

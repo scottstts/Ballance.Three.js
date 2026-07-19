@@ -460,11 +460,19 @@ export interface RotationKey {
   easeFrom: number;
 }
 
+export interface VectorKey {
+  time: number;
+  value: [number, number, number];
+}
+
 export interface ObjectAnimationRec extends ObjectBase {
   kind: 'objectAnimation';
   entityIndex: number;
   length: number;
+  positionKeys: VectorKey[];
   rotationKeys: RotationKey[];
+  scaleKeys: VectorKey[];
+  animationFlags: number;
 }
 
 export interface KeyedAnimationRec extends ObjectBase {

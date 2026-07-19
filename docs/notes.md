@@ -1378,3 +1378,17 @@ options subscreens are simplified (volume only).
 - `Menu_atmo` is a flat/background, non-looping 15,952 ms CKWaveSound at gain 1
   and pitch 1. Its graph plays once and waits a random 1-10 seconds after the
   end event; the settings music volume is the only additional runtime gain.
+
+## 2026-07-18 recorded menu stone-ball animation recovery
+
+- `MenuLevel.nmo/Record Anim` is not a small TCB rotation track. Its controller
+  payload contains 4,445 linear position keys, 4,445 linear quaternion keys,
+  and 4,445 linear scale keys at animation times 0 through 4444, with declared
+  length 4445. The NMO parser now walks tagged controller blocks and continues
+  to decode the finale UFO's six-key TCB rotation tracks unchanged.
+- `Ball_Stone Script` starts `Play Animation 3D Entity` with `Record Anim`, an
+  exact 59,246 ms duration, a two-key identity progression, and Loop=true. The
+  menu backdrop now linearly evaluates the saved position/scale keys, slerps
+  the saved rotations, converts the absolute Virtools transform to Three's
+  handedness, and repeats at the graph boundary. The first recorded position
+  exactly matches `I_Ball_Stone`'s serialized world position.

@@ -30,6 +30,7 @@ import {
   type RGBA,
   type Sprite3dRec,
   type TextureRec,
+  type VectorKey,
   type WaveSoundRec,
 } from './types.ts';
 
@@ -762,35 +763,93 @@ function dwordAsFloat(value: number): number {
 }
 
 function loadObjectAnimation(base: ObjectBase, chunk: StateChunk): ObjectAnimationRec {
-  const rec: ObjectAnimationRec = { ...base, kind: 'objectAnimation', entityIndex: -1, length: 0, rotationKeys: [] };
+  const rec: ObjectAnimationRec = {
+    ...base,
+    kind: 'objectAnimation',
+    entityIndex: -1,
+    length: 0,
+    positionKeys: [],
+    rotationKeys: [],
+    scaleKeys: [],
+    animationFlags: 0,
+  };
   const size = chunk.seekIdentifier(Ident.OBJECT_ANIMATION_CONTROLLERS);
   if (size < 52) return rec;
   const payload = Array.from({ length: size / 4 }, () => chunk.u32());
-  // Ballance's Virtools 2.1 controller serialization: eight controller
-  // slots, target entity, duration, controller tag/flags, then TCB rotation
-  // keys (time + quaternion + tension/continuity/bias/eases).
+  // Virtools 2.1 writes eight legacy controller slots, target entity, length,
+  // then tagged controller blocks: tag, block dword count, key count, keys.
   rec.entityIndex = (payload[8] | 0) >= 0 ? payload[8] | 0 : -1;
   rec.length = dwordAsFloat(payload[9]);
-  const count = payload[12] >>> 0;
-  let pos = 13;
-  if (count > 1024 || pos + count * 10 > payload.length) return rec;
-  for (let i = 0; i < count; i++) {
-    rec.rotationKeys.push({
-      time: dwordAsFloat(payload[pos]),
-      quaternion: [
-        dwordAsFloat(payload[pos + 1]),
-        dwordAsFloat(payload[pos + 2]),
-        dwordAsFloat(payload[pos + 3]),
-        dwordAsFloat(payload[pos + 4]),
-      ],
-      tension: dwordAsFloat(payload[pos + 5]),
-      continuity: dwordAsFloat(payload[pos + 6]),
-      bias: dwordAsFloat(payload[pos + 7]),
-      easeTo: dwordAsFloat(payload[pos + 8]),
-      easeFrom: dwordAsFloat(payload[pos + 9]),
-    });
-    pos += 10;
+
+  const LINEAR_POSITION = 0x637c4301;
+  const LINEAR_ROTATION = 0x49ed4002;
+  const LINEAR_SCALE = 0x654a3a04;
+  const TCB_POSITION = 0x347e4a01;
+  const TCB_ROTATION = 0x45b52a02;
+  const TCB_SCALE = 0x1b545904;
+  const BEZIER_POSITION = 0x921ab801;
+  const BEZIER_SCALE = 0x18ab4404;
+
+  const readVectorKeys = (target: VectorKey[], start: number, count: number, stride: number) => {
+    for (let key = 0; key < count; key++) {
+      const offset = start + key * stride;
+      target.push({
+        time: dwordAsFloat(payload[offset]),
+        value: [
+          dwordAsFloat(payload[offset + 1]),
+          dwordAsFloat(payload[offset + 2]),
+          dwordAsFloat(payload[offset + 3]),
+        ],
+      });
+    }
+  };
+
+  let pos = 10;
+  while (pos + 2 < payload.length) {
+    const controllerType = payload[pos] >>> 0;
+    const blockSize = payload[pos + 1] >>> 0;
+    if (blockSize === 0 || pos + 2 + blockSize > payload.length) break;
+    const count = payload[pos + 2] >>> 0;
+    const keysStart = pos + 3;
+
+    if (controllerType === LINEAR_POSITION && blockSize === 1 + count * 4) {
+      readVectorKeys(rec.positionKeys, keysStart, count, 4);
+    } else if (controllerType === LINEAR_SCALE && blockSize === 1 + count * 4) {
+      readVectorKeys(rec.scaleKeys, keysStart, count, 4);
+    } else if (controllerType === TCB_POSITION && blockSize === 1 + count * 9) {
+      readVectorKeys(rec.positionKeys, keysStart, count, 9);
+    } else if (controllerType === TCB_SCALE && blockSize === 1 + count * 9) {
+      readVectorKeys(rec.scaleKeys, keysStart, count, 9);
+    } else if (controllerType === BEZIER_POSITION && blockSize === 1 + count * 11) {
+      readVectorKeys(rec.positionKeys, keysStart, count, 11);
+    } else if (controllerType === BEZIER_SCALE && blockSize === 1 + count * 11) {
+      readVectorKeys(rec.scaleKeys, keysStart, count, 11);
+    } else if (
+      (controllerType === LINEAR_ROTATION && blockSize === 1 + count * 5) ||
+      (controllerType === TCB_ROTATION && blockSize === 1 + count * 10)
+    ) {
+      const stride = controllerType === LINEAR_ROTATION ? 5 : 10;
+      for (let key = 0; key < count; key++) {
+        const offset = keysStart + key * stride;
+        rec.rotationKeys.push({
+          time: dwordAsFloat(payload[offset]),
+          quaternion: [
+            dwordAsFloat(payload[offset + 1]),
+            dwordAsFloat(payload[offset + 2]),
+            dwordAsFloat(payload[offset + 3]),
+            dwordAsFloat(payload[offset + 4]),
+          ],
+          tension: stride === 10 ? dwordAsFloat(payload[offset + 5]) : 0,
+          continuity: stride === 10 ? dwordAsFloat(payload[offset + 6]) : 0,
+          bias: stride === 10 ? dwordAsFloat(payload[offset + 7]) : 0,
+          easeTo: stride === 10 ? dwordAsFloat(payload[offset + 8]) : 0,
+          easeFrom: stride === 10 ? dwordAsFloat(payload[offset + 9]) : 0,
+        });
+      }
+    }
+    pos += 2 + blockSize;
   }
+  rec.animationFlags = payload[pos] ?? 0;
   return rec;
 }
 

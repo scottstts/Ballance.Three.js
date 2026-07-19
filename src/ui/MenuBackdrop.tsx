@@ -12,6 +12,11 @@ import {
   sampleMenuCameraPath,
   type MenuCameraSource,
 } from './menuCamera.ts';
+import {
+  applyMenuStoneAnimation,
+  decodeMenuStoneAnimationSource,
+  type MenuStoneAnimationSource,
+} from './menuStoneAnimation.ts';
 
 /**
  * The original 3D menu scene (MenuLevel.nmo) behind the menu, framed by the
@@ -37,6 +42,9 @@ export default function MenuBackdrop() {
     const camTarget = new THREE.Vector3();
     let cameraSource: MenuCameraSource | null = null;
     let cameraElapsed = 0;
+    let stoneAnimation: MenuStoneAnimationSource | null = null;
+    let stoneBall: THREE.Object3D | null = null;
+    let stoneElapsed = 0;
 
     const flames: Flame[] = [];
     void (async () => {
@@ -55,6 +63,9 @@ export default function MenuBackdrop() {
       camTarget.copy(decodedCamera.target);
       sampleMenuCameraPath(decodedCamera, 0, camera.position);
       camera.lookAt(camTarget);
+      stoneAnimation = decodeMenuStoneAnimationSource(file);
+      stoneBall = built.entities.get('I_Ball_Stone')?.object ?? null;
+      if (stoneBall) applyMenuStoneAnimation(stoneAnimation, 0, stoneBall);
       // the original day menu uses the C sky with warm linear fog 100-800
       const sky = await buildSky('C', fogColor);
       if (disposed) return;
@@ -96,6 +107,10 @@ export default function MenuBackdrop() {
       if (cameraSource) {
         cameraElapsed += dt;
         sampleMenuCameraPath(cameraSource, menuCameraProgress(cameraSource, cameraElapsed), camera.position);
+      }
+      if (stoneAnimation && stoneBall) {
+        stoneElapsed += dt;
+        applyMenuStoneAnimation(stoneAnimation, stoneElapsed, stoneBall);
       }
       camera.lookAt(camTarget);
       for (const obj of scene.children) {
