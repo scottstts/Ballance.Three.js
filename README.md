@@ -9,3 +9,5 @@ An original-binary-first reconstruction of the complete 2004 game for the browse
 decodes the shipped Virtools scenes and behavior data into React, TypeScript, Three.js, and
 Rapier while preserving the source-authored levels, physics, camera, HUD, menus, animation,
 audio, scoring, and progression. Runtime assets are repository-owned under `public/game`.
+
+***in progress...***
