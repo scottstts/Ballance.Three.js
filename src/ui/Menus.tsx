@@ -7,6 +7,7 @@
 import {
   Fragment,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -42,6 +43,7 @@ import {
   LEVEL_BUTTON_RECTS,
   MENU_BACK_RECT,
   MENU_FONT_SOURCE,
+  MENU_TEXT_SOURCE,
   OPTIONS_RECTS,
   SCORE_RECTS,
   creditTextWait,
@@ -53,6 +55,11 @@ import {
 } from './menuLayout.ts';
 import { useOgui } from './useOgui.ts';
 import type { Ogui } from './ogui.ts';
+import {
+  nextSourceMenuIndex,
+  sourceMenuInitialIndex,
+  type SourceMenuInitialSelection,
+} from './menuNavigation.ts';
 
 type ButtonPiece = 'buttonLarge' | 'buttonMedium' | 'levelButton' | 'confirmSmall';
 
@@ -120,6 +127,9 @@ export function MenuButton({
   medium,
   piece: requestedPiece,
   style,
+  selected = false,
+  onSelect,
+  accessibleLabel,
 }: {
   ogui: Ogui;
   label: string;
@@ -128,11 +138,16 @@ export function MenuButton({
   medium?: boolean;
   piece?: ButtonPiece;
   style?: CSSProperties;
+  selected?: boolean;
+  onSelect?: () => void;
+  accessibleLabel?: string;
 }) {
   const [hover, setHover] = useState(false);
   const piece = requestedPiece ?? (medium ? 'buttonMedium' : 'buttonLarge');
   const compact = medium || piece !== 'buttonLarge';
-  const img = ogui.piece[disabled ? `${piece}Disabled` : hover ? `${piece}Hover` : piece] ?? ogui.piece[piece];
+  const selectionControlled = onSelect !== undefined;
+  const highlighted = selectionControlled ? selected : hover || selected;
+  const img = ogui.piece[disabled ? `${piece}Disabled` : highlighted ? `${piece}Hover` : piece] ?? ogui.piece[piece];
   const role: MenuFontRole = piece === 'levelButton' ? (disabled ? 'inactive' : 'row') : piece === 'confirmSmall' ? 'row' : 'primary';
   const activate = () => {
     if (disabled) return;
@@ -142,16 +157,28 @@ export function MenuButton({
   return (
     <div
       role="button"
-      aria-label={label}
+      aria-label={accessibleLabel ?? label}
       aria-disabled={disabled || undefined}
       tabIndex={disabled ? -1 : 0}
       className={`og-button${compact ? ' og-button-medium' : ''}${disabled ? ' og-disabled' : ''}`}
       style={{ backgroundImage: `url(${img})`, ...style }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => {
+        if (selectionControlled) {
+          if (!disabled) onSelect();
+        } else {
+          setHover(true);
+        }
+      }}
+      onMouseLeave={() => {
+        if (!selectionControlled) setHover(false);
+      }}
       onClick={activate}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') activate();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          activate();
+        }
       }}
     >
       <SourceMenuText ogui={ogui} text={label} role={role} className="og-button-label" />
@@ -181,11 +208,11 @@ export function MenuBand({
   }, []);
   return (
     <MenuSourceSizeContext.Provider value={sourceSize}>
-    <div className="og-screen" style={{ cursor: `url(${ogui.cursor}) 1 1, auto`, ...style }}>
-      <div className="og-source-stage">
-        <div className={`og-band${transparent ? ' og-band-transparent' : ''}`}>{children}</div>
+      <div className="og-screen" style={{ cursor: `url(${ogui.cursor}) 1 1, auto`, ...style }}>
+        <div className="og-source-stage">
+          <div className={`og-band${transparent ? ' og-band-transparent' : ''}`}>{children}</div>
+        </div>
       </div>
-    </div>
     </MenuSourceSizeContext.Provider>
   );
 }
@@ -195,6 +222,70 @@ function SourceButton({
   ...props
 }: Omit<ComponentProps<typeof MenuButton>, 'style'> & { rect: MenuRect }) {
   return <MenuButton {...props} style={menuBandRectStyle(rect)} />;
+}
+
+type SourceButtonItem = Omit<ComponentProps<typeof SourceButton>, 'ogui' | 'selected' | 'onSelect'>;
+
+function SourceButtonList({
+  ogui,
+  items,
+  initial = 'first',
+  axis = 'vertical',
+  escape = 'last',
+}: {
+  ogui: Ogui;
+  items: readonly SourceButtonItem[];
+  initial?: SourceMenuInitialSelection;
+  axis?: 'vertical' | 'horizontal';
+  escape?: 'last' | 'none';
+}) {
+  const disabled = items.map((item) => item.disabled ?? false);
+  const [selected, setSelected] = useState(() => sourceMenuInitialIndex(disabled, initial));
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return;
+      const currentItems = items;
+      const currentDisabled = currentItems.map((item) => item.disabled ?? false);
+      const previous = axis === 'vertical' ? event.code === 'ArrowUp' : event.code === 'ArrowLeft';
+      const next = axis === 'vertical' ? event.code === 'ArrowDown' : event.code === 'ArrowRight';
+      if (previous || next) {
+        event.preventDefault();
+        setSelected((current) => nextSourceMenuIndex(currentDisabled, current, previous ? -1 : 1));
+        return;
+      }
+      if (event.code === 'Enter' || event.code === 'NumpadEnter') {
+        const item = currentItems[selected];
+        if (!item || item.disabled) return;
+        event.preventDefault();
+        menuAudio.click();
+        item.onClick();
+        return;
+      }
+      if (event.code === 'Escape' && escape === 'last') {
+        const index = sourceMenuInitialIndex(currentDisabled, 'last');
+        const item = currentItems[index];
+        if (!item || item.disabled) return;
+        event.preventDefault();
+        menuAudio.click();
+        item.onClick();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [axis, escape, items, selected]);
+
+  return items.map((item, index) => (
+    <SourceButton
+      key={`${item.label}-${index}`}
+      {...item}
+      ogui={ogui}
+      selected={selected === index}
+      onSelect={() => setSelected(index)}
+    />
+  ));
 }
 
 function SpriteButton({
@@ -235,7 +326,11 @@ function SpriteButton({
       onMouseLeave={() => setHover(false)}
       onClick={activate}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') activate();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          event.stopPropagation();
+          activate();
+        }
       }}
     />
   );
@@ -250,7 +345,7 @@ export function MainMenu() {
     return (
       <ConfirmScreen
         ogui={ogui}
-        question="Do you want to quit the game?"
+        question={MENU_TEXT_SOURCE.exitGameQuestion}
         onConfirm={() => window.close()}
         onCancel={() => setConfirmExit(false)}
       />
@@ -258,19 +353,16 @@ export function MainMenu() {
   }
   return (
     <MenuBand ogui={ogui}>
-      {[
-        <SourceButton key="start" rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Start" onClick={() => set({ phase: 'levelselect' })} />,
-        <SourceButton
-          key="highscore"
-          rect={LARGE_MENU_BUTTON_RECTS[1]}
-          ogui={ogui}
-          label="Highscore"
-          onClick={() => set({ phase: 'highscore' })}
-        />,
-        <SourceButton key="options" rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => set({ phase: 'options' })} />,
-        <SourceButton key="credits" rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Credits" onClick={() => set({ phase: 'credits' })} />,
-        <SourceButton key="exit" rect={LARGE_MENU_BUTTON_RECTS[4]} ogui={ogui} label="Exit" onClick={() => setConfirmExit(true)} />,
-      ]}
+      <SourceButtonList
+        ogui={ogui}
+        items={[
+          { rect: LARGE_MENU_BUTTON_RECTS[0], label: MENU_TEXT_SOURCE.main[0], onClick: () => set({ phase: 'levelselect' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[1], label: MENU_TEXT_SOURCE.main[1], onClick: () => set({ phase: 'highscore' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[2], label: MENU_TEXT_SOURCE.main[2], onClick: () => set({ phase: 'options' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[3], label: MENU_TEXT_SOURCE.main[4], onClick: () => set({ phase: 'credits' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[4], label: MENU_TEXT_SOURCE.main[3], onClick: () => setConfirmExit(true) },
+        ]}
+      />
     </MenuBand>
   );
 }
@@ -279,23 +371,23 @@ export function LevelSelect() {
   const { progress, loadLevel, set } = useGameStore();
   const ogui = useOgui();
   if (!ogui) return null;
+  const items: SourceButtonItem[] = Array.from({ length: 12 }, (_, index) => {
+    const level = index + 1;
+    return {
+      rect: LEVEL_BUTTON_RECTS[index],
+      piece: 'levelButton',
+      label: MENU_TEXT_SOURCE.levels[index],
+      disabled: level > progress.unlocked,
+      onClick: () => {
+        menuAudio.levelLoad();
+        loadLevel(level);
+      },
+    };
+  });
+  items.push({ rect: MENU_BACK_RECT, piece: 'buttonMedium', label: MENU_TEXT_SOURCE.back, onClick: () => set({ phase: 'menu' }) });
   return (
     <MenuBand ogui={ogui}>
-      {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
-          <SourceButton
-            key={n}
-            rect={LEVEL_BUTTON_RECTS[n - 1]}
-            ogui={ogui}
-            piece="levelButton"
-            label={`Level ${n}`}
-            disabled={n > progress.unlocked}
-            onClick={() => {
-              menuAudio.levelLoad();
-              loadLevel(n);
-            }}
-          />
-        ))}
-      <SourceButton rect={MENU_BACK_RECT} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'menu' })} />
+      <SourceButtonList ogui={ogui} items={items} />
     </MenuBand>
   );
 }
@@ -304,32 +396,45 @@ export function LevelSelect() {
 export function HighscoreScreen({
   backPhase = 'menu',
   initialLevel = 1,
-  exitLabel = 'Back',
+  exitLabel = MENU_TEXT_SOURCE.back,
   onExit,
 }: {
   backPhase?: GamePhase;
   initialLevel?: number;
-  exitLabel?: 'Back' | 'Next';
+  exitLabel?: string;
   onExit?: () => void;
 }) {
   const { progress, set } = useGameStore();
   const maxLevel = Math.max(1, progress.unlocked);
   const [level, setLevel] = useState(Math.min(maxLevel, Math.max(1, initialLevel)));
   const ogui = useOgui();
+  const exit = useCallback(() => (onExit ? onExit() : set({ phase: backPhase })), [backPhase, onExit, set]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.code === 'ArrowLeft') setLevel((current) => Math.max(1, current - 1));
-      if (event.code === 'ArrowRight') setLevel((current) => Math.min(maxLevel, current + 1));
+      if (event.defaultPrevented) return;
+      if (event.code === 'ArrowLeft' || event.code === 'ArrowRight') {
+        const direction = event.code === 'ArrowLeft' ? -1 : 1;
+        setLevel((current) => {
+          const next = Math.max(1, Math.min(maxLevel, current + direction));
+          if (next !== current) menuAudio.click();
+          return next;
+        });
+        event.preventDefault();
+      } else if (event.code === 'Escape' || event.code === 'Enter' || event.code === 'NumpadEnter') {
+        event.preventDefault();
+        menuAudio.click();
+        exit();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [maxLevel]);
+  }, [exit, maxLevel]);
   if (!ogui) return null;
   const table = progress.tables[level] ?? defaultTable(level);
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-title" style={menuBandRectStyle(HIGHSCORE_RECTS.title)}>
-        <SourceMenuText ogui={ogui} text={`Highscore Level ${level}`} role="primary" />
+        <SourceMenuText ogui={ogui} text={`${MENU_TEXT_SOURCE.highscoreTitle}${level}`} role="primary" />
       </div>
       <SpriteButton ogui={ogui} piece="highscorePrevious" rect={HIGHSCORE_RECTS.previous} label="Previous level" disabled={level <= 1} onClick={() => setLevel(level - 1)} />
       <SpriteButton ogui={ogui} piece="highscoreNext" rect={HIGHSCORE_RECTS.next} label="Next level" disabled={level >= maxLevel} onClick={() => setLevel(level + 1)} />
@@ -359,7 +464,7 @@ export function HighscoreScreen({
         ogui={ogui}
         piece="buttonMedium"
         label={exitLabel}
-        onClick={() => (onExit ? onExit() : set({ phase: backPhase }))}
+        onClick={exit}
       />
     </MenuBand>
   );
@@ -367,10 +472,29 @@ export function HighscoreScreen({
 
 /** original Options: Graphics / Controls / Sound subscreens */
 export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: GamePhase; onExit?: () => void }) {
-  const { settings, updateSettings, set } = useGameStore();
+  const { settings: savedSettings, updateSettings, set } = useGameStore();
   const [page, setPage] = useState<'root' | 'graphics' | 'controls' | 'sound'>('root');
   const [listening, setListening] = useState<ControlSetting | null>(null);
+  const [settings, setDraftSettings] = useState<Settings>(savedSettings);
+  const [optionRow, setOptionRow] = useState(0);
   const ogui = useOgui();
+
+  const previewSettings = (partial: Partial<Settings>) => {
+    setDraftSettings((current) => ({ ...current, ...partial }));
+  };
+
+  const openPage = (next: 'graphics' | 'controls' | 'sound') => {
+    setDraftSettings(savedSettings);
+    setOptionRow(0);
+    setPage(next);
+  };
+
+  const commitPage = () => {
+    updateSettings(settings);
+    setListening(null);
+    setOptionRow(0);
+    setPage('root');
+  };
 
   useEffect(() => {
     if (!listening) return;
@@ -378,7 +502,7 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
       event.preventDefault();
       event.stopImmediatePropagation();
       if (isSourceKey(event.code)) {
-        updateSettings({ [listening]: event.code } as Partial<Settings>);
+        previewSettings({ [listening]: event.code } as Partial<Settings>);
         setListening(null);
       } else if (event.code === 'Escape') {
         setListening(null);
@@ -386,21 +510,102 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
     };
     window.addEventListener('keydown', capture, true);
     return () => window.removeEventListener('keydown', capture, true);
-  }, [listening, updateSettings]);
+  }, [listening]);
 
   useEffect(() => {
     menuAudio.setMusicVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
+  useEffect(() => {
+    if (page === 'root' || listening) return;
+    const count = page === 'graphics' ? 4 : page === 'controls' ? 8 : 2;
+    const cancelCurrentPage = () => {
+      setDraftSettings(savedSettings);
+      setListening(null);
+      setOptionRow(0);
+      setPage('root');
+    };
+    const commitCurrentPage = () => {
+      updateSettings(settings);
+      setListening(null);
+      setOptionRow(0);
+      setPage('root');
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+        event.preventDefault();
+        setOptionRow((current) => (current + (event.code === 'ArrowUp' ? -1 : 1) + count) % count);
+        return;
+      }
+      if (event.code === 'Escape') {
+        event.preventDefault();
+        menuAudio.click();
+        cancelCurrentPage();
+        return;
+      }
+      if (event.code === 'Enter' || event.code === 'NumpadEnter') {
+        if (page === 'controls' && optionRow < CONTROL_ROWS.length) {
+          event.preventDefault();
+          menuAudio.click();
+          setListening(CONTROL_ROWS[optionRow].setting);
+        } else if (
+          (page === 'graphics' && optionRow === 3) ||
+          (page === 'controls' && optionRow === 7) ||
+          (page === 'sound' && optionRow === 1)
+        ) {
+          event.preventDefault();
+          menuAudio.click();
+          commitCurrentPage();
+        }
+        return;
+      }
+      if (event.code !== 'ArrowLeft' && event.code !== 'ArrowRight') return;
+      const right = event.code === 'ArrowRight';
+      if (page === 'graphics' && optionRow === 0) {
+        event.preventDefault();
+        const direction = right ? 1 : -1;
+        const screenMode = Math.max(0, Math.min(SCREEN_MODES.length - 1, settings.screenMode + direction));
+        if (screenMode !== settings.screenMode) {
+          menuAudio.click();
+          previewSettings({ screenMode });
+        }
+      } else if (page === 'graphics' && optionRow === 1) {
+        event.preventDefault();
+        menuAudio.click();
+        previewSettings({ syncToScreen: !right });
+      } else if (page === 'graphics' && optionRow === 2) {
+        event.preventDefault();
+        menuAudio.click();
+        previewSettings({ clouds: !right });
+      } else if (page === 'controls' && optionRow === 6) {
+        event.preventDefault();
+        menuAudio.click();
+        previewSettings({ invertCameraRotation: !right });
+      } else if (page === 'sound' && optionRow === 0) {
+        event.preventDefault();
+        const direction = right ? 0.1 : -0.1;
+        const musicVolume = Math.max(0, Math.min(1, Math.round((settings.musicVolume + direction) * 10) / 10));
+        if (musicVolume !== settings.musicVolume) {
+          menuAudio.click();
+          previewSettings({ musicVolume });
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [listening, optionRow, page, savedSettings, settings, updateSettings]);
+
   if (!ogui) return null;
-  const title = page === 'root' ? 'Options' : page === 'graphics' ? 'Graphics' : page === 'controls' ? 'Controls' : 'Sound';
-  const field = (rect: MenuRect, label: string) => (
+  const title = page === 'root' ? MENU_TEXT_SOURCE.options : page === 'graphics' ? MENU_TEXT_SOURCE.graphics : page === 'controls' ? MENU_TEXT_SOURCE.controls : MENU_TEXT_SOURCE.sound;
+  const field = (rect: MenuRect, label: string, active = false, onSelect?: () => void) => (
     <div
       className="og-source-option-field"
       style={{
         ...menuBandRectStyle(rect),
-        backgroundImage: `url(${ogui.piece.optionField})`,
+        backgroundImage: `url(${ogui.piece[active ? 'optionFieldHover' : 'optionField']})`,
       }}
+      onMouseEnter={onSelect}
     >
       <SourceMenuText ogui={ogui} text={label} role="row" />
     </div>
@@ -408,22 +613,26 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
   const choice = (rect: MenuRect, label: 'Yes' | 'No', selected: boolean, apply: () => void) => (
     <SourceButton rect={rect} ogui={ogui} piece="confirmSmall" label={label} disabled={selected} onClick={apply} />
   );
-  const leave = () => (page === 'root' ? (onExit ? onExit() : set({ phase: backPhase })) : setPage('root'));
+  const leaveRoot = () => (onExit ? onExit() : set({ phase: backPhase }));
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-title" style={menuBandRectStyle(OPTIONS_RECTS.title)}>
         <SourceMenuText ogui={ogui} text={title} role="input" />
       </div>
       {page === 'root' && (
-        <>
-          <SourceButton rect={OPTIONS_RECTS.rootButtons[0]} ogui={ogui} label="Graphics" onClick={() => setPage('graphics')} />
-          <SourceButton rect={OPTIONS_RECTS.rootButtons[1]} ogui={ogui} label="Controls" onClick={() => setPage('controls')} />
-          <SourceButton rect={OPTIONS_RECTS.rootButtons[2]} ogui={ogui} label="Sound" onClick={() => setPage('sound')} />
-        </>
+        <SourceButtonList
+          ogui={ogui}
+          items={[
+            { rect: OPTIONS_RECTS.rootButtons[0], label: MENU_TEXT_SOURCE.graphics, onClick: () => openPage('graphics') },
+            { rect: OPTIONS_RECTS.rootButtons[1], label: MENU_TEXT_SOURCE.controls, onClick: () => openPage('controls') },
+            { rect: OPTIONS_RECTS.rootButtons[2], label: MENU_TEXT_SOURCE.sound, onClick: () => openPage('sound') },
+            { rect: OPTIONS_RECTS.back, piece: 'buttonMedium', label: MENU_TEXT_SOURCE.back, onClick: leaveRoot },
+          ]}
+        />
       )}
       {page === 'graphics' && (
         <>
-          {field(OPTIONS_RECTS.graphics.resolutionField, 'Screen Resolution')}
+          {field(OPTIONS_RECTS.graphics.resolutionField, MENU_TEXT_SOURCE.screenResolution, optionRow === 0, () => setOptionRow(0))}
           <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.graphics.resolutionText)}>
             <SourceMenuText ogui={ogui} text={`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`} role="row" />
           </div>
@@ -433,7 +642,10 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
             rect={OPTIONS_RECTS.graphics.resolutionLeft}
             label="Previous screen resolution"
             disabled={settings.screenMode <= 0}
-            onClick={() => updateSettings({ screenMode: settings.screenMode - 1 })}
+            onClick={() => {
+              setOptionRow(0);
+              previewSettings({ screenMode: settings.screenMode - 1 });
+            }}
           />
           <SpriteButton
             ogui={ogui}
@@ -441,14 +653,29 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
             rect={OPTIONS_RECTS.graphics.resolutionRight}
             label="Next screen resolution"
             disabled={settings.screenMode >= SCREEN_MODES.length - 1}
-            onClick={() => updateSettings({ screenMode: settings.screenMode + 1 })}
+            onClick={() => {
+              setOptionRow(0);
+              previewSettings({ screenMode: settings.screenMode + 1 });
+            }}
           />
-          {field(OPTIONS_RECTS.graphics.syncField, 'Synch to Screen?')}
-          {choice(OPTIONS_RECTS.graphics.syncYes, 'Yes', settings.syncToScreen, () => updateSettings({ syncToScreen: true }))}
-          {choice(OPTIONS_RECTS.graphics.syncNo, 'No', !settings.syncToScreen, () => updateSettings({ syncToScreen: false }))}
-          {field(OPTIONS_RECTS.graphics.cloudsField, 'Clouds?')}
-          {choice(OPTIONS_RECTS.graphics.cloudsYes, 'Yes', settings.clouds, () => updateSettings({ clouds: true }))}
-          {choice(OPTIONS_RECTS.graphics.cloudsNo, 'No', !settings.clouds, () => updateSettings({ clouds: false }))}
+          {field(OPTIONS_RECTS.graphics.syncField, MENU_TEXT_SOURCE.syncToScreen, optionRow === 1, () => setOptionRow(1))}
+          {choice(OPTIONS_RECTS.graphics.syncYes, 'Yes', settings.syncToScreen, () => {
+            setOptionRow(1);
+            previewSettings({ syncToScreen: true });
+          })}
+          {choice(OPTIONS_RECTS.graphics.syncNo, 'No', !settings.syncToScreen, () => {
+            setOptionRow(1);
+            previewSettings({ syncToScreen: false });
+          })}
+          {field(OPTIONS_RECTS.graphics.cloudsField, MENU_TEXT_SOURCE.clouds, optionRow === 2, () => setOptionRow(2))}
+          {choice(OPTIONS_RECTS.graphics.cloudsYes, 'Yes', settings.clouds, () => {
+            setOptionRow(2);
+            previewSettings({ clouds: true });
+          })}
+          {choice(OPTIONS_RECTS.graphics.cloudsNo, 'No', !settings.clouds, () => {
+            setOptionRow(2);
+            previewSettings({ clouds: false });
+          })}
         </>
       )}
       {page === 'controls' && (
@@ -462,10 +689,12 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
                 className={`og-source-key-field${listening === setting ? ' og-key-listening' : ''}`}
                 style={{
                   ...menuBandRectStyle(OPTIONS_RECTS.controls.fields[index]),
-                  backgroundImage: `url(${ogui.piece[listening === setting ? 'keyFieldHover' : 'keyField']})`,
+                  backgroundImage: `url(${ogui.piece[listening === setting || optionRow === index ? 'keyFieldHover' : 'keyField']})`,
                 }}
+                onMouseEnter={() => setOptionRow(index)}
                 onClick={() => {
                   menuAudio.click();
+                  setOptionRow(index);
                   setListening(setting);
                 }}
               >
@@ -476,14 +705,20 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
               </div>
             </Fragment>
           ))}
-          {field(OPTIONS_RECTS.controls.invertField, 'Invert Rotation?')}
-          {choice(OPTIONS_RECTS.controls.invertYes, 'Yes', settings.invertCameraRotation, () => updateSettings({ invertCameraRotation: true }))}
-          {choice(OPTIONS_RECTS.controls.invertNo, 'No', !settings.invertCameraRotation, () => updateSettings({ invertCameraRotation: false }))}
+          {field(OPTIONS_RECTS.controls.invertField, MENU_TEXT_SOURCE.invertRotation, optionRow === 6, () => setOptionRow(6))}
+          {choice(OPTIONS_RECTS.controls.invertYes, 'Yes', settings.invertCameraRotation, () => {
+            setOptionRow(6);
+            previewSettings({ invertCameraRotation: true });
+          })}
+          {choice(OPTIONS_RECTS.controls.invertNo, 'No', !settings.invertCameraRotation, () => {
+            setOptionRow(6);
+            previewSettings({ invertCameraRotation: false });
+          })}
         </>
       )}
       {page === 'sound' && (
         <>
-          {field(OPTIONS_RECTS.sound.field, 'Music Volume')}
+          {field(OPTIONS_RECTS.sound.field, MENU_TEXT_SOURCE.musicVolume, optionRow === 0, () => setOptionRow(0))}
           <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.sound.text)}>
             <SourceMenuText ogui={ogui} text={String(Math.round(settings.musicVolume * 100))} role="row" />
           </div>
@@ -493,7 +728,10 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
             rect={OPTIONS_RECTS.sound.left}
             label="Decrease music volume"
             disabled={settings.musicVolume <= 0}
-            onClick={() => updateSettings({ musicVolume: Math.max(0, Math.round((settings.musicVolume - 0.1) * 10) / 10) })}
+            onClick={() => {
+              setOptionRow(0);
+              previewSettings({ musicVolume: Math.max(0, Math.round((settings.musicVolume - 0.1) * 10) / 10) });
+            }}
           />
           <SpriteButton
             ogui={ogui}
@@ -501,11 +739,24 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
             rect={OPTIONS_RECTS.sound.right}
             label="Increase music volume"
             disabled={settings.musicVolume >= 1}
-            onClick={() => updateSettings({ musicVolume: Math.min(1, Math.round((settings.musicVolume + 0.1) * 10) / 10) })}
+            onClick={() => {
+              setOptionRow(0);
+              previewSettings({ musicVolume: Math.min(1, Math.round((settings.musicVolume + 0.1) * 10) / 10) });
+            }}
           />
         </>
       )}
-      <SourceButton rect={OPTIONS_RECTS.back} ogui={ogui} piece="buttonMedium" label="Back" onClick={leave} />
+      {page !== 'root' && (
+        <SourceButton
+          rect={OPTIONS_RECTS.back}
+          ogui={ogui}
+          piece="buttonMedium"
+          label={MENU_TEXT_SOURCE.back}
+          selected={optionRow === (page === 'graphics' ? 3 : page === 'controls' ? 7 : 1)}
+          onSelect={() => setOptionRow(page === 'graphics' ? 3 : page === 'controls' ? 7 : 1)}
+          onClick={commitPage}
+        />
+      )}
     </MenuBand>
   );
 }
@@ -526,8 +777,15 @@ function ConfirmScreen({
       <div className="og-source-confirm-question" style={menuBandRectStyle(CONFIRM_RECTS.question)}>
         <SourceMenuText ogui={ogui} text={question} role="row" />
       </div>
-      <SourceButton rect={CONFIRM_RECTS.yes} ogui={ogui} piece="confirmSmall" label="Yes" onClick={onConfirm} />
-      <SourceButton rect={CONFIRM_RECTS.no} ogui={ogui} piece="confirmSmall" label="No" onClick={onCancel} />
+      <SourceButtonList
+        ogui={ogui}
+        axis="horizontal"
+        initial="last"
+        items={[
+          { rect: CONFIRM_RECTS.yes, piece: 'confirmSmall', label: MENU_TEXT_SOURCE.confirm, accessibleLabel: 'Confirm', onClick: onConfirm },
+          { rect: CONFIRM_RECTS.no, piece: 'confirmSmall', label: MENU_TEXT_SOURCE.cancel, accessibleLabel: 'Cancel', onClick: onCancel },
+        ]}
+      />
     </MenuBand>
   );
 }
@@ -600,6 +858,16 @@ export function CreditsScreen() {
     const timer = window.setTimeout(() => setVisual(transition.next), transition.delay);
     return () => window.clearTimeout(timer);
   }, [ogui, visual]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || !['Escape', 'Enter', 'NumpadEnter'].includes(event.code)) return;
+      event.preventDefault();
+      menuAudio.click();
+      set({ phase: 'menu' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [set]);
   if (!ogui) return null;
   const fadeDuration =
     visual.kind === 'text'
@@ -650,7 +918,7 @@ export function CreditsScreen() {
           draggable={false}
         />
       )}
-      <SourceButton rect={CREDITS_RECTS.back} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'menu' })} />
+      <SourceButton rect={CREDITS_RECTS.back} ogui={ogui} piece="buttonMedium" label={MENU_TEXT_SOURCE.back} onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );
 }
@@ -666,7 +934,7 @@ export function PauseOverlay() {
     return (
       <ConfirmScreen
         ogui={ogui}
-        question={confirm === 'restart' ? 'Do you want to restart the level?' : 'Do you want to exit the level?'}
+        question={confirm === 'restart' ? MENU_TEXT_SOURCE.restartQuestion : MENU_TEXT_SOURCE.exitLevelQuestion}
         onConfirm={() => (confirm === 'restart' ? loadLevel(level) : set({ phase: 'menu', level }))}
         onCancel={() => setConfirm(null)}
       />
@@ -674,16 +942,22 @@ export function PauseOverlay() {
   }
   return (
     <MenuBand ogui={ogui}>
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Restart Level" onClick={() => setConfirm('restart')} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Highscore" onClick={() => set({ phase: 'pauseHighscore' })} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => set({ phase: 'pauseOptions' })} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Exit Level" onClick={() => setConfirm('exit')} />
-      <SourceButton rect={MENU_BACK_RECT} ogui={ogui} piece="buttonMedium" label="Back" onClick={() => set({ phase: 'playing' })} />
+      <SourceButtonList
+        ogui={ogui}
+        initial="last"
+        items={[
+          { rect: LARGE_MENU_BUTTON_RECTS[0], label: MENU_TEXT_SOURCE.restartLevel, onClick: () => setConfirm('restart') },
+          { rect: LARGE_MENU_BUTTON_RECTS[1], label: MENU_TEXT_SOURCE.main[1], onClick: () => set({ phase: 'pauseHighscore' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[2], label: MENU_TEXT_SOURCE.options, onClick: () => set({ phase: 'pauseOptions' }) },
+          { rect: LARGE_MENU_BUTTON_RECTS[3], label: MENU_TEXT_SOURCE.exitLevel, onClick: () => setConfirm('exit') },
+          { rect: MENU_BACK_RECT, piece: 'buttonMedium', label: MENU_TEXT_SOURCE.back, onClick: () => set({ phase: 'playing' }) },
+        ]}
+      />
     </MenuBand>
   );
 }
 
-const SCORE_LABELS = ['Level Bonus', 'Time Points', 'Extra Lives', 'Score'] as const;
+const SCORE_LABELS = MENU_TEXT_SOURCE.scoreLabels;
 
 function waitFor(ms: number, cancelled: () => boolean, interrupted?: () => boolean): Promise<boolean> {
   return new Promise((resolve) => {
@@ -873,10 +1147,10 @@ function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: num
   return (
     <MenuBand ogui={ogui}>
       <div className="og-source-entry-title" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.title)}>
-        <SourceMenuText ogui={ogui} text="New highscore entry!" role="primary" />
+        <SourceMenuText ogui={ogui} text={MENU_TEXT_SOURCE.highscoreEntry} role="primary" />
       </div>
       <div className="og-source-entry-score" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.score)}>
-        <SourceMenuText ogui={ogui} text={`${total} Points`} role="primary" />
+        <SourceMenuText ogui={ogui} text={`${total} ${MENU_TEXT_SOURCE.points}`} role="primary" />
       </div>
       <div className="og-source-entry-field" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.name)}>
         <div className="og-source-entry-value" aria-hidden="true">
@@ -901,7 +1175,7 @@ function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: num
           }}
         />
       </div>
-      <SourceButton rect={HIGHSCORE_ENTRY_RECTS.confirm} ogui={ogui} piece="buttonMedium" label="OK" onClick={submit} />
+      <SourceButton rect={HIGHSCORE_ENTRY_RECTS.confirm} ogui={ogui} piece="buttonMedium" label={MENU_TEXT_SOURCE.confirm} onClick={submit} />
     </MenuBand>
   );
 }
@@ -918,16 +1192,21 @@ function EndMenu({ ogui, level }: { ogui: Ogui; level: number }) {
   }
   return (
     <MenuBand ogui={ogui}>
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[0]} ogui={ogui} label="Restart Level" onClick={() => loadLevel(level)} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Highscore" onClick={() => setSubscreen('highscore')} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[2]} ogui={ogui} label="Options" onClick={() => setSubscreen('options')} />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[3]} ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
-      <SourceButton
-        rect={LARGE_MENU_BUTTON_RECTS[4]}
+      <SourceButtonList
         ogui={ogui}
-        label="Next Level"
-        disabled={level >= 12}
-        onClick={() => loadLevel(level + 1)}
+        initial="last"
+        items={[
+          { rect: LARGE_MENU_BUTTON_RECTS[0], label: MENU_TEXT_SOURCE.restartLevel, onClick: () => loadLevel(level) },
+          { rect: LARGE_MENU_BUTTON_RECTS[1], label: MENU_TEXT_SOURCE.main[1], onClick: () => setSubscreen('highscore') },
+          { rect: LARGE_MENU_BUTTON_RECTS[2], label: MENU_TEXT_SOURCE.options, onClick: () => setSubscreen('options') },
+          { rect: LARGE_MENU_BUTTON_RECTS[3], label: MENU_TEXT_SOURCE.home, onClick: () => set({ phase: 'menu' }) },
+          {
+            rect: LARGE_MENU_BUTTON_RECTS[4],
+            label: MENU_TEXT_SOURCE.nextLevel,
+            disabled: level >= 12,
+            onClick: () => loadLevel(level + 1),
+          },
+        ]}
       />
     </MenuBand>
   );
@@ -961,7 +1240,7 @@ export function FinishedOverlay() {
     return <HighscoreEntry ogui={ogui} level={level} total={score.total} onDone={() => setFlow('highscore')} />;
   }
   if (flow === 'highscore') {
-    return <HighscoreScreen initialLevel={level} exitLabel="Next" onExit={() => setFlow('end')} />;
+    return <HighscoreScreen initialLevel={level} exitLabel={MENU_TEXT_SOURCE.next} onExit={() => setFlow('end')} />;
   }
   return <EndMenu ogui={ogui} level={level} />;
 }
@@ -972,16 +1251,21 @@ export function GameOverOverlay() {
   if (!ogui) return null;
   return (
     <MenuBand ogui={ogui}>
-      <SourceButton
-        rect={LARGE_MENU_BUTTON_RECTS[0]}
+      <SourceButtonList
         ogui={ogui}
-        label="Restart Level"
-        onClick={() => {
-          menuAudio.levelLoad();
-          loadLevel(level);
-        }}
+        escape="none"
+        items={[
+          {
+            rect: LARGE_MENU_BUTTON_RECTS[0],
+            label: MENU_TEXT_SOURCE.restartLevel,
+            onClick: () => {
+              menuAudio.levelLoad();
+              loadLevel(level);
+            },
+          },
+          { rect: LARGE_MENU_BUTTON_RECTS[1], label: MENU_TEXT_SOURCE.home, onClick: () => set({ phase: 'menu' }) },
+        ]}
       />
-      <SourceButton rect={LARGE_MENU_BUTTON_RECTS[1]} ogui={ogui} label="Home" onClick={() => set({ phase: 'menu' })} />
     </MenuBand>
   );
 }

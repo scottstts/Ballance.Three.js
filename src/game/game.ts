@@ -333,6 +333,7 @@ export async function startGame(
     ballKind: 'wood',
     whiteFade: false,
     tutorialChapter: tutorial?.chapter ?? null,
+    tutorialPanelVisible: tutorial?.active ?? false,
     tutorialVisible: tutorial?.active ?? false,
   });
   if (import.meta.env.DEV && bootFlags.has('finish')) {
@@ -593,7 +594,7 @@ export async function startGame(
     }
     if (s.phase !== 'playing') return; // paused/gameover freeze the sim
 
-    tutorial?.update(SIM_DT, ball.position, input);
+    tutorial?.update(SIM_DT, ball.position, input, ball.kind);
     if (tutorial?.frozen) {
       // CK's tutorial writes the global physics time factor to zero. Keep
       // rigid-body velocities intact and simply do not advance the world.

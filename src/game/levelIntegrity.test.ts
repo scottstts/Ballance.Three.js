@@ -53,4 +53,32 @@ describe.skipIf(!hasGame)('level gameplay structure', () => {
       }
     });
   }
+
+  it('retains the four non-axis-aligned fan placements that require local-box tests', () => {
+    const rotated: string[] = [];
+    for (let n = 1; n <= 12; n++) {
+      const file = parseNmo(
+        readFileSync(join(GAME_DIR, '3D Entities/Level', `Level_${String(n).padStart(2, '0')}.NMO`)),
+      );
+      const group = file.groups.find((candidate) => candidate.name === 'P_Modul_18');
+      for (const index of group?.memberIndices ?? []) {
+        const entity = file.objects[index];
+        if (entity?.kind !== 'entity') continue;
+        const basis = [...entity.worldMatrix].filter((_, component) =>
+          [0, 1, 2, 4, 5, 6, 8, 9, 10].includes(component),
+        );
+        const axisAligned = basis.every((value) => {
+          const magnitude = Math.abs(value);
+          return magnitude < 1e-5 || Math.abs(magnitude - 1) < 1e-5;
+        });
+        if (!axisAligned) rotated.push(`L${n}:${entity.name}`);
+      }
+    }
+    expect(rotated).toEqual([
+      'L2:P_Modul_18_04',
+      'L2:P_Modul_18_06',
+      'L2:P_Modul_18_07',
+      'L12:P_Modul_18_01',
+    ]);
+  });
 });

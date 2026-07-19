@@ -253,11 +253,35 @@ ballance-web/
    All use the serialized screen-proportional scale, white-to-black grading, and shadow path.
    Control values occupy their own `M_Opt_Keys_Key1..6` rectangles instead of an invented
    flexbox column, and static option fields keep `M_Button_Up` until an authored hover edge.
+   Menu keyboard state is likewise serialized rather than delegated to browser focus:
+   Start, Level 1, and Graphics begin selected; Pause begins on Back; End begins on its
+   last valid action; up/down wraps past inactive rows; Return activates; and Escape follows
+   each graph's exit edge. `Menu_YesNo` begins on No and uses left/right. Graphics, Controls,
+   and Sound edit graph-local values, commit them only through their Back path, and discard
+   them through Escape (with Sound's menu-atmosphere volume still previewed live).
+   Visible English copy is retained cell-for-cell from `Language.nmo`, including leading
+   spaces used by the bitmap-font alignment, the four score-label colons, lowercase
+   `Next level`, and the intentionally blank Cancel capsule beside the `OK` confirmation.
+   Semantic browser accessibility names are separate and do not alter those source pixels.
    The Graphics Synch toggle follows its two shipped `Time Settings` branches: browser display sync when on,
    or a 60 FPS presentation limit when off; neither changes the independent 66 Hz simulation.
    Control remapping is restricted to the 72 `Language.nmo/all_keys` entries and displays that
    table's exact English labels. Unsupported keys leave the waiter active and Escape cancels,
    matching `Menu_Opt_Keys/SetKey` instead of accepting arbitrary browser key codes.
+   The Level 1 tutorial follows the two-stage source graph rather than showing each lesson at
+   the previous target: hidden XZ approach gates at 16/14/4.5/18/20 units reveal chapters
+   4–8, Return resumes physics, and the corresponding 3/5/2.5/3/2.5-unit action gate advances
+   to the next wait. Reaching the ramp as wood skips the stone-ball hint. The final hints appear
+   after the authored four-second post-checkpoint delay, and Return then closes them. Tutorial
+   text uses the `.4/.5` proportional font scale, `(-1.3,-1)` spacing, two-pixel margins,
+   200 ms text/panel fades, and the later 300 ms panel reveal. The first panel remains
+   present while the text changes through the camera and movement lessons; those chapters
+   continue with live physics after the opening Return. Tutorial arrows use the original
+   500 ms material fades (600 ms after the four-direction exercise), the four 150 ms
+   `1 -> 1.8 -> 1` key-scale animations, and the 510 ms post-action handoff. The target
+   arrow is placed at marker-relative zero as `Set Pfeilrunter` specifies, without restoring
+   the editor-only `(-1,+1,0)` offset. All tutorial gates retain their adaptive 1-to-10-frame
+   `TT Scaleable Proximity` cadence as well as the authored XZ thresholds.
    Level transitions retain `base.cmo/Loading_Screen` rather than substituting a generic
    spinner: its textureless `Ladebalken` entity occupies normalized Y `.97000045..1`, uses
    the serialized orange alpha interpolation, starts from the shipped `4/9` local state plus
@@ -296,6 +320,16 @@ External rebuilds may explain an opaque enum or supply a complementary asset,
 but cannot override the original binary. Each TS class builds source-authored
 bodies/joints and implements its serialized `activate() / deactivate() /
 reset()` sector lifecycle and sound/control graph.
+
+`P_Modul_18` is also a collision-precision case. Its `Physics Force` graph reads
+`CurrentLevel[0].ActiveBall` and tests that entity against the hidden
+`P_Modul_18_Kollisionsquader` with `Box Box Intersection`; both hierarchy flags
+are false. Static recovery of `Collisions.dll` shows the behavior forwarding
+those entities to `CKCollisionManager::BoxBoxIntersection` with local-box mode
+enabled for both arguments. The runtime therefore transforms the two local mesh
+bounds into OBBs and performs the same separating-axis test. A world-AABB
+shortcut is observably wrong for the non-axis-aligned fans in levels 2 and 12,
+and a radius cube is wrong for the asymmetric paper-ball mesh.
 
 Implement in level order of appearance — Level 1 needs only a handful.
 

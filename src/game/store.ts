@@ -127,6 +127,8 @@ export interface GameState {
   winScreen: boolean;
   /** Authored level-1 tutorial row currently shown, or null when inactive. */
   tutorialChapter: number | null;
+  /** Tutorial.nmo's independently animated lower-screen backing panel. */
+  tutorialPanelVisible: boolean;
   tutorialVisible: boolean;
   progress: Progress;
   settings: Settings;
@@ -154,6 +156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   whiteFade: false,
   winScreen: false,
   tutorialChapter: null,
+  tutorialPanelVisible: false,
   tutorialVisible: false,
   progress: initial.progress,
   settings: initial.settings,

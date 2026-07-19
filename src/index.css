@@ -37,7 +37,10 @@ body,
   width: 58.03%;
   height: 26.005%;
   background: rgba(0, 0, 0, 0.4705883);
-  animation: tutorial-back-in 0.2s linear both;
+}
+
+.tutorial-back-later.tutorial-fade-in {
+  animation-duration: 0.3s;
 }
 
 .tutorial-text {
@@ -52,30 +55,40 @@ body,
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
-  animation: tutorial-text-in 0.5s linear both;
 }
 
 .tutorial-text img {
   display: block;
   flex: 0 0 auto;
-  height: 3.3333cqh;
   max-width: 100%;
   filter: drop-shadow(-0.31cqw 0.72cqh 0 rgba(0, 0, 0, 0.5));
 }
 
+.tutorial-text img:not(:last-child) {
+  margin-bottom: -0.208333cqh;
+}
+
 .tutorial-blank {
-  height: 3.3333cqh;
+  height: 2.916667cqh;
   flex: 0 0 auto;
 }
 
-@keyframes tutorial-back-in {
+.tutorial-fade-in {
+  animation: tutorial-interface-in 0.2s linear both;
+}
+
+.tutorial-fade-out {
+  animation: tutorial-interface-out 0.2s linear both;
+}
+
+@keyframes tutorial-interface-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes tutorial-text-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes tutorial-interface-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .game-canvas {

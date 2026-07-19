@@ -226,6 +226,36 @@ describe.skipIf(!hasGame)('source-backed module physics table', () => {
     expect(
       file.byName.get('P_Modul_18_Kollisionsquader')?.some((record) => record.kind === 'entity'),
     ).toBe(true);
+
+    const intersection = file.objects.find(
+      (record): record is BehaviorRec => record.kind === 'behavior' && record.name === 'Box Box Intersection',
+    );
+    expect(intersection).toBeDefined();
+    if (intersection) {
+      const rawParameters = intersection.referenceLists
+        .flat()
+        .map((index) => file.objects[index])
+        .filter((record): record is ParameterRec => record?.kind === 'parameter');
+      const entity1 = rawParameters.find((parameter) => parameter.name === 'Entity 1');
+      const entity2 = rawParameters.find((parameter) => parameter.name === 'Entity 2');
+      const cellValue = entity1 && entity1.sourceIndex >= 0 ? file.objects[entity1.sourceIndex] : null;
+      const getActiveBall = file.objects.find(
+        (record): record is BehaviorRec =>
+          record.kind === 'behavior' &&
+          record.name === 'Get Cell' &&
+          record.referenceLists[1]?.includes(cellValue?.index ?? -1),
+      );
+      const activeBallCell = getActiveBall ? behaviorParameters(file, getActiveBall) : null;
+      expect(intValue(activeBallCell?.get('Row Index'))).toBe(0);
+      expect(intValue(activeBallCell?.get('Column Index'))).toBe(1);
+      expect(objectValue(file, resolve(file, entity2!))?.name).toBe('P_Modul_18_Kollisionsquader');
+      expect(boolValue(resolve(file, rawParameters.find((parameter) => parameter.name === 'Hierarchy 1')!))).toBe(
+        false,
+      );
+      expect(boolValue(resolve(file, rawParameters.find((parameter) => parameter.name === 'Hierarchy 2')!))).toBe(
+        false,
+      );
+    }
   });
 
   it('P_Modul_18 matches both source planar particle layers', () => {

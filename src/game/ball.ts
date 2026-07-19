@@ -3,10 +3,12 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
+import { OBB } from 'three/addons/math/OBB.js';
 import { loadNmo } from '../engine/assets.ts';
 import { buildScene } from '../engine/sceneBuilder.ts';
 import { BALL_DEFS, FORCE_SCALE, type BallDef, type BallKind } from './constants.ts';
 import type { PhysicsWorld } from './physics.ts';
+import { sourceEntityObb } from './sourceBounds.ts';
 
 export class Ball {
   kind: BallKind = 'wood';
@@ -18,6 +20,9 @@ export class Ball {
   private physics: PhysicsWorld;
   /** the paper ball is physicalized as its crumpled mesh, not a sphere */
   private paperHull: Float32Array | null = null;
+  private boundsMatrix = new THREE.Matrix4();
+  private boundsPosition = new THREE.Vector3();
+  private boundsRotation = new THREE.Quaternion();
 
   private constructor(
     physics: PhysicsWorld,
@@ -106,6 +111,20 @@ export class Ball {
   get position(): THREE.Vector3 {
     const t = this.body.translation();
     return new THREE.Vector3(t.x, t.y, t.z);
+  }
+
+  /**
+   * CurrentLevel.ActiveBall is the entity used by the original fan's
+   * Box Box Intersection. Recreate its local-mesh OBB from the rigid-body
+   * transform without waiting for the next rendered-frame visual sync.
+   */
+  worldBoundingObb(target: OBB): OBB | null {
+    const translation = this.body.translation();
+    const rotation = this.body.rotation();
+    this.boundsPosition.set(translation.x, translation.y, translation.z);
+    this.boundsRotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    this.boundsMatrix.compose(this.boundsPosition, this.boundsRotation, this.visual.scale);
+    return sourceEntityObb(this.visual, target, this.boundsMatrix);
   }
 
   /** Sync the visual to the physics transform. */

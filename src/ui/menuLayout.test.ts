@@ -17,6 +17,7 @@ import {
   MENU_ATLAS_UV_SOURCE,
   MENU_BACK_RECT,
   MENU_BAND_RECT,
+  MENU_ENGLISH_SOURCE,
   MENU_FONT_SOURCE,
   OPTIONS_RECTS,
   SCORE_RECTS,
@@ -27,6 +28,20 @@ import {
 const menuPath = fileURLToPath(
   new URL('../../Ballance_bin/source1/Ballance/3D Entities/Menu.nmo', import.meta.url),
 );
+const languagePath = fileURLToPath(
+  new URL('../../Ballance_bin/source1/Ballance/3D Entities/Language.nmo', import.meta.url),
+);
+
+describe.skipIf(!existsSync(languagePath))('source-authored English menu strings', () => {
+  const language = parseNmo(readFileSync(languagePath));
+
+  it('preserves every Language.nmo cell, including spaces, punctuation, and blank Cancel', () => {
+    const table = language.byName.get('language')?.find((record) => record.kind === 'dataArray');
+    expect(table?.kind).toBe('dataArray');
+    if (table?.kind !== 'dataArray') return;
+    expect(table.rows.map((row) => row[2])).toEqual(MENU_ENGLISH_SOURCE);
+  });
+});
 
 function entity2d(file: NmoFile, name: string): Entity2dRec {
   const entity = file.byName.get(name)?.find((record): record is Entity2dRec => record.kind === 'entity2d');

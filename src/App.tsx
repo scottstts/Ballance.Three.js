@@ -48,8 +48,6 @@ export default function App() {
       if (e.code !== 'Escape') return;
       const p = useGameStore.getState().phase;
       if (p === 'playing') set({ phase: 'paused' });
-      else if (p === 'paused') set({ phase: 'playing' });
-      else if (p === 'pauseOptions' || p === 'pauseHighscore') set({ phase: 'paused' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

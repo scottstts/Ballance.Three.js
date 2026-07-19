@@ -1593,3 +1593,111 @@ sequence, and complete option subscreens are all implemented below.
   `requestAnimationFrame` when Graphics Synch is enabled, or the shipped 60 Hz
   limiter when disabled. The serialized millisecond waits and 610 ms reserve
   conversion cadence remain time-based and unchanged.
+
+## 2026-07-18 source menu keyboard and option transactions
+
+- The menu's keyboard selection is stored in the `RollOver?` columns, not left
+  to browser focus. `Menu_Main_ShowHide`, `Menu_Start_ShowHide`, and
+  `Menu_Options_ShowHide` select row zero; `Menu_Pause_ShowHide` and
+  `Menu_End_ShowHide` select their last row. The shared graph listens to scan
+  codes 200/208/28/1 (up/down/Return/Escape), wraps the active row, skips
+  inactive entries, swaps `M_Button_Up`/`M_Button_Over`, and routes Return or
+  the screen-specific Escape row through `Menu_Click`. These states and edges
+  now drive the browser sprites and actions directly.
+- `Menu_YesNo` is a separate horizontal graph: scan codes 203/205 select
+  Yes/No, No is highlighted by Initialize, Return invokes the selection, and
+  Escape always follows No. Highscore and Credits each bind both Return and
+  Escape to Back; their global source keys no longer depend on an HTML element
+  already having focus.
+- The three option subgraphs hold editable values locally. Back runs their
+  `Update Settings`/`Save Database` path; Escape exits without that update, and
+  Controls explicitly restores its backup arrays. The browser now stages all
+  fields accordingly. Sound alone previews `Menu_Atmo` volume as the source
+  `Volume` graph does, then restores the saved volume on Escape.
+
+## 2026-07-18 tutorial wait/action choreography correction
+
+- `Kapitel Wait` does not show lessons 4–8 as soon as the previous action
+  finishes. Its five XZ-only `TT Scaleable Proximity` gates wait at 16 units
+  from ExtraLife, 14 from SteinTrafo, 4.5 from Rampe, 18 from ExtraPoint, and
+  20 from Checkpoint. Only then does the interface appear and freeze physics.
+  After Return, the paired action graph advances at 3/5/2.5/3/2.5 units. The
+  former browser sequence displayed every later lesson one target too early.
+- `Wait for Rampe` tests the live ball object against `Ball_Wood` with Test
+  mode 2 (`!=`): a stone/paper ball sees the wood-transformer hint, while a
+  player who already reached the ramp as wood skips straight to the Point
+  Extra wait. After the checkpoint action, `Kapitel Wait` delays 4000 ms before
+  showing the closing hints; their Return ends the tutorial. The old port put
+  that delay after the closing Return instead.
+- All tutorial proximity nodes serialize axis mask 5 (XZ) and use a strict
+  boundary. `Tutorial Text/FadeIn` and both font FadeOut graphs share the 200 ms
+  `Text FadeTime`; initial panel reveal is 200 ms and later proximity reveals
+  are 300 ms. `Font_Tutorial` uses scale `.4,.5`, spacing `(-1.3,-1)`, margins
+  2 on every side, white-to-black grading, and the 120-degree/four-pixel half-
+  alpha shadow. The React overlay now preserves those source values and fades
+  out instead of disappearing synchronously.
+
+## 2026-07-18 tutorial arrow and physics choreography
+
+- `Kapitel Aktion/FadeIn` and `FadeOut` interpolate arrow-material diffuse
+  alpha over 500 ms, while `MoveKeys/FadeOut` uses 600 ms. Every completed
+  action then passes through a separate 510 ms `Delayer` before the tutorial
+  array advances. The arrow objects now retain their authored meshes,
+  transforms, and source fades through that full handoff rather than being
+  swapped synchronously.
+- `Set Pfeilrunter` first detaches and restores the arrow, then writes position
+  `(0,0,0)` relative to the selected `Tut_*` marker and parents it there. The
+  saved `Tutorial.nmo` transform happens to sit `(-1,+1,0)` from its initial
+  ExtraPoint parent, but that editor-state offset is overwritten by the graph;
+  it must not be added again in the browser. The mesh itself starts 2.199 units
+  above its pivot, so a zero marker-relative position still draws above the
+  target.
+- The four `MoveKeys` arrows use remapped forward/back/left/right controls and
+  absolute Z scale `1 -> 1.8 -> 1`, with each leg lasting 150 ms. Completion
+  waits for all four release animations or the separate 4-unit `Tut_KeyEnd`
+  XZ gate, then runs the 600 ms group fade. Its proximity has exactness range
+  0/4, frame delays 1/10, and serialized initial counter 2.
+- Chapters 1–3 do not pause physics. `Init` freezes chapter 0, Return (or its
+  25-second safety branch) restores time factor 2, and the camera-rotation,
+  camera-height, and movement chapters continue live. Only target lessons
+  4–8 and the final lesson freeze again. The backing panel remains visible
+  while text fades between chapters 0–3, then hides independently after
+  `MoveKeys`; later target lessons reveal it anew with the 300 ms curve.
+- All five outer and five inner gates now run the recovered `TT Scaleable
+  Proximity` fixed-frame cadence, not a per-PSI radius check. Outer exactness
+  ranges are 23/40, 25/35, 5/10, 40/60, and 35/50; inner ranges are uniformly
+  1/10. Every gate uses min/max frame delays 1/10, initial counter 2, XZ mask
+  5, non-squared distance, and the plugin's strict `EnterRange` edge.
+
+## 2026-07-18 fan local-box intersection correction
+
+- `P_Modul_18/Physics Force` feeds `CurrentLevel` row 0, column 1
+  (`ActiveBall`) and the hidden `P_Modul_18_Kollisionsquader` to `Box Box
+  Intersection`; both serialized hierarchy inputs are false. The graph checks
+  this on the adaptive proximity node's `InRange` output, creates the authored
+  `.1` force on True, and destroys it on False.
+- `Collisions.dll` registers the behavior at GUID
+  `64154401-76cf37af`. Its recovered executor obtains collision manager GUID
+  `38244712`, then calls vtable slot `.BoxBoxIntersection(entity1, hierarchy1,
+  true, entity2, hierarchy2, true)`. The SDK contract defines those true flags
+  as local-box mode: each mesh-local bound is transformed into an oriented
+  bounding box before intersection.
+- The previous browser code expanded the wind mesh to a world `Box3` and
+  compared it with a radius cube. That admitted empty corners around rotated
+  volumes and discarded the paper mesh's asymmetric bounds. The runtime now
+  performs OBB-vs-OBB SAT from the exact current ball mesh and hidden volume
+  mesh. Original placements that prove this distinction are
+  `L2:P_Modul_18_04`, `_06`, `_07`, and `L12:P_Modul_18_01`.
+
+## 2026-07-18 exact English menu cells
+
+- `Language.nmo/language` has 52 rows. The browser now locks and uses the
+  entire serialized English column rather than normalized web labels. This
+  restores two leading spaces on Back and option-field captions, colons on
+  `Level Bonus:`, `Time Points:`, `Extra Lives:`, and `Score:`, and the source
+  casing `Next level`.
+- `Strings YesNo Menu` reads row 19 (`OK`) for the left button and row 20 (an
+  intentionally empty string in every language) for Cancel. The previous
+  visible `Yes`/`No` labels were taken from the unrelated graphics-option rows
+  34/35. The cancel capsule remains accessibility-labeled without adding
+  pixels absent from the original.

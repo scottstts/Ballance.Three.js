@@ -4,8 +4,10 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
+import { OBB } from 'three/addons/math/OBB.js';
 import { loadCkTexture } from '../../engine/textures.ts';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
+import { sourceEntityObb } from '../sourceBounds.ts';
 import { TRAFO_SOURCE } from '../effects.ts';
 import { ScaleableProximity } from '../proximity.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
@@ -220,7 +222,8 @@ class BridgeModul extends PhysicsModul {
 
 /** Fan: applies the original updraft to the ball while inside the wind volume. */
 class FanModul extends Modul {
-  private windBox: THREE.Box3 | null = null;
+  private windObb: OBB | null = null;
+  private ballObb = new OBB();
   private rotor: THREE.Object3D | undefined;
   private particleTarget: THREE.Object3D;
   private effectActive = false;
@@ -247,7 +250,7 @@ class FanModul extends Modul {
     for (const [partName, obj] of instance.parts) {
       if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
         obj.updateWorldMatrix(true, false);
-        this.windBox = new THREE.Box3().setFromObject(obj);
+        this.windObb = sourceEntityObb(obj, new OBB());
         obj.visible = false;
       }
       if (partName.includes('Rotor')) this.rotor = obj;
@@ -313,14 +316,9 @@ class FanModul extends Modul {
 
     const force = this.forceProximity.updatePositions(this.ctx.ball.position, particlePosition);
     if (force === 'enterRange') this.forceActive = false;
-    else if (force === 'inRange' && this.windBox) {
-      const position = this.ctx.ball.position;
-      const radius = this.ctx.ball.def.radius;
-      const ballBox = new THREE.Box3(
-        new THREE.Vector3(position.x - radius, position.y - radius, position.z - radius),
-        new THREE.Vector3(position.x + radius, position.y + radius, position.z + radius),
-      );
-      this.forceActive = this.windBox.intersectsBox(ballBox);
+    else if (force === 'inRange' && this.windObb) {
+      const activeBallObb = this.ctx.ball.worldBoundingObb(this.ballObb);
+      this.forceActive = activeBallObb ? this.windObb.intersectsOBB(activeBallObb) : false;
     }
     if (this.forceActive) {
       const up = localDirToWorld(this.instance, [0, 1, 0]);
@@ -355,7 +353,13 @@ class FanModul extends Modul {
       soundPosition: this.instance.root.getWorldPosition(new THREE.Vector3()).toArray(),
       rotorRotationY: this.rotor?.rotation.y ?? null,
       particles: this.particles.debugState(),
-      windBox: this.windBox ? { min: this.windBox.min.toArray(), max: this.windBox.max.toArray() } : null,
+      windObb: this.windObb
+        ? {
+            center: this.windObb.center.toArray(),
+            halfSize: this.windObb.halfSize.toArray(),
+            rotation: this.windObb.rotation.toArray(),
+          }
+        : null,
     };
   }
 
