@@ -16,7 +16,10 @@ export type LevelEvent =
 
 export interface ResetPoint {
   position: THREE.Vector3;
+  /** camera-rig heading after New Ball stamps Cam_MF with this matrix */
   yaw: number;
+  /** the reset frame's full rotation (New Ball also stamps the ball with it) */
+  rotation: THREE.Quaternion;
 }
 
 interface SectorPickup {
@@ -138,12 +141,15 @@ function trailingNumber(name: string): number | null {
   return m ? parseInt(m[1], 10) : null;
 }
 
-function resetPointFrom(e: BuiltEntity): ResetPoint {
+export function resetPointFrom(e: BuiltEntity): ResetPoint {
   const pos = e.object.position.clone();
   // entity forward (Virtools +Z) after conversion points along local -Z
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(e.object.quaternion);
-  const yaw = Math.atan2(-fwd.x, -fwd.z);
-  return { position: pos, yaw };
+  // New Ball restores the rig ICs and stamps Cam_MF with this matrix
+  // (Hierarchy TRUE): the rig heading is the mirrored frame yaw, verified
+  // against the raw Cam_MF stamp for every L01/L02/L12 reset point.
+  const yaw = Math.atan2(fwd.x, -fwd.z);
+  return { position: pos, yaw, rotation: e.object.quaternion.clone() };
 }
 
 export function sphereContains(center: THREE.Vector3, point: THREE.Vector3, distance: number): boolean {

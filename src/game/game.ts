@@ -229,6 +229,14 @@ export async function startGame(
   partLoaded();
 
   const rig = new CamRig(4 / 3);
+  // Level start runs the same New Ball graph as a respawn: the rig is
+  // IC-restored and stamped onto PR_Resetpoint_01's frame (yaw 180 in the
+  // original space on every level), and the ball receives the frame rotation.
+  ball.body.setRotation(
+    { x: spawn.rotation.x, y: spawn.rotation.y, z: spawn.rotation.z, w: spawn.rotation.w },
+    false,
+  );
+  rig.resetTo(spawnPos, spawn.yaw);
   const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
@@ -510,7 +518,14 @@ export async function startGame(
     // transformation respawns the transformed ball.
     const rp = logic.spawnFor(logic.currentSector);
     ball.teleport(rp.position);
-    rig.rebindTarget();
+    // Set World Matrix ActiveBall <- CurrentResetpoint (Hierarchy TRUE):
+    // the ball receives the frame's rotation too.
+    ball.body.setRotation({ x: rp.rotation.x, y: rp.rotation.y, z: rp.rotation.z, w: rp.rotation.w }, false);
+    // TT Restore IC (Cam_MF, hierarchy) + Set World Matrix Cam_MF <- the
+    // same matrix: the whole rig collapses to its authored arrangement and
+    // teleports onto the reset frame behind the full-white pulse, wiping any
+    // Cam Navigation quarter turns.
+    rig.resetTo(rp.position, rp.yaw);
     moduls.resetSector(logic.currentSector);
     // Any death in the final sector re-runs PE_Balloon's teardown/rebuild
     // and re-arms its one-shot 70-unit wake gate.

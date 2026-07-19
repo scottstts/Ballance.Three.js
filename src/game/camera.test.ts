@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
 import { CamRig, DynamicPosition } from './camera.ts';
+import { vxMatrixToThree } from '../engine/convert.ts';
+import { resetPointFrom } from './level.ts';
 import {
   BALL_BIRTH_DELAY,
   BALL_OFF_DELAY,
@@ -349,5 +351,37 @@ describe.skipIf(!existsSync(basePath))('base end-flow authority', () => {
       .map((entry) => resolve(base, entry).name);
     expect(scriptParameters).toContain('Menu_Dead Script');
     expect(scriptParameters).toContain('Menu_Score Script');
+  });
+});
+
+describe.skipIf(!existsSync(GAME_DIR))('New Ball reset-point camera stamp', () => {
+  it('places the rig exactly where stamping Cam_MF with each reset matrix would', () => {
+    // Source: TT Restore IC (Cam_MF, hierarchy) then Set World Matrix
+    // Cam_MF <- CurrentResetpoint. The settled slot is the authored Cam_Pos
+    // local transformed by the reset frame. Verify the port's yaw derivation
+    // reproduces that composition for every reset point of three levels.
+    for (const level of ['01', '02', '12']) {
+      const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/Level', `Level_${level}.NMO`)));
+      for (const rec of file.objects) {
+        if (rec?.kind !== 'entity' || !/^PR_Resetpoint_\d+$/.test(rec.name)) continue;
+        const m = rec.worldMatrix;
+        // original-space slot = resetPos + local.x*rowX + local.y*rowY + local.z*rowZ
+        const local = [CAM_SLOT_OFFSET[0], CAM_SLOT_OFFSET[1], -CAM_SLOT_OFFSET[2]] as const;
+        const slotOriginal = [
+          m[12] + local[0] * m[0] + local[1] * m[4] + local[2] * m[8],
+          m[13] + local[0] * m[1] + local[1] * m[5] + local[2] * m[9],
+          m[14] + local[0] * m[2] + local[1] * m[6] + local[2] * m[10],
+        ];
+        const slotPort = new THREE.Vector3(slotOriginal[0], slotOriginal[1], -slotOriginal[2]);
+
+        const object = new THREE.Object3D();
+        vxMatrixToThree(m, object.matrix);
+        object.matrix.decompose(object.position, object.quaternion, object.scale);
+        const rp = resetPointFrom({ rec, object } as never);
+        const rig = new CamRig(4 / 3);
+        rig.resetTo(rp.position, rp.yaw);
+        expect(rig.camera.position.distanceTo(slotPort), `${level} ${rec.name}`).toBeLessThan(0.01);
+      }
+    }
   });
 });

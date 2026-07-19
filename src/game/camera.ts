@@ -110,7 +110,11 @@ export class CamRig {
     return THREE.MathUtils.lerp(this.yawFrom, this.yawTarget, t);
   }
 
-  /** Debug/preview helper; normal level starts retain Camera.nmo's authored state. */
+  /**
+   * New Ball's camera stamp: TT Restore IC on Cam_MF (hierarchy) collapses
+   * the rig to its authored arrangement, then Set World Matrix teleports it
+   * onto the reset frame. Runs at level start and on every respawn.
+   */
   resetTo(ballPos: THREE.Vector3, yaw = 0): void {
     this.navigationActive = true;
     this.slotAttached = true;

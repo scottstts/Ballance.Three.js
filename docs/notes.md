@@ -1928,6 +1928,36 @@ sequence, and complete option subscreens are all implemented below.
 - The level P_Modul_18_XX placement entities are marker meshes deleted by
   Replace PH at runtime; they never carry physics or sound groups.
 
+## 2026-07-19 Cam_MF respawn stamp - camera yaw resets at every rebirth
+
+- CORRECTION to the source-exact camera section: "Camera orientation
+  persists across ball falls ... Reset-point orientation is unrelated" is
+  WRONG. Cam_MF is the master PARENT of the whole rig (Cam_Target with
+  Cam_Orient/Cam_Pos/Cam_OrientRef beneath, and InGameCam). Gameplay.nmo's
+  New Ball runs, in order: Set World Matrix ActiveBall <- CurrentResetpoint
+  (hierarchy), TT Restore IC Cam_MF (hierarchy), Set World Matrix Cam_MF <-
+  the same matrix (hierarchy). New Ball runs at LEVEL START and at every
+  death (Ball OFF + 1 behavior frame, hidden behind the full-white pulse).
+- The camera ICs are captured by the ENGINE at load: every Cam_* object
+  serializes scene-activity flags 0xd0, and CKScene::AddObject saves the
+  object state as its InitialValue when bit 0x80 is set. Restore IC
+  therefore collapses the rig to its authored Camera.nmo arrangement -
+  wiping any Cam Navigation quarter turns - and the stamp teleports it
+  rigidly onto the reset frame: camera = resetPos + authoredLocal rotated
+  by the frame. Every level has mid-course reset yaws (90/180/-90/0 mix),
+  and PR_Resetpoint_01 is yaw 180 on ALL twelve levels - the port's old
+  yaw-0 start camera sat on the OPPOSITE side of the ball.
+- Port fixes: resetPointFrom yaw is the mirrored heading atan2(fwd.x,
+  -fwd.z) (the old -fwd.x form was exact only for 0/180 and landed 44
+  units wrong for +-90 points); respawn() and level start now run
+  rig.resetTo(resetPosition, resetYaw) plus the ball rotation stamp.
+  camera.test locks the rig slot against the raw serialized reset matrices
+  of L01/L02/L12 (17 points, within 0.01 of the exact stamp composition).
+  Live validation: start camera at (-22,35,0) relative yaw pi; a quarter
+  turn to pi/2 snaps back to pi after death; the L2 sector-4 -90 reset
+  point respawns at exactly +pi/2. PR_Resetpoint (not PS_FourFlames) is
+  the camera authority.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was
