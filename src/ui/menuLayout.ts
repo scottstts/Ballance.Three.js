@@ -249,11 +249,11 @@ export const MENU_FONT_SOURCE = {
   },
   row: {
     name: 'GameFont_03',
-    scale: [0.3499999940395355, 0.3999999761581421] as const,
+    scale: [0.3499999940395355, 0.4000000059604645] as const,
   },
   inactive: {
     name: 'GameFont_03a',
-    scale: [0.3499999940395355, 0.3999999761581421] as const,
+    scale: [0.3499999940395355, 0.4000000059604645] as const,
     color: '#838383',
     colorLinear: [0.5137255191802979, 0.5137255191802979, 0.5137255191802979, 1] as const,
   },
@@ -339,9 +339,9 @@ const OPTIONS_TITLE_RECT = [
 ] as MenuRect;
 
 const OPTIONS_BACK_RECT = [
-  0.4031502306461334,
+  0.4030999541282654,
   0.8500005006790161,
-  0.5906505584716797,
+  0.5906002521514893,
   0.9438004493713379,
 ] as MenuRect;
 
@@ -477,7 +477,14 @@ export const OPTIONS_RECTS = {
 
 export const CREDITS_RECTS = {
   text: [0.3400000035762787, 0.30000001192092896, 0.6599999666213989, 0.7000000476837158] as MenuRect,
-  back: OPTIONS_BACK_RECT,
+  // M_Credits_But_Back is its own serialized entity, 5e-5 right of the
+  // options Back capsule.
+  back: [
+    0.4031502306461334,
+    0.8500005006790161,
+    0.5906505584716797,
+    0.9438004493713379,
+  ] as MenuRect,
   logo1: [
     0.40000003576278687,
     0.4000004827976227,

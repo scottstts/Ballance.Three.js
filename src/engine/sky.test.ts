@@ -19,8 +19,10 @@ describe('TT SkyAround procedural mesh', () => {
       [27, 6, 3], [33, 3, 4],
     ]);
 
-    const halfHeight = Math.SQRT2 * MENU_SKY_SOURCE.radius * 0.5;
-    expect(Array.from(positions.array.slice(0, 21))).toEqual([
+    // Vertex data lives in a Float32Array (as in the original D3D vertex
+    // buffer), so expectations round through float32 and -0 normalizes to 0.
+    const halfHeight = Math.fround(Math.SQRT2 * MENU_SKY_SOURCE.radius * 0.5);
+    expect(Array.from(positions.array.slice(0, 21), (value) => (value === 0 ? 0 : value))).toEqual([
       70, -halfHeight, 0,
       expect.closeTo(0, 5), -halfHeight, -70,
       expect.closeTo(0, 5), halfHeight, -70,

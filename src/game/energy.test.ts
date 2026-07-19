@@ -115,14 +115,20 @@ describe.skipIf(!existsSync(gameplayPath))('Gameplay_Energy binary authority', (
       'Timefactor',
       'LifeBonus',
     ]);
-    expect(energy.rows[0]).toEqual([
-      0,
-      0,
-      LEVEL_START_POINTS,
-      LEVEL_START_LIVES,
-      POINT_COUNT_INTERVAL * 1000,
-      LIFE_BONUS_POINTS,
-    ]);
+    expect(energy.rows[0].slice(0, 4)).toEqual([0, 0, LEVEL_START_POINTS, LEVEL_START_LIVES]);
+    expect(energy.rows[0][5]).toBe(LIFE_BONUS_POINTS);
+
+    // Timefactor is a parameter-typed column (CK_ARRAYTYPE_PARAMETER): the cell
+    // stores an object reference to a nameless CKParameterOut whose TIME value
+    // carries the serialized milliseconds.
+    expect(energy.columns[4].parameterGuid).toEqual([0x54b4422b, 0x730f0f4f]);
+    const cellRef = energy.rows[0][4];
+    expect(typeof cellRef).toBe('number');
+    const timefactor = file.objects[cellRef as number];
+    expect(timefactor?.kind).toBe('parameter');
+    if (timefactor?.kind !== 'parameter') return;
+    const view = new DataView(timefactor.valueBytes.buffer, timefactor.valueBytes.byteOffset);
+    expect(view.getFloat32(0, true)).toBe(POINT_COUNT_INTERVAL * 1000);
   });
 
   it('pauses and resumes TT_Timer only through the four authored messages', () => {

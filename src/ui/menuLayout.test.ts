@@ -204,7 +204,9 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     const score = texts.find((node) => int(parameter(menu, node, 'Alignment')) === 2);
     if (!player || !score) throw new Error('missing source highscore row text');
 
-    expect(floats(parameter(menu, init, 'Name_X_Off'))).toEqual(MENU_FONT_SOURCE.highscoreNameOffset);
+    // Init's authored "Position" input carries the X shift; the graph copies
+    // it into the "Name_X_Off" local whose saved bytes are the live [0,0].
+    expect(floats(parameter(menu, init, 'Position'))).toEqual(MENU_FONT_SOURCE.highscoreNameOffset);
     expect(floats(parameter(menu, player, 'Margins'))).toEqual(MENU_FONT_SOURCE.margins);
     expect(floats(parameter(menu, score, 'Margins'))).toEqual(MENU_FONT_SOURCE.highscoreScoreMargins);
     expect(int(parameter(menu, player, 'Text Properties')) & 1).toBe(1);

@@ -61,6 +61,11 @@ function scalar(file: NmoFile, parameter: ParameterRec): number {
   return floats(file, parameter)[0];
 }
 
+function int(file: NmoFile, parameter: ParameterRec): number {
+  const bytes = resolved(file, parameter).valueBytes;
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt32(0, true);
+}
+
 describe.skipIf(!base)('source loading screen', () => {
   it('retains the shipped bar entity, material, and nine-part color progression', () => {
     const file = base!;
@@ -102,7 +107,7 @@ describe.skipIf(!base)('source loading screen', () => {
     expect(resolved(file, parameters(file, waitMessage).find((parameter) => parameter.name === 'Message')!).managerInt).toBe(
       25,
     );
-    expect(scalar(file, parameters(file, test).find((parameter) => parameter.name === 'Test')!)).toBe(6);
+    expect(int(file, parameters(file, test).find((parameter) => parameter.name === 'Test')!)).toBe(6);
   });
 
   it('retains the one-frame wait loop and two-frame completed-load handoff', () => {

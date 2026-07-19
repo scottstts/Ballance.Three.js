@@ -1701,3 +1701,38 @@ sequence, and complete option subscreens are all implemented below.
   visible `Yes`/`No` labels were taken from the unrelated graphics-option rows
   34/35. The cancel capsule remains accessibility-labeled without adding
   pixels absent from the original.
+
+## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
+
+- The prior "progress save" wave left 7 failing tests. Every dispute was
+  settled against the original files; the runtime needed no behavior change,
+  and three menuLayout constants were corrected to serialized values.
+- **CK_ARRAYTYPE_PARAMETER cells are object references.** `Energy.Timefactor`
+  (column type 5, param GUID `54b4422b:730f0f4f` = TIME) stores index 10725;
+  that object is a nameless CKParameterOut whose float value is exactly 500
+  (ms). Tests reading parameter-typed cells must resolve the reference, not
+  compare the raw index. TIME parameters serialize float milliseconds.
+- `base.cmo/Check Highscore` owns TWO `Test` blocks: the score qualification
+  is the one whose `iB` input resolves to a `Get Cell` output (mode 5, strict
+  `A > B`, confirming the existing runtime); the other Test (mode 6) compares
+  a different Get Cell value against local constant 10. Select graph blocks
+  structurally, never by first-name match.
+- `Test`-mode enums must be read as int32; reading them through a float helper
+  yields denormals (raw 6 = 8.4e-45). loadingSource now reads int.
+- `M_Options_But_Back` (.4030999541282654-.5906002521514893) and
+  `M_Credits_But_Back` (.4031502306461334-.5906505584716797) are separate
+  serialized entities 5e-5 apart; the shared constant was split.
+- `GameFont_03`/`GameFont_03a` scale Y is float32 0.4 = 0.4000000059604645
+  (0x3ECCCCCD); the hand-typed 0x3ECCCCCC was one ULP off.
+- Menu_Highscore/Init: the authored name shift lives in the `Position` input
+  `[.035,0]`; `Name_X_Off` is a graph LOCAL saved with live bytes `[0,0]`.
+  Locals persist whatever was live at save time - never lock tests to them.
+- DepthTestCubes rotation truth: `L01/L02 Quader03` serialize a 90-degree yaw
+  (basis [0,0,1 / 0,1,0 / -1,0,0]); L03 cubes carry X scale 1.61; L12 cubes
+  carry X/Z scale 1.2214289903640747. Rotation detection must inspect all six
+  off-diagonal basis elements; m[1]/m[4] alone are blind to yaw.
+- TT SkyAround vertex positions live in Float32Array; test expectations must
+  round through Math.fround and normalize -0 (the source D3D buffer is
+  float32 as well).
+- Lesson: the last commit wave landed without a green gate. Run the full
+  gate (lint, typecheck, 209 tests, build) BEFORE each commit.

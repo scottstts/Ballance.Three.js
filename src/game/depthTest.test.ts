@@ -95,7 +95,12 @@ describe.skipIf(!existsSync(gameplayPath))('source-authored depth-test volumes',
         expect(entity?.kind).toBe('entity');
         if (entity?.kind !== 'entity') continue;
         expect(file.objects[entity.meshIndex]?.kind).toBe('mesh');
-        if (Math.abs(entity.worldMatrix[1]) > 1e-5 || Math.abs(entity.worldMatrix[4]) > 1e-5) rotated++;
+        // Rotation shows in any off-diagonal element of the 3x3 basis
+        // (rows 0..2 of the 4x4 row-major TRS). Level 1 and 2 each serialize a
+        // 90-degree yaw on Quader03, which only touches [2]/[8].
+        const m = entity.worldMatrix;
+        const offDiagonal = [m[1], m[2], m[4], m[6], m[8], m[9]];
+        if (offDiagonal.some((value) => Math.abs(value) > 1e-5)) rotated++;
       }
     }
     expect(rotated).toBeGreaterThan(0);

@@ -92,8 +92,25 @@ describe.skipIf(!existsSync(basePath) || !existsSync(menuPath))('source-authored
   });
 
   it('uses Test mode 5 for strict score qualification', () => {
-    const test = child(base, behavior(base, 'Check Highscore'), 'Test');
-    expect(intParameter(base, test, 'Test')).toBe(5);
+    // Check Highscore owns two Test blocks. The score-qualification test is the
+    // one whose B input is wired to a Get Cell output (the row-9 score); the
+    // other Test compares against a local constant.
+    const check = behavior(base, 'Check Highscore');
+    const tests = check.referenceLists
+      .flat()
+      .map((index) => base.objects[index])
+      .filter((record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Test');
+    expect(tests).toHaveLength(2);
+    const qualification = tests.find((node) => {
+      const b = node.referenceLists
+        .flat()
+        .map((index) => base.objects[index])
+        .find((record): record is ParameterRec => record?.kind === 'parameter' && record.name === 'iB');
+      return b !== undefined && resolve(base, b).name === 'Cell Value';
+    });
+    expect(qualification).toBeDefined();
+    if (!qualification) return;
+    expect(intParameter(base, qualification, 'Test')).toBe(5);
     expect(highscoreQualifies(1000, 1000)).toBe(false);
     expect(highscoreQualifies(1001, 1000)).toBe(true);
   });
