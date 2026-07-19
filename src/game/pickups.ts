@@ -133,7 +133,6 @@ export class PickupSystem {
     const particleTexture = particleRec?.kind === 'texture' ? await loadCkTexture(particleRec) : null;
 
     for (const placement of groupEntities(built, 'P_Extra_Life')) {
-      if (!/^P_Extra_Life_\d+$/.test(placement.rec.name)) continue;
       hideEmbedded(built, placement.rec.name);
       const instance = instantiatePrefab(lifePrefab, placement.object.matrix);
       showOnly(instance, ['P_Extra_Life_Sphere', 'P_Extra_Life_SilverBall', 'P_Extra_Life_Shadow']);
@@ -172,7 +171,6 @@ export class PickupSystem {
     }
 
     for (const placement of groupEntities(built, 'P_Extra_Point')) {
-      if (!/^P_Extra_Point_\d+$/.test(placement.rec.name)) continue;
       hideEmbedded(built, placement.rec.name);
       const instance = instantiatePrefab(pointPrefab, placement.object.matrix);
       showOnly(instance, [

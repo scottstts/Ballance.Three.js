@@ -226,31 +226,6 @@ export class PhysicsWorld {
     return this.world.createCollider(desc, body);
   }
 
-  /**
-   * Invisible DepthTestCubes retain their authored world-space mesh as a
-   * non-response collision trigger. This lets every player collider shape
-   * (including the paper convex hull) enter the exact source volume.
-   */
-  addStaticSensorMesh(object: THREE.Mesh): RAPIER.Collider | null {
-    const geo = object.geometry;
-    const posAttr = geo.getAttribute('position');
-    const index = geo.getIndex();
-    if (!posAttr || !index) return null;
-    const vertices = new Float32Array(posAttr.count * 3);
-    const point = new THREE.Vector3();
-    object.updateWorldMatrix(true, false);
-    for (let vertex = 0; vertex < posAttr.count; vertex++) {
-      point.fromBufferAttribute(posAttr, vertex).applyMatrix4(object.matrixWorld);
-      vertices[vertex * 3] = point.x;
-      vertices[vertex * 3 + 1] = point.y;
-      vertices[vertex * 3 + 2] = point.z;
-    }
-    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
-    const desc = RAPIER.ColliderDesc.trimesh(new Float32Array(vertices), new Uint32Array(index.array))
-      .setSensor(true)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
-    return this.world.createCollider(desc, body);
-  }
 
   createBallBody(def: BallDef, position: THREE.Vector3): { body: RAPIER.RigidBody; collider: RAPIER.Collider } {
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()

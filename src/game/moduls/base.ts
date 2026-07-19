@@ -28,6 +28,12 @@ export interface ModulContext {
   pointScale: () => number;
   /** fires gameplay events upward (pickups, trafo, checkpoints...) */
   emit: (event: ModulEvent) => void;
+  /**
+   * The source Trafo Manager graph is sequential: from trigger until the
+   * replacement ball appears it never re-runs its proximity check. True while
+   * that sequence is in flight.
+   */
+  trafoBusy: () => boolean;
 }
 
 export type ModulEvent =
@@ -75,6 +81,13 @@ export abstract class Modul {
       if (name.endsWith(suffix)) return obj;
     }
     return undefined;
+  }
+
+  /** The world-position Y the DepthTest graph reads via Get Y. */
+  worldY(): number {
+    const part = this.dynamicParts[0];
+    if (part) return part.body.translation().y;
+    return this.instance.root.position.y;
   }
 
   partWorldPosition(suffix: string): THREE.Vector3 | null {
@@ -126,8 +139,46 @@ export abstract class Modul {
     for (const p of this.dynamicParts) p.body.sleep();
   }
 
-  /** restore initial state (ball died in this sector) */
+  /**
+   * Gameplay.nmo/DepthTest culled this instance: Unphysicalize -> Hide ->
+   * Set Position (0,0,0) world. Unphysicalize maps to a fixed body with all
+   * colliders disabled (no simulation, no interactions), never a disabled
+   * body (Rapier panics on joints attached to disabled bodies).
+   */
+  depthCulled = false;
+
+  depthCull(): void {
+    if (this.depthCulled) return;
+    this.depthCulled = true;
+    for (const p of this.dynamicParts) {
+      p.body.setBodyType(RAPIER.RigidBodyType.Fixed, false);
+      for (const collider of p.colliders) collider.setEnabled(false);
+      p.body.setTranslation({ x: 0, y: 0, z: 0 }, false);
+      p.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+      p.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+      this.syncPart(p);
+    }
+    this.instance.root.visible = false;
+  }
+
+  private depthRestore(): void {
+    if (!this.depthCulled) return;
+    this.depthCulled = false;
+    for (const p of this.dynamicParts) {
+      p.body.setBodyType(RAPIER.RigidBodyType.Dynamic, false);
+      for (const collider of p.colliders) collider.setEnabled(true);
+    }
+    this.instance.root.visible = true;
+  }
+
+  /**
+   * Restore initial state (ball died in this sector). PH_Groups serializes
+   * Reset type 2 for the loose ball and box groups, and Activate Sector runs
+   * Set World Matrix + Show + Physicalize on them, so a depth-culled prop is
+   * re-physicalized and shown again at its placement.
+   */
   reset(): void {
+    this.depthRestore();
     for (const p of this.dynamicParts) {
       p.body.setTranslation({ x: p.homePos.x, y: p.homePos.y, z: p.homePos.z }, false);
       p.body.setRotation({ x: p.homeRot.x, y: p.homeRot.y, z: p.homeRot.z, w: p.homeRot.w }, false);

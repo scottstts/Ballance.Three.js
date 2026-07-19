@@ -166,9 +166,9 @@ function sourceTargetPosition(
   return root.localToWorld(new THREE.Vector3(offset[0], offset[1], offset[2]));
 }
 
-/** Placement roots: entities whose name is the group prefix + _NN. */
+/** Levelinit's Replace PH iterates group members: every member is a placement. */
 function rootPlacements(entities: BuiltEntity[]): BuiltEntity[] {
-  return entities.filter((e) => /^P_Extra_(Point|Life)_\d+$/.test(e.rec.name));
+  return entities;
 }
 
 /** Resolve source group membership rather than guessing from placement IDs. */

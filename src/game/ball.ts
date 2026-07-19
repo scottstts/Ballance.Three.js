@@ -127,6 +127,23 @@ export class Ball {
     return sourceEntityObb(this.visual, target, this.boundsMatrix);
   }
 
+  /**
+   * BallManager's Box Box Intersection runs with both Hierarchy flags false:
+   * the world AABB of the ball entity's own local mesh bounds.
+   */
+  worldAabb(target: THREE.Box3): THREE.Box3 | null {
+    if (!(this.visual instanceof THREE.Mesh)) return null;
+    if (!this.visual.geometry.boundingBox) this.visual.geometry.computeBoundingBox();
+    const bounds = this.visual.geometry.boundingBox;
+    if (!bounds || bounds.isEmpty()) return null;
+    const translation = this.body.translation();
+    const rotation = this.body.rotation();
+    this.boundsPosition.set(translation.x, translation.y, translation.z);
+    this.boundsRotation.set(rotation.x, rotation.y, rotation.z, rotation.w);
+    this.boundsMatrix.compose(this.boundsPosition, this.boundsRotation, this.visual.scale);
+    return target.copy(bounds).applyMatrix4(this.boundsMatrix);
+  }
+
   /** Sync the visual to the physics transform. */
   syncVisual(): void {
     const t = this.body.translation();

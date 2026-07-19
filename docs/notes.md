@@ -1702,6 +1702,40 @@ sequence, and complete option subscreens are all implemented below.
   34/35. The cancel capsule remains accessibility-labeled without adding
   pixels absent from the original.
 
+## 2026-07-19 placement census, trafo manager, and DepthTest recovery
+
+- **Every P_* group member is a placement.** Levelinit Replace PH runs
+  Group to Array with no name filter; L04 and L12 author 19 `_NNa` suffixed
+  placements (7+3 transformers, 1 loose stone ball, 3+3 extra points, and two
+  L12 fans P_Modul_18_10a/11a) that the port's former `_\d+$` regexes
+  silently dropped. All placement enumerations (moduls, extra points, extra
+  lives) now instantiate every group member; L04 runs 20 live transformers.
+- **Trafo Manager selection is nearest-only.** Get Nearest In Group over the
+  level-wide attribute group, then Test mode 3 (distance < 4.3000002) and
+  `Ist Trafo != Ball?` (mode 2). A same-kind nearest transformer blocks a
+  farther mismatched one inside 4.3 (authored overlaps: L05 Wood_04/Stone_05
+  at 7.07, L12 Wood_07a/Stone_14 at 6.07). ModulManager now scans all
+  transformers each tick (sector-independent), picks the strict nearest, and
+  the graph's sequential busy state maps to the pendingTrafo gate.
+- **Ball fall detection is BallManager's AABB scan.** Group Iterator over
+  DepthTestCubes + Box Box Intersection (both hierarchy flags false): world
+  AABB of the cube entity vs world AABB of the ball entity, ONE cube per
+  behavioral frame, round-robin. The port replaced its invisible trimesh
+  sensors with this exact scan (ball geometry bounds transformed by the body
+  pose; behavioral frame maps to the 66 Hz tick).
+- **DepthTest fallen-prop cleanup implemented.** get maxDepth =
+  min(0, min DepthTestCubes world-AABB min Y); DepthTest subtracts 200 once,
+  then round-robins ONE member of the runtime DepthTest group per behavioral
+  frame; below threshold: Unphysicalize, Hide, Set Position (0,0,0). Group
+  membership = union of Levelinit DepthTestGroups rows P_Ball_Paper,
+  P_Ball_Wood, P_Ball_Stone, P_Box (source-locked). The P_Modul_03
+  falling-parts Add To Group has NO target parameter in the shipped binary
+  (it adds the MF frame to the group - a shipped no-op): Modul_03 walls are
+  NOT culled; do not "fix" this. Culled props restore on sector reset
+  (Activate Sector type 2/3 = Set World Matrix + Show + Physicalize).
+- Unphysicalize maps to a fixed body with all colliders disabled (never a
+  disabled body: Rapier panics on joints attached to disabled bodies).
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was

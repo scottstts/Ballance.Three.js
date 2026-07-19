@@ -8,7 +8,6 @@ import { OBB } from 'three/addons/math/OBB.js';
 import { loadCkTexture } from '../../engine/textures.ts';
 import { FORCE_SCALE, type BallKind } from '../constants.ts';
 import { sourceEntityObb } from '../sourceBounds.ts';
-import { TRAFO_SOURCE } from '../effects.ts';
 import { ScaleableProximity } from '../proximity.ts';
 import { Modul, type ModulContext, type ModulEvent } from './base.ts';
 import { FanParticles } from './fanParticles.ts';
@@ -370,35 +369,39 @@ class FanModul extends Modul {
   }
 }
 
-/** Ball transformer: touching it morphs the ball type (with re-arm on leave). */
-class TrafoModul extends Modul {
-  private target: BallKind;
-  private triggered = false;
+/**
+ * Ball transformer. The source Trafo Manager runs Get Nearest In Group over
+ * ALL transformer placements (no sector scoping), then Test mode 3
+ * (distance < 4.3) and `Ist Trafo != Ball?` (Test mode 2). The selection is
+ * therefore centralized in ModulManager; this modul only carries its target
+ * kind, anchor, and the trigger side effects.
+ */
+export class TrafoModul extends Modul {
+  readonly trafoKind: BallKind;
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext, target: BallKind) {
     super(name, sector, instance, ctx);
-    this.target = target;
+    this.trafoKind = target;
   }
 
-  override update(): void {
-    const prefix = `P_Trafo_${this.target[0].toUpperCase()}${this.target.slice(1)}`;
-    const sourceMain = this.part(`${prefix}_MF`) ?? this.instance.root;
-    const sourceShadow = this.part(`${prefix}_Shadow`) ?? null;
+  private prefabParts(): { sourceMain: THREE.Object3D; sourceShadow: THREE.Object3D | null } {
+    const prefix = `P_Trafo_${this.trafoKind[0].toUpperCase()}${this.trafoKind.slice(1)}`;
+    return {
+      sourceMain: this.part(`${prefix}_MF`) ?? this.instance.root,
+      sourceShadow: this.part(`${prefix}_Shadow`) ?? null,
+    };
+  }
+
+  trafoAnchor(target: THREE.Vector3): THREE.Vector3 {
+    const { sourceMain } = this.prefabParts();
     sourceMain.updateWorldMatrix(true, false);
-    const position = sourceMain.getWorldPosition(new THREE.Vector3());
-    if (this.triggered) {
-      if (this.ctx.ball.position.distanceTo(position) >= TRAFO_SOURCE.triggerDistance) this.triggered = false;
-      return;
-    }
-    if (this.ctx.ball.kind !== this.target && this.ctx.ball.position.distanceTo(position) < TRAFO_SOURCE.triggerDistance) {
-      this.triggered = true;
-      this.ctx.emit({ kind: 'trafo', ball: this.target, position, sourceMain, sourceShadow });
-      this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', restart: true });
-    }
+    return sourceMain.getWorldPosition(target);
   }
 
-  override reset(): void {
-    this.triggered = false;
+  fireTrafo(position: THREE.Vector3): void {
+    const { sourceMain, sourceShadow } = this.prefabParts();
+    this.ctx.emit({ kind: 'trafo', ball: this.trafoKind, position, sourceMain, sourceShadow });
+    this.ctx.emit({ kind: 'sound', name: 'Misc_Trafo.wav', restart: true });
   }
 }
 

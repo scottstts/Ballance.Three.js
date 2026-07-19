@@ -149,13 +149,20 @@ export async function startGame(
       }
     : buildStaticColliders(physics, built);
   const logic = new LevelLogic(built);
-  const depthSensorHandles = new Set<number>();
+  // BallManager scans the DepthTestCubes entities as world AABBs (Box Box
+  // Intersection, both hierarchy flags false), one cube per behavioral frame.
+  const depthCubeBounds: THREE.Box3[] = [];
   for (const entry of groupEntities(built, 'DepthTestCubes')) {
     entry.object.visible = false;
     if (!(entry.object instanceof THREE.Mesh)) continue;
-    const sensor = physics.addStaticSensorMesh(entry.object);
-    if (sensor) depthSensorHandles.add(sensor.handle);
+    if (!entry.object.geometry.boundingBox) entry.object.geometry.computeBoundingBox();
+    const bounds = entry.object.geometry.boundingBox;
+    if (!bounds || bounds.isEmpty()) continue;
+    entry.object.updateWorldMatrix(true, false);
+    depthCubeBounds.push(bounds.clone().applyMatrix4(entry.object.matrixWorld));
   }
+  let depthCubeScan = 0;
+  const depthBallBounds = new THREE.Box3();
 
   // the level file only carries gray placement dummies for the scenery
   // pieces; the textured versions live in PH/*.nmo (as the original loads)
@@ -245,6 +252,7 @@ export async function startGame(
         attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
         pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
         emit: () => {},
+        trafoBusy: () => false,
       })
     : null;
   if (import.meta.env.DEV && (bootFlags.has('finish') || bootFlags.has('wakeballoon'))) balloonPhysics?.wake();
@@ -268,6 +276,7 @@ export async function startGame(
       },
       attachLoop: (name, target, volume) => audio.createLoop(name, target, volume),
       pointScale: () => renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360)),
+      trafoBusy: () => pendingTrafo !== null,
       emit: (ev) => {
         const s = gameStore.getState();
         switch (ev.kind) {
@@ -664,17 +673,12 @@ export async function startGame(
 
     // physics_RT.dll uses the magnitude of IVP's pre-response relative-speed
     // vector, including angular velocity at the collision point.
-    let depthHit = false;
     physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const firstCollider = physics.world.getCollider(h1);
       const secondCollider = physics.world.getCollider(h2);
       if (!firstCollider || !secondCollider) return;
       const ballHandle = ball.collider.handle;
-      if (depthSensorHandles.has(h1) || depthSensorHandles.has(h2)) {
-        if (h1 === ballHandle || h2 === ballHandle) depthHit = true;
-        return;
-      }
       shatter.handleCollision(h1, h2);
       let impact: number | null = null;
       const relativeSpeed = () => {
@@ -695,10 +699,16 @@ export async function startGame(
       audio.hit(ball.kind, surface, relativeSpeed());
     });
 
-    if (depthHit) {
-      if (logic.currentSector === logic.sectorCount) lastStageProximityDelay = 3;
-      die();
-      return;
+    // BallManager: one DepthTestCubes AABB examined per behavioral frame,
+    // round-robin, against the ball entity's world AABB.
+    if (depthCubeBounds.length > 0) {
+      depthCubeScan = (depthCubeScan + 1) % depthCubeBounds.length;
+      const ballBounds = ball.worldAabb(depthBallBounds);
+      if (ballBounds && depthCubeBounds[depthCubeScan].intersectsBox(ballBounds)) {
+        if (logic.currentSector === logic.sectorCount) lastStageProximityDelay = 3;
+        die();
+        return;
+      }
     }
 
     const velocity = ball.body.linvel();

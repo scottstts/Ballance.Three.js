@@ -368,6 +368,12 @@ describe.skipIf(!existsSync(animTrafoPath) || !existsSync(gameplayPath))('source
     expect(TRAFO_SOURCE.newBallTime).toBeCloseTo(TRAFO_SOURCE.explosionTime + managerDelays[0], 8);
     const proximity = parameters(gameplay, childBehaviors(gameplay, 'Trafo Manager', 'Test')[0]);
     expect(TRAFO_SOURCE.triggerDistance).toBe(floatValue(proximity.get('B')));
+    // Strict `A < B` on the nearest-transformer distance...
+    expect(intValue(proximity.get('Test'))).toBe(3);
+    // ...gated by `Ist Trafo != Ball?` (Test mode 2): a transformer matching
+    // the current ball kind never triggers.
+    const kindGate = parameters(gameplay, childBehaviors(gameplay, 'Ist Trafo != Ball?', 'Test')[0]);
+    expect(intValue(kindGate.get('Test'))).toBe(2);
   });
 });
 

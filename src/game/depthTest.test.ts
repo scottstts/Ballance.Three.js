@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import { DEPTH_TEST_GROUPS, DEPTH_TEST_OFFSET, sourceMaxDepth } from './moduls/manager.ts';
 
 const gameDir = fileURLToPath(new URL('../../Ballance_bin/source1/Ballance', import.meta.url));
 const gameplayPath = join(gameDir, '3D Entities/Gameplay.nmo');
@@ -80,6 +82,23 @@ describe.skipIf(!existsSync(gameplayPath))('source-authored depth-test volumes',
       (node) => parameter(gameplay, node, 'p2').valueBytes.byteLength >= 4 && floatValue(parameter(gameplay, node, 'p2')) === 200,
     );
     expect(offset).toBeDefined();
+  });
+
+  it('culls exactly the four Levelinit DepthTestGroups with the 200 offset', () => {
+    const levelinit = parseNmo(readFileSync(join(gameDir, '3D Entities/Levelinit.nmo')));
+    const groups = levelinit.byName.get('DepthTestGroups')?.find((record) => record.kind === 'dataArray');
+    expect(groups?.kind).toBe('dataArray');
+    if (groups?.kind !== 'dataArray') return;
+    expect(groups.columns.map((column) => column.name)).toEqual(['Groupname']);
+    expect(groups.rows.map((row) => row[0])).toEqual([...DEPTH_TEST_GROUPS]);
+    expect(DEPTH_TEST_OFFSET).toBe(200);
+
+    // get maxDepth seeds 0 and keeps the strict minimum of the cube minima.
+    const shallow = new THREE.Box3(new THREE.Vector3(-1, 5, -1), new THREE.Vector3(1, 9, 1));
+    const deep = new THREE.Box3(new THREE.Vector3(-1, -129.44, -1), new THREE.Vector3(1, 1, 1));
+    expect(sourceMaxDepth([])).toBe(0);
+    expect(sourceMaxDepth([shallow])).toBe(0);
+    expect(sourceMaxDepth([shallow, deep])).toBe(-129.44);
   });
 
   it('retains every level mesh, including rotated source volumes', () => {
