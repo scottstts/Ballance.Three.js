@@ -774,7 +774,7 @@ export async function startGame(
       audio.updateLastStageDistance(pos.distanceTo(levelEndPosition));
     }
     const pointHits = pickups.updateSimulation(SIM_DT, pos);
-    for (const ev of logic.update(pos, ball.kind, (name) => pickups.canCollect(name))) {
+    for (const ev of logic.update(pos, (name) => pickups.canCollect(name))) {
       switch (ev.kind) {
         case 'checkpoint': {
           // Pursuing +20 balls are tied to the current section. Source2's

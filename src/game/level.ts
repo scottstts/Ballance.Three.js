@@ -89,11 +89,7 @@ export class LevelLogic {
   }
 
   /** Per-tick trigger checks. Returns events that fired. */
-  update(
-    ballPos: THREE.Vector3,
-    currentBall: BallKind,
-    pickupActive: (name: string) => boolean = () => true,
-  ): LevelEvent[] {
+  update(ballPos: THREE.Vector3, pickupActive: (name: string) => boolean = () => true): LevelEvent[] {
     const events: LevelEvent[] = [];
 
     // next checkpoint only (original: checkpoints activate in order)
