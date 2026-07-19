@@ -83,6 +83,16 @@ export interface ModulPhys {
   };
 }
 
+export function alternatingForceScale(
+  definition: NonNullable<ModulPhys['altForce']>,
+  state: number,
+): -1 | 0 | 1 {
+  if (definition.delayTime === undefined) return state === 0 ? 1 : -1;
+  if (state === 1) return 1;
+  if (state === 3) return -1;
+  return 0;
+}
+
 const wood = { friction: 0.7, elasticity: 0.4 } as const;
 
 const wakeProximity = (

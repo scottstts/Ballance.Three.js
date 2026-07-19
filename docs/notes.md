@@ -387,7 +387,8 @@ options subscreens are simplified (volume only).
   2.3s ring spin; old ball bursts at the held spot.
 - **Modul_29 bridge is repaired on EVERY sector reset** (not only level
   restart). Modul_08 swing starts its cycle at +F immediately; Modul_26 sack
-  starts -F first (startState 1 in the altForce table).
+  also starts +F first (Sequencer `Current=-1` selects Out 1, so startState 0
+  in the altForce table).
 - **Level coverage audit**: every functional group in all 12 levels is
   handled; 'Shadow'/'invisible'/'test' groups are redundant editor
   groupings. (Correction: later direct set comparison proves selected entities
@@ -817,8 +818,8 @@ options subscreens are simplified (volume only).
 - The following source `Test` has mode 3. Static recovery from `Logics.dll`
   (`Test` GUID `17d66d26:726b7dec`) confirms mode 3 is strict `A < B`.
   Therefore current levels 1–11 select the 10,000 ms timer and level 12 selects
-  23,000 ms. Including the preceding sky fade, `End Level` is sent at 13 s or
-  26 s respectively.
+  23,000 ms. After the finish handoff, `End Level` is sent at 13 s or 26 s
+  respectively; the handoff itself follows a two-behavior-frame link.
 - The `3 keys` graph enables three `Key Event` nodes alongside that timer. Its
   raw DirectInput scan codes are 1, 28, and 57: Escape, Enter, and Space. A
   Pressed event sends `Menu_Click` and exits the wait early. Edges accumulated
@@ -1476,3 +1477,29 @@ options subscreens are simplified (volume only).
   high-score music, and gameplay music instead of treating the stored setting
   as linear gain. Per-level audio teardown also removes its browser gesture
   listeners so restarts no longer accumulate event handlers.
+
+## 2026-07-18 source-exact energy timer and alternating-force starts
+
+- `Gameplay.nmo/Energy` row 0 is the sole authority for `StartPoints=1000`,
+  `StartLifes=3`, `Timefactor=500` ms, and `LifeBonus=200`. The normal Timer
+  graph uses Test mode 6 (`>=`) on elapsed time and mode 2 (`!=`) on points,
+  subtracting one point per complete interval without going below zero.
+- `TT_Timer` prototype `6ac67901:7d2a6059` was recovered statically from the
+  shipped read-only `TT_Toolbox_RT.dll`. Its helper stores an active byte and
+  accumulated float: Reset sets active/zero, Pause and Play only toggle the
+  byte, and each execute adds `CKBehaviorContext.DeltaTime` while active. Thus
+  pause, ball birth/death, and tutorial time-factor freezes preserve a partial
+  500 ms interval rather than resetting or consuming it.
+- `Deactivate Ball` sends `Counter inactive` before its fall sequence and `New
+  Ball` sends `Counter active` only after the 3000 ms birth delay. A transformer
+  sends neither message, so the countdown continues while the old ball changes.
+  `Level_Finish` is subtler: Cam/Ball navigation stop immediately, then a link
+  with activation delay 2 reaches `Counter inactive`, null-parent `Cam_Pos`,
+  clipping 3/2500, and `fadeout Sky`. The runtime now keeps the countdown live
+  for those two 66 Hz behavior steps, snapshots the score afterward, and starts
+  the three-second sky fade at that handoff instead of at the proximity hit.
+- Direct source graphs also correct an old scratch-note error. P_Modul_08 creates
+  its +Z force after a one-frame edge, then runs +/idle/-/idle in four 500 ms
+  stages. P_Modul_26's Sequencer starts at `Current=-1`, so its first Out 1
+  creates the +Z force; it alternates signs every 1500 ms. Binary-backed tests
+  now lock both initial signs, stages, force values, referentials, and delays.

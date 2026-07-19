@@ -1,6 +1,6 @@
 /** Shared game state bridge between the engine loop and the React UI. */
 import { create } from 'zustand';
-import type { BallKind } from './constants.ts';
+import { LEVEL_START_LIVES, LEVEL_START_POINTS, type BallKind } from './constants.ts';
 import { DEFAULT_SETTINGS, isSourceKey, SCREEN_MODES, type Settings } from './settings.ts';
 
 export type { Settings } from './settings.ts';
@@ -128,8 +128,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   phase: 'intro',
   runId: 0,
   level: 1,
-  lives: 3,
-  points: 1000,
+  lives: LEVEL_START_LIVES,
+  points: LEVEL_START_POINTS,
   sector: 1,
   sectorCount: 1,
   ballKind: 'wood',

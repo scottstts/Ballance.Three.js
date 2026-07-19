@@ -15,6 +15,7 @@ import {
   MODUL29_TRIGGER_PLATE,
   MODUL29_WAKE_PROXIMITY,
   MODUL_PHYS,
+  alternatingForceScale,
 } from './physTable.ts';
 
 const GAME_DIR = [
@@ -330,6 +331,123 @@ describe.skipIf(!hasGame)('source-backed module physics table', () => {
     expect(targetObject(file, sourceHinge)?.name.endsWith(definition?.part ?? '')).toBe(true);
     expect(objectValue(file, source.get('Object2'))?.name.endsWith(definition?.other ?? '')).toBe(true);
     expect(objectValue(file, source.get('Joint Referential'))?.name.endsWith(definition?.pin ?? '')).toBe(true);
+  });
+
+  it('P_Modul_08 starts +Z and preserves its +/idle/-/idle 500 ms cycle', () => {
+    const definition = MODUL_PHYS.P_Modul_08.altForce;
+    expect(definition).toEqual({
+      part: '_Schaukel',
+      force: 1.1,
+      switchTime: 0.5,
+      delayTime: 0.5,
+      axis: [0, 0, 1],
+      reference: '_Fix',
+      startState: 1,
+    });
+    if (!definition) return;
+    expect([1, 2, 3, 0].map((state) => alternatingForceScale(definition, state))).toEqual([1, 0, -1, 0]);
+
+    const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/PH/P_Modul_08.nmo')));
+    const graph = file.byName.get('Physicalize and Swing')?.find(
+      (record): record is BehaviorRec => record.kind === 'behavior',
+    );
+    expect(graph).toBeDefined();
+    if (!graph) return;
+    const nodes = graph.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .filter((record): record is BehaviorRec => record?.kind === 'behavior');
+    const forces = nodes.filter((node) => node.name === 'SetPhysicsForce');
+    expect(forces).toHaveLength(2);
+    expect(forces.map((node) => vectorValue(behaviorParameters(file, node).get('Direction')))).toEqual([
+      [0, 0, -1],
+      [0, 0, 1],
+    ]);
+    expect(
+      forces.map((node) => floatValue(behaviorParameters(file, node).get('Force Value'))),
+    ).toEqual([Math.fround(definition.force), Math.fround(definition.force)]);
+    for (const node of forces) {
+      expect(objectValue(file, behaviorParameters(file, node).get('Direction Ref'))?.name.endsWith('_Fix')).toBe(
+        true,
+      );
+    }
+    expect(
+      nodes
+        .filter((node) => node.name === 'Delayer')
+        .map((node) => floatValue(behaviorParameters(file, node).get('Time to Wait'))),
+    ).toEqual([500, 500, 500, 500]);
+
+    const positive = forces.find(
+      (node) => vectorValue(behaviorParameters(file, node).get('Direction'))[2] === 1,
+    );
+    const delayedCreate = graph.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .find(
+        (record) =>
+          record?.kind === 'behaviorLink' &&
+          record.activationDelay === 1 &&
+          positive?.referenceLists.some((list) => list.includes(record.inputIndex)),
+      );
+    expect(delayedCreate?.kind).toBe('behaviorLink');
+  });
+
+  it('P_Modul_26 starts +Z and alternates sign every 1500 ms', () => {
+    const definition = MODUL_PHYS.P_Modul_26.altForce;
+    expect(definition).toEqual({
+      part: '_Sack',
+      force: 0.25,
+      switchTime: 1.5,
+      axis: [0, 0, 1],
+      reference: '_Halter',
+      startState: 0,
+    });
+    if (!definition) return;
+    expect([0, 1].map((state) => alternatingForceScale(definition, state))).toEqual([1, -1]);
+
+    const file = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/PH/P_Modul_26.nmo')));
+    const graph = file.byName.get('Swing')?.find((record): record is BehaviorRec => record.kind === 'behavior');
+    expect(graph).toBeDefined();
+    if (!graph) return;
+    const nodes = graph.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .filter((record): record is BehaviorRec => record?.kind === 'behavior');
+    const forces = nodes.filter((node) => node.name === 'SetPhysicsForce');
+    expect(forces.map((node) => vectorValue(behaviorParameters(file, node).get('Direction')))).toEqual([
+      [0, 0, -1],
+      [0, 0, 1],
+    ]);
+    expect(
+      forces.map((node) => floatValue(behaviorParameters(file, node).get('Force Value'))),
+    ).toEqual([definition.force, definition.force]);
+    for (const node of forces) {
+      expect(
+        objectValue(file, behaviorParameters(file, node).get('Direction Ref'))?.name.endsWith('_Halter'),
+      ).toBe(true);
+    }
+    const delay = nodes.find((node) => node.name === 'Delayer');
+    expect(floatValue(delay ? behaviorParameters(file, delay).get('Time to Wait') : undefined)).toBe(1500);
+
+    const positive = forces.find(
+      (node) => vectorValue(behaviorParameters(file, node).get('Direction'))[2] === 1,
+    );
+    const sequencer = nodes.find((node) => node.name === 'Sequencer');
+    expect(intValue(sequencer ? behaviorParameters(file, sequencer).get('Current') : undefined)).toBe(-1);
+    const firstOutput = sequencer?.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .find((record) => record?.kind === 'behaviorIo' && record.name === 'Out 1');
+    const firstCreate = graph.referenceLists
+      .flat()
+      .map((index) => file.objects[index])
+      .find(
+        (record) =>
+          record?.kind === 'behaviorLink' &&
+          record.outputIndex === firstOutput?.index &&
+          positive?.referenceLists.some((list) => list.includes(record.inputIndex)),
+      );
+    expect(firstCreate?.kind).toBe('behaviorLink');
   });
 
   for (const moduleName of ['P_Modul_01', 'P_Modul_03', 'P_Modul_19', 'P_Modul_25', 'P_Modul_30', 'P_Modul_34', 'P_Modul_37']) {

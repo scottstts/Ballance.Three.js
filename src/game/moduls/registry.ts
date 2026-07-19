@@ -22,6 +22,7 @@ import {
   MODUL29_TRIGGER_PLATE,
   MODUL29_WAKE_PROXIMITY,
   MODUL_PHYS,
+  alternatingForceScale,
   type ModulPhys,
 } from './physTable.ts';
 
@@ -112,16 +113,7 @@ class PhysicsModul extends Modul {
         ? (this.referenceWorldDirection(alt.reference, alt.axis) ?? localDirToWorld(this.instance, alt.axis))
         : localDirToWorld(this.instance, alt.axis);
       // with delay: 4-state cycle idle, +F, idle, -F; without: +F / -F
-      const scale =
-        alt.delayTime !== undefined
-          ? this.altForceState === 1
-            ? 1
-            : this.altForceState === 3
-              ? -1
-              : 0
-          : this.altForceState === 0
-            ? 1
-            : -1;
+      const scale = alternatingForceScale(alt, this.altForceState);
       const f = alt.force * FORCE_SCALE * scale;
       this.altTarget.body.resetForces(true);
       if (f !== 0) this.altTarget.body.addForce({ x: dir.x * f, y: dir.y * f, z: dir.z * f }, true);

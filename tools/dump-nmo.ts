@@ -31,6 +31,11 @@ const containsIndexText = process.argv.find((arg) => arg.startsWith('--contains-
 const containsIndex = containsIndexText === undefined ? null : Number(containsIndexText);
 const usesIndexText = process.argv.find((arg) => arg.startsWith('--uses-index='))?.slice('--uses-index='.length);
 const usesIndex = usesIndexText === undefined ? null : Number(usesIndexText);
+const managerIntText = process.argv.find((arg) => arg.startsWith('--manager-int='))?.slice('--manager-int='.length);
+const managerInt = managerIntText === undefined ? null : Number(managerIntText);
+const managerValueFilter = process.argv
+  .find((arg) => arg.startsWith('--manager-value='))
+  ?.slice('--manager-value='.length);
 const file = parseNmo(readFileSync(path));
 
 function parameterValue(parameter: ParameterRec): string {
@@ -99,6 +104,13 @@ if (objects) {
     if (toFilter !== null && o.index > toFilter) continue;
     if (containsIndex !== null && (o.kind !== 'behavior' || !o.referenceLists.some((list) => list.includes(containsIndex)))) continue;
     if (usesIndex !== null && !behaviorUsesIndex(o, usesIndex)) continue;
+    if (managerInt !== null && (o.kind !== 'parameter' || o.managerInt !== managerInt)) continue;
+    if (
+      managerValueFilter !== undefined &&
+      (o.kind !== 'parameter' ||
+        o.managerInt === null ||
+        file.messageTypes[o.managerInt]?.toLocaleLowerCase() !== managerValueFilter.toLocaleLowerCase())
+    ) continue;
     const chunk = file.chunks[o.index];
     console.log(
       `  [${String(o.index).padStart(4)}] class=${String(o.classId).padStart(3)} kind=${o.kind.padEnd(8)} ` +

@@ -22,16 +22,21 @@ import {
   BALL_BIRTH_DELAY,
   BALL_OFF_DELAY,
   DEATH_FADE_DURATION,
+  FINISH_HANDOFF_DELAY,
   FINISH_SKIP_KEYS,
   FINISH_SKY_FADE_DURATION,
   GAME_OVER_MENU_DELAY,
   FLOOR_GROUPS,
+  LEVEL_START_LIVES,
+  LEVEL_START_POINTS,
+  LIFE_BONUS_POINTS,
   SIM_DT,
   finishMenuDelay,
   type BallKind,
 } from './constants.ts';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { BallShadow, FlameSystem, LightningSphere, ShatterSystem, TRAFO_SOURCE, TrafoAnim } from './effects.ts';
+import { advancePointCountdown } from './energy.ts';
 import { prepareBalloonInstance, UFO_SOUND_SOURCE, UfoFinale } from './finale.ts';
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
@@ -92,9 +97,6 @@ declare global {
 const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
-
-const POINT_TICK = 0.5; // seconds per -1 point
-const LIFE_BONUS = 200; // original: each remaining life is worth 200 points
 
 export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
   bootStage('rapier');
@@ -300,8 +302,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   store.set({
     phase: 'playing',
     level,
-    lives: 3,
-    points: 1000,
+    lives: LEVEL_START_LIVES,
+    points: LEVEL_START_POINTS,
     sector: 1,
     sectorCount: logic.sectorCount,
     ballKind: 'wood',
@@ -342,6 +344,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const timers: { t: number; fn: () => void }[] = [];
   const after = (seconds: number, fn: () => void) => timers.push({ t: seconds, fn });
   let finishElapsed = -1;
+  let finishHandoffComplete = false;
   let finishEnded = false;
   let finishScore = 0;
   let lastStageProximityDelay = 0;
@@ -378,6 +381,13 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     // Highscore. Persistence therefore belongs here, not at the finish hit.
     state.completeLevel(level, finishScore);
     if (!(import.meta.env.DEV && bootFlags.has('nowinscreen'))) state.set({ winScreen: true });
+  };
+
+  const advancePoints = (elapsed: number): void => {
+    const state = gameStore.getState();
+    const next = advancePointCountdown({ points: state.points, remainder: pointTimer }, elapsed, true);
+    pointTimer = next.remainder;
+    if (next.points !== state.points) state.set({ points: next.points });
   };
 
   // the original's slowly drifting cloud layer plane
@@ -510,11 +520,25 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     if (s.phase === 'finished') {
       finishElapsed += SIM_DT;
+      // Gameplay_Events keeps the energy timer live until its serialized
+      // two-frame edge reaches Counter inactive. Set Parent, clipping, and
+      // fadeout Sky follow that message in the same behavior tick.
+      if (!finishHandoffComplete) {
+        advancePoints(SIM_DT);
+        if (finishElapsed >= FINISH_HANDOFF_DELAY) {
+          finishHandoffComplete = true;
+          const state = gameStore.getState();
+          finishScore = level * 100 + state.points + state.lives * LIFE_BONUS_POINTS;
+          rig.detachSlot();
+          rig.setClippingPlanes(3, 2500);
+        }
+      }
       // `3 keys` is switched on only after fadeout Sky finishes. Discard any
       // earlier edges so holding overview before the finish cannot skip it.
       const skip = consumeFinishSkip();
-      if (!finishEnded && finishElapsed >= FINISH_SKY_FADE_DURATION) {
-        if (skip || finishElapsed >= finishMenuDelay(level)) endLevel(skip);
+      const handoffElapsed = Math.max(0, finishElapsed - FINISH_HANDOFF_DELAY);
+      if (!finishEnded && finishHandoffComplete && handoffElapsed >= FINISH_SKY_FADE_DURATION) {
+        if (skip || handoffElapsed >= finishMenuDelay(level)) endLevel(skip);
       }
       balloonPhysics?.update();
       shatter.advance(SIM_DT);
@@ -645,13 +669,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     audio.updateRoll(ball.kind, contactSurfaces(), Math.hypot(velocity.x, velocity.y, velocity.z), SIM_DT);
 
     // point countdown (held while the birth lightning plays)
-    if (birthTimer <= 0) {
-      pointTimer += SIM_DT;
-      while (pointTimer >= POINT_TICK) {
-        pointTimer -= POINT_TICK;
-        if (s.points > 0) s.set({ points: s.points - 1 });
-      }
-    }
+    if (birthTimer <= 0) advancePoints(SIM_DT);
 
     const pos = ball.position;
     flames.updateSimulation(pos);
@@ -696,8 +714,8 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
         case 'finish': {
           s.set({ phase: 'finished', winScreen: false });
           audio.setBallSoundsActive(false);
-          finishScore = level * 100 + gameStore.getState().points + gameStore.getState().lives * LIFE_BONUS;
           finishElapsed = 0;
+          finishHandoffComplete = false;
           finishEnded = false;
           // Clear movement/menu edges accumulated before `3 keys` is active.
           consumeFinishSkip();
@@ -706,11 +724,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
           audio.playLevelFinal(level);
           after(SIM_DT, () => audio.stopLastStageAmbient());
           balloonPhysics?.launch();
-          // Gameplay_Events turns navigation off and reparents Cam_Pos to null:
-          // its world slot freezes while InGameCam keeps looking at Cam_Target.
+          // Cam/Ball navigation stop immediately. Counter inactive, Set Parent,
+          // clipping, and fadeout Sky follow the graph's two-frame link above.
           rig.setNavigationActive(false);
-          rig.detachSlot();
-          rig.setClippingPlanes(3, 2500);
           // the final level ends with the UFO pickup, others with the balloon
           if (level === 12) {
             ufoFinale?.start();
@@ -761,8 +777,9 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     rig.update(frameDt, ball.position, input.state, gameStore.getState().settings.invertCameraRotation);
     if (finishElapsed >= 0) {
       // Gameplay_Events/fadeout Sky linearly filters SkyLayer from 200/255
-      // to black over exactly 3000 ms.
-      const fade = Math.min(1, finishElapsed / FINISH_SKY_FADE_DURATION);
+      // to black over exactly 3000 ms after its two-frame handoff.
+      const handoffElapsed = Math.max(0, finishElapsed - FINISH_HANDOFF_DELAY);
+      const fade = Math.min(1, handoffElapsed / FINISH_SKY_FADE_DURATION);
       setSkyLayerFilter(0.7843137979507446 * (1 - fade));
     }
     const flameScale = renderer.domElement.height / (2 * Math.tan((rig.camera.fov * Math.PI) / 360));

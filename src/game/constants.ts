@@ -4,6 +4,12 @@ export const GRAVITY_Y = -20;
 export const SIM_RATE = 66; // original physics PSI rate (Hz)
 export const SIM_DT = 1 / SIM_RATE;
 
+/** Gameplay.nmo/Energy row 0, converted to seconds where appropriate. */
+export const LEVEL_START_POINTS = 1000;
+export const LEVEL_START_LIVES = 3;
+export const POINT_COUNT_INTERVAL = 0.5;
+export const LIFE_BONUS_POINTS = 200;
+
 export type BallKind = 'paper' | 'wood' | 'stone';
 
 export interface BallDef {
@@ -109,6 +115,9 @@ export const DEATH_FADE_DURATION = 2;
 
 /** Gameplay_Events end-flow timing, decoded from Gameplay.nmo's graphs. */
 export const GAME_OVER_MENU_DELAY = 2;
+/** Level_Finish reaches Counter inactive/Set Parent through a two-frame link. */
+export const FINISH_HANDOFF_FRAME_DELAY = 2;
+export const FINISH_HANDOFF_DELAY = FINISH_HANDOFF_FRAME_DELAY * SIM_DT;
 export const FINISH_SKY_FADE_DURATION = 3;
 export const FINISH_WAIT_DURATION = 10;
 export const FINAL_FINISH_WAIT_DURATION = 23;
