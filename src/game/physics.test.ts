@@ -1,4 +1,10 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { parseNmo } from '../formats/ck2/nmo.ts';
+import type { NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import { GRAVITY_Y } from './constants.ts';
 import {
   ivpAngularDampingFactor,
   ivpLinearDampingFactor,
@@ -46,5 +52,58 @@ describe('source IVP damping law', () => {
   it('retains IVP exponential fallback branches', () => {
     expect(ivpLinearDampingFactor(20)).toBeCloseTo(Math.exp(-20 / 66), 12);
     expect(ivpAngularDampingFactor(40)).toBeCloseTo(Math.exp(-40 / 66), 12);
+  });
+});
+
+const GAME_DIR = fileURLToPath(new URL('../../Ballance_bin/source1/Ballance', import.meta.url));
+
+describe.skipIf(!existsSync(GAME_DIR))('Set Physics Globals binary authority', () => {
+  function resolve(file: NmoFile, parameter: ParameterRec): ParameterRec {
+    let current = parameter;
+    const seen = new Set([current.index]);
+    for (let depth = 0; depth < 32; depth++) {
+      const nextIndex = current.sourceIndex >= 0 ? current.sourceIndex : current.sharedIndex;
+      if (nextIndex < 0 || seen.has(nextIndex)) break;
+      const next = file.objects[nextIndex];
+      if (next?.kind !== 'parameter') break;
+      current = next;
+      seen.add(nextIndex);
+    }
+    return current;
+  }
+
+  it('serializes gravity (0,-20,0) on every instance and only factors 0 and 2', () => {
+    const factors = new Set<number>();
+    let instances = 0;
+    for (const relative of ['base.cmo', '3D Entities/Gameplay.nmo']) {
+      const file = parseNmo(readFileSync(join(GAME_DIR, relative)));
+      for (const record of file.objects) {
+        if (record?.kind !== 'behavior' || record.name !== 'Set Physics Globals') continue;
+        instances++;
+        const parameters = record.referenceLists
+          .flat()
+          .map((index) => file.objects[index])
+          .filter((entry): entry is ParameterRec => entry?.kind === 'parameter');
+        const gravity = parameters.find((parameter) => parameter.name === 'Gravity');
+        const factor = parameters.find((parameter) => parameter.name === 'Physic Time Factor');
+        expect(gravity, `${relative}#${record.index} Gravity`).toBeDefined();
+        expect(factor, `${relative}#${record.index} Physic Time Factor`).toBeDefined();
+        if (!gravity || !factor) continue;
+        const gravityBytes = resolve(file, gravity).valueBytes;
+        const gravityView = new DataView(gravityBytes.buffer, gravityBytes.byteOffset);
+        expect([
+          gravityView.getFloat32(0, true),
+          gravityView.getFloat32(4, true),
+          gravityView.getFloat32(8, true),
+        ]).toEqual([0, GRAVITY_Y, 0]);
+        const factorBytes = resolve(file, factor).valueBytes;
+        factors.add(new DataView(factorBytes.buffer, factorBytes.byteOffset).getFloat32(0, true));
+      }
+    }
+    expect(instances).toBeGreaterThanOrEqual(12);
+    // Freeze paths write 0; every gameplay resume path writes 2. The port's
+    // 66 Hz step interprets these through the recovered physics_RT manager
+    // semantics.
+    expect([...factors].sort()).toEqual([0, 2]);
   });
 });
