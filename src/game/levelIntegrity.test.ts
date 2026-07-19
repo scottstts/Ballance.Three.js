@@ -37,6 +37,21 @@ describe.skipIf(!hasGame)('level gameplay structure', () => {
       expect(groups.get('Phys_Floors')?.memberIndices.length).toBeGreaterThan(0);
       expect(groups.get('DepthTestCubes')?.memberIndices.length).toBeGreaterThan(0);
 
+      // The Shadow group is the TT Simple Shadow receiver set (Levelinit's
+      // `set Floor` stamps the Floor attribute on exactly these members). It
+      // is always a non-empty strict subset of the physicalized floor union.
+      const shadow = groups.get('Shadow');
+      expect(shadow?.memberIndices.length).toBeGreaterThan(0);
+      const floorMembers = new Set(
+        ['Phys_Floors', 'Phys_FloorRails', 'Phys_FloorStopper'].flatMap(
+          (name) => groups.get(name)?.memberIndices ?? [],
+        ),
+      );
+      for (const index of shadow?.memberIndices ?? []) {
+        expect(floorMembers.has(index), `Shadow member ${file.objects[index]?.name}`).toBe(true);
+      }
+      expect(shadow?.memberIndices.length).toBeLessThan(floorMembers.size);
+
       // every modul group present in the level must have a physics/behavior definition
       for (const g of file.groups) {
         if (/^P_Modul_\d+$/.test(g.name)) {

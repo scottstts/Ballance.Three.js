@@ -142,11 +142,14 @@ export async function startGame(
   bootStage('colliders');
   const bootFlags = new URLSearchParams(window.location.search);
   const physics = new PhysicsWorld();
-  const { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider } = bootFlags.has('nocolliders')
+  const { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider, shadowReceiverColliders } = bootFlags.has(
+    'nocolliders',
+  )
     ? {
         hitSurfaceByCollider: new Map<number, Surface>(),
         rollSurfaceByCollider: new Map<number, Surface>(),
         floorHitByCollider: new Map<number, string>(),
+        shadowReceiverColliders: new Set<number>(),
       }
     : buildStaticColliders(physics, built);
   const logic = new LevelLogic(built);
@@ -213,6 +216,7 @@ export async function startGame(
   const pickups = new PickupSystem();
   await pickups.init(built, scene);
   const ballShadow = new BallShadow(physics);
+  ballShadow.setReceivers(shadowReceiverColliders);
   await ballShadow.init();
   scene.add(ballShadow.mesh);
   partLoaded();
@@ -993,12 +997,18 @@ function buildStaticColliders(
   hitSurfaceByCollider: Map<number, Surface>;
   rollSurfaceByCollider: Map<number, Surface>;
   floorHitByCollider: Map<number, string>;
+  shadowReceiverColliders: Set<number>;
 } {
   const hitSurfaceOf = soundSurfaceByName(built.file, built.groups, 'Hit');
   const rollSurfaceOf = soundSurfaceByName(built.file, built.groups, 'Roll');
   const hitSurfaceByCollider = new Map<number, Surface>();
   const rollSurfaceByCollider = new Map<number, Surface>();
   const floorHitByCollider = new Map<number, string>();
+  // Levelinit's `set Floor` stamps the Floor attribute on exactly the level's
+  // `Shadow` group; TT Simple Shadow projects only onto Floor objects.
+  const shadowNames = new Set<string>();
+  for (const e of groupEntities(built, 'Shadow')) shadowNames.add(e.rec.name);
+  const shadowReceiverColliders = new Set<number>();
   for (const [groupName, def] of Object.entries(FLOOR_GROUPS)) {
     for (const e of groupEntities(built, groupName)) {
       if (e.object instanceof THREE.Mesh) {
@@ -1007,11 +1017,12 @@ function buildStaticColliders(
           hitSurfaceByCollider.set(collider.handle, hitSurfaceOf.get(e.rec.name) ?? def.surface);
           rollSurfaceByCollider.set(collider.handle, rollSurfaceOf.get(e.rec.name) ?? def.surface);
           if (def.hitSound) floorHitByCollider.set(collider.handle, def.hitSound);
+          if (shadowNames.has(e.rec.name)) shadowReceiverColliders.add(collider.handle);
         }
       }
     }
   }
-  return { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider };
+  return { hitSurfaceByCollider, rollSurfaceByCollider, floorHitByCollider, shadowReceiverColliders };
 }
 
 /** debug: a scene view with no groups, so no moduls get created */

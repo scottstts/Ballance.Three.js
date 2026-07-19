@@ -1770,6 +1770,30 @@ sequence, and complete option subscreens are all implemented below.
   re-arms ball sounds only if they were active. Implemented via a store
   phase subscription; gameover endMusic() was removed.
 
+## 2026-07-19 Shadow receivers, menu cues, and graphics label
+
+- CORRECTION to the Wave-2 note: the level `Shadow` groups are NOT redundant
+  editor groupings. Levelinit's `set Floor` runs Set Attribute over exactly
+  that group with the Floor-manager attribute, and TT_Gravity_RT's
+  TT Simple Shadow projects only onto Floor-attribute objects. The group is
+  a non-empty strict subset of the floor union in all 12 levels (rails,
+  stoppers, invisible helpers, and moving moduls are excluded). BallShadow
+  now restricts its ray sampling to those receiver colliders (source-locked
+  in levelIntegrity).
+- Graphics resolution field: the source Create String joins width/height
+  with the serialized " * " delimiter (spaces). The shipped mode list is a
+  runtime enumeration filtered to bpp 16, width 640..1600, ratio within
+  [1.333,1.3334]; on period hardware it equals the six Dummy_ScreenModes
+  rows the port ships. Resolution persists in the registry, not DB_Options.
+- Menu_End/Restart Level owns a serialized YesNo ? composite (Menu_Dead has
+  none). base.cmo's Exit Level / reset Level / Load Level branches send
+  Menu_Load first; the pause-exit, pause-restart, end-restart, and
+  next-level transitions now play that cue.
+- Shipped no-ops discovered: Sound.nmo's Unpause->Fade Out route targets a
+  nonexistent object named "Music" (iterates nothing), and "Sound_Refresh"
+  (activated by Unpause Level) exists in no shipped file. Do not implement
+  either.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was

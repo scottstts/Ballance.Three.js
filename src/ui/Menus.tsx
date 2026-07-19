@@ -634,7 +634,8 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
         <>
           {field(OPTIONS_RECTS.graphics.resolutionField, MENU_TEXT_SOURCE.screenResolution, optionRow === 0, () => setOptionRow(0))}
           <div className="og-source-field-value" style={menuBandRectStyle(OPTIONS_RECTS.graphics.resolutionText)}>
-            <SourceMenuText ogui={ogui} text={`${SCREEN_MODES[settings.screenMode].width}*${SCREEN_MODES[settings.screenMode].height}`} role="row" />
+            {/* Create String joins the row with the serialized " * " delimiter. */}
+            <SourceMenuText ogui={ogui} text={`${SCREEN_MODES[settings.screenMode].width} * ${SCREEN_MODES[settings.screenMode].height}`} role="row" />
           </div>
           <SpriteButton
             ogui={ogui}
@@ -935,7 +936,12 @@ export function PauseOverlay() {
       <ConfirmScreen
         ogui={ogui}
         question={confirm === 'restart' ? MENU_TEXT_SOURCE.restartQuestion : MENU_TEXT_SOURCE.exitLevelQuestion}
-        onConfirm={() => (confirm === 'restart' ? loadLevel(level) : set({ phase: 'menu', level }))}
+        onConfirm={() => {
+          // base.cmo's Exit Level / reset Level branches send Menu_Load first.
+          menuAudio.levelLoad();
+          if (confirm === 'restart') loadLevel(level);
+          else set({ phase: 'menu', level });
+        }}
         onCancel={() => setConfirm(null)}
       />
     );
@@ -1184,11 +1190,26 @@ function EndMenu({ ogui, level }: { ogui: Ogui; level: number }) {
   const set = useGameStore((state) => state.set);
   const loadLevel = useGameStore((state) => state.loadLevel);
   const [subscreen, setSubscreen] = useState<'menu' | 'highscore' | 'options'>('menu');
+  const [confirmRestart, setConfirmRestart] = useState(false);
   if (subscreen === 'highscore') {
     return <HighscoreScreen initialLevel={level} onExit={() => setSubscreen('menu')} />;
   }
   if (subscreen === 'options') {
     return <OptionsScreen onExit={() => setSubscreen('menu')} />;
+  }
+  // Menu_End/Restart Level owns its own serialized YesNo ? composite.
+  if (confirmRestart) {
+    return (
+      <ConfirmScreen
+        ogui={ogui}
+        question={MENU_TEXT_SOURCE.restartQuestion}
+        onConfirm={() => {
+          menuAudio.levelLoad();
+          loadLevel(level);
+        }}
+        onCancel={() => setConfirmRestart(false)}
+      />
+    );
   }
   return (
     <MenuBand ogui={ogui}>
@@ -1196,7 +1217,7 @@ function EndMenu({ ogui, level }: { ogui: Ogui; level: number }) {
         ogui={ogui}
         initial="last"
         items={[
-          { rect: LARGE_MENU_BUTTON_RECTS[0], label: MENU_TEXT_SOURCE.restartLevel, onClick: () => loadLevel(level) },
+          { rect: LARGE_MENU_BUTTON_RECTS[0], label: MENU_TEXT_SOURCE.restartLevel, onClick: () => setConfirmRestart(true) },
           { rect: LARGE_MENU_BUTTON_RECTS[1], label: MENU_TEXT_SOURCE.main[1], onClick: () => setSubscreen('highscore') },
           { rect: LARGE_MENU_BUTTON_RECTS[2], label: MENU_TEXT_SOURCE.options, onClick: () => setSubscreen('options') },
           { rect: LARGE_MENU_BUTTON_RECTS[3], label: MENU_TEXT_SOURCE.home, onClick: () => set({ phase: 'menu' }) },
@@ -1204,7 +1225,11 @@ function EndMenu({ ogui, level }: { ogui: Ogui; level: number }) {
             rect: LARGE_MENU_BUTTON_RECTS[4],
             label: MENU_TEXT_SOURCE.nextLevel,
             disabled: level >= 12,
-            onClick: () => loadLevel(level + 1),
+            onClick: () => {
+              // Load Level shares base.cmo's Menu_Load click machinery.
+              menuAudio.levelLoad();
+              loadLevel(level + 1);
+            },
           },
         ]}
       />

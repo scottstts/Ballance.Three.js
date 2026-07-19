@@ -466,6 +466,13 @@ export class BallShadow {
   }));
   private readonly widthByVisual = new WeakMap<THREE.Object3D, number>();
   private readonly world: RAPIER.World;
+  /**
+   * TT Simple Shadow projects only onto CKFloorManager floors; Levelinit's
+   * `set Floor` stamps the Floor attribute on exactly the level's `Shadow`
+   * group members. Rails, stoppers, invisible helpers, and moving moduls
+   * never receive the ball shadow.
+   */
+  private receivers: ReadonlySet<number> = new Set();
 
   constructor(physics: PhysicsWorld) {
     this.world = physics.world;
@@ -490,6 +497,10 @@ export class BallShadow {
     this.mesh.renderOrder = 2;
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
+  }
+
+  setReceivers(receivers: ReadonlySet<number>): void {
+    this.receivers = receivers;
   }
 
   async init(): Promise<void> {
@@ -533,6 +544,7 @@ export class BallShadow {
           undefined,
           excludeCollider,
           excludeBody,
+          (candidate) => this.receivers.has(candidate.handle),
         );
         if (!hit) {
           sample.collider = -1;
