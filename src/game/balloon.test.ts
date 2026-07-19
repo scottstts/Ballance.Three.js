@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
@@ -14,6 +15,7 @@ import {
   BALLOON_WAKE_PROXIMITY_SOURCE,
 } from './balloon.ts';
 import { decodeUfoPath, UFO_SOUND_SOURCE, ufoSoundPitch } from './finale.ts';
+import { buildVxTcbControls, evaluateVxTcbRotation } from './vxTcbRotation.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -316,5 +318,33 @@ describe.skipIf(!existsSync(sourcePath))('source-backed PE_Balloon physics', () 
     );
     expect(intValue(rowTest ? parameters(file, rowTest).get('B') : undefined)).toBe(11);
     expect(decodeUfoPath(file).filter((step) => step.startAnimation)).toHaveLength(1);
+  });
+
+  it('evaluates the UFO arms with the shipped quaternion TCB controller', () => {
+    if (!file) return;
+    const animation = file.byName
+      .get('UFO_Animation')
+      ?.find((record) => record.kind === 'keyedAnimation');
+    expect(animation?.kind).toBe('keyedAnimation');
+    if (!animation || animation.kind !== 'keyedAnimation') return;
+    const track = file.objects[animation.animationIndices[0]];
+    expect(track.kind).toBe('objectAnimation');
+    if (track.kind !== 'objectAnimation') return;
+
+    expect(track.rotationControllerType).toBe(0x45b52a02);
+    const controls = buildVxTcbControls(track.rotationKeys);
+    const at47 = evaluateVxTcbRotation(track.rotationKeys, controls, 47);
+    const at72Half = evaluateVxTcbRotation(track.rotationKeys, controls, 72.5);
+    expect(at47.z).toBeCloseTo(0.09910679163503085, 12);
+    expect(at47.w).toBeCloseTo(-0.9950768029915132, 12);
+    expect(at72Half.z).toBeCloseTo(-0.45400392577589826, 12);
+    expect(at72Half.w).toBeCloseTo(-0.8909996831537442, 12);
+
+    const previous = track.rotationKeys[1].quaternion;
+    const next = track.rotationKeys[2].quaternion;
+    const linear = new THREE.Quaternion(-previous[0], -previous[1], previous[2], previous[3])
+      .normalize()
+      .slerp(new THREE.Quaternion(-next[0], -next[1], next[2], next[3]).normalize(), 0.5);
+    expect(Math.abs(linear.z - at47.z)).toBeGreaterThan(0.01);
   });
 });

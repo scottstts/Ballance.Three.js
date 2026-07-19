@@ -768,6 +768,9 @@ function loadObjectAnimation(base: ObjectBase, chunk: StateChunk): ObjectAnimati
     kind: 'objectAnimation',
     entityIndex: -1,
     length: 0,
+    positionControllerType: 0,
+    rotationControllerType: 0,
+    scaleControllerType: 0,
     positionKeys: [],
     rotationKeys: [],
     scaleKeys: [],
@@ -813,21 +816,28 @@ function loadObjectAnimation(base: ObjectBase, chunk: StateChunk): ObjectAnimati
     const keysStart = pos + 3;
 
     if (controllerType === LINEAR_POSITION && blockSize === 1 + count * 4) {
+      rec.positionControllerType = controllerType;
       readVectorKeys(rec.positionKeys, keysStart, count, 4);
     } else if (controllerType === LINEAR_SCALE && blockSize === 1 + count * 4) {
+      rec.scaleControllerType = controllerType;
       readVectorKeys(rec.scaleKeys, keysStart, count, 4);
     } else if (controllerType === TCB_POSITION && blockSize === 1 + count * 9) {
+      rec.positionControllerType = controllerType;
       readVectorKeys(rec.positionKeys, keysStart, count, 9);
     } else if (controllerType === TCB_SCALE && blockSize === 1 + count * 9) {
+      rec.scaleControllerType = controllerType;
       readVectorKeys(rec.scaleKeys, keysStart, count, 9);
     } else if (controllerType === BEZIER_POSITION && blockSize === 1 + count * 11) {
+      rec.positionControllerType = controllerType;
       readVectorKeys(rec.positionKeys, keysStart, count, 11);
     } else if (controllerType === BEZIER_SCALE && blockSize === 1 + count * 11) {
+      rec.scaleControllerType = controllerType;
       readVectorKeys(rec.scaleKeys, keysStart, count, 11);
     } else if (
       (controllerType === LINEAR_ROTATION && blockSize === 1 + count * 5) ||
       (controllerType === TCB_ROTATION && blockSize === 1 + count * 10)
     ) {
+      rec.rotationControllerType = controllerType;
       const stride = controllerType === LINEAR_ROTATION ? 5 : 10;
       for (let key = 0; key < count; key++) {
         const offset = keysStart + key * stride;

@@ -469,6 +469,9 @@ export interface ObjectAnimationRec extends ObjectBase {
   kind: 'objectAnimation';
   entityIndex: number;
   length: number;
+  positionControllerType: number;
+  rotationControllerType: number;
+  scaleControllerType: number;
   positionKeys: VectorKey[];
   rotationKeys: RotationKey[];
   scaleKeys: VectorKey[];

@@ -12,6 +12,11 @@ import type {
 } from '../formats/ck2/types.ts';
 import { vxMatrixToThree } from '../engine/convert.ts';
 import type { Prefab, PrefabInstance } from './moduls/prefabs.ts';
+import {
+  buildVxTcbControls,
+  evaluateVxTcbRotation,
+  type VxTcbControl,
+} from './vxTcbRotation.ts';
 
 export interface UfoPathStep {
   position: THREE.Vector3;
@@ -126,7 +131,11 @@ export class UfoFinale {
   private readonly localBall = new THREE.Vector3();
   private readonly previousBodyPosition = new THREE.Vector3();
   private readonly spinAxis = new THREE.Vector3(0.05, 1, -0.05).normalize();
-  private readonly tracks: { object: THREE.Object3D; track: ObjectAnimationRec }[] = [];
+  private readonly tracks: {
+    object: THREE.Object3D;
+    track: ObjectAnimationRec;
+    controls: VxTcbControl[];
+  }[] = [];
   private phase: 'idle' | 'path' | 'hyperspace' | 'complete' = 'idle';
   private row = 0;
   private rowTime = 0;
@@ -275,17 +284,20 @@ export class UfoFinale {
       if (track?.kind !== 'objectAnimation') continue;
       const entity = this.prefab.file.objects[track.entityIndex];
       const object = entity?.name ? this.instance.parts.get(entity.name) : null;
-      if (object) this.tracks.push({ object, track });
+      if (object) {
+        this.tracks.push({
+          object,
+          track,
+          controls: buildVxTcbControls(track.rotationKeys),
+        });
+      }
     }
   }
 
   private applyArmAnimation(normalizedTime: number): void {
-    for (const { object, track } of this.tracks) {
+    for (const { object, track, controls } of this.tracks) {
       const time = normalizedTime * track.length;
-      const [a, b, mix] = keyInterval(track, time);
-      const qa = vxQuaternion(a.quaternion);
-      const qb = vxQuaternion(b.quaternion);
-      object.quaternion.copy(qa).slerp(qb, mix);
+      evaluateVxTcbRotation(track.rotationKeys, controls, time, object.quaternion);
       object.updateMatrix();
     }
   }
@@ -313,28 +325,6 @@ export class UfoFinale {
     this.body.updateWorldMatrix(true, false);
     return this.body.getWorldPosition(out);
   }
-}
-
-function keyInterval(track: ObjectAnimationRec, time: number) {
-  const keys = track.rotationKeys;
-  if (keys.length === 0) {
-    const identity = { quaternion: [0, 0, 0, 1] as [number, number, number, number], time: 0 };
-    return [identity, identity, 0] as const;
-  }
-  if (time <= keys[0].time) return [keys[0], keys[0], 0] as const;
-  for (let i = 1; i < keys.length; i++) {
-    if (time <= keys[i].time) {
-      const a = keys[i - 1];
-      const b = keys[i];
-      return [a, b, (time - a.time) / Math.max(1e-6, b.time - a.time)] as const;
-    }
-  }
-  return [keys.at(-1)!, keys.at(-1)!, 0] as const;
-}
-
-function vxQuaternion(value: [number, number, number, number]): THREE.Quaternion {
-  // S*R*S for the Z reflection maps the quaternion axial vector to (-x,-y,z).
-  return new THREE.Quaternion(-value[0], -value[1], value[2], value[3]).normalize();
 }
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);

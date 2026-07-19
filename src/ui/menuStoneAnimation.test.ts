@@ -19,6 +19,9 @@ describe.skipIf(!existsSync(menuLevelPath))('source-authored menu stone-ball ani
     expect(source.track.name).toBe('Record Anim');
     expect(file.objects[source.track.entityIndex]?.name).toBe('I_Ball_Stone');
     expect(source.track.length).toBe(4445);
+    expect(source.track.positionControllerType).toBe(0x637c4301);
+    expect(source.track.rotationControllerType).toBe(0x49ed4002);
+    expect(source.track.scaleControllerType).toBe(0x654a3a04);
     expect(source.track.positionKeys).toHaveLength(4445);
     expect(source.track.rotationKeys).toHaveLength(4445);
     expect(source.track.scaleKeys).toHaveLength(4445);

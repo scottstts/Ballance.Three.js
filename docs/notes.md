@@ -1416,3 +1416,20 @@ options subscreens are simplified (volume only).
   this is a diamond-oriented open-top prism, not the port's former 1500-unit
   axis-aligned cube and invented solid zenith plane. The recovered menu/game
   radii, topology, groups, winding, and UVs now have source-lock tests.
+
+## 2026-07-18 shipped quaternion TCB recovery
+
+- `Play Animation 3D Entity` evaluates its `Object Animation` input through
+  virtual slot `+0xe4`. Static tracing from `3DTransfo.dll` into the read-only
+  source1 `CK2_3D.dll` resolves the UFO controller tag `0x45b52a02` to its TCB
+  quaternion evaluator, rather than the port's former segment Slerp.
+- CK2_3D lazily builds two Squad controls per key. It hemisphere-corrects both
+  neighbours, uses `LnDif(a,b)=ln(conjugate(a)*b)`, applies the serialized
+  tension/continuity/bias and non-uniform key-time factors, then multiplies the
+  current key by the exponential of the incoming/outgoing logarithmic tangent.
+  Segment phase is eased with previous `EaseFrom` and next `EaseTo`.
+- The shipped `VxMath.dll` confirms Squad as Slerp of endpoint and control
+  Slerps at `2t(1-t)`. Its Slerp takes the shortest quaternion hemisphere and
+  uses a linear branch when `1-abs(dot) <= .01`. The browser finale now follows
+  this exact path for all eight six-key UFO arm tracks; controller tags and
+  representative sub-key rotations are source-locked.

@@ -418,6 +418,7 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
         expect(track.kind).toBe('objectAnimation');
         if (track.kind === 'objectAnimation') {
           expect(track.length).toBe(100);
+          expect(track.rotationControllerType).toBe(0x45b52a02);
           expect(track.rotationKeys.map((key) => key.time)).toEqual([0, 35, 59, 70, 75, 100]);
         }
       }
