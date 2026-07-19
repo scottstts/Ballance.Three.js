@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../formats/ck2/types.ts';
+import { defaultTable } from './store.ts';
 import {
   SCORE_COUNT_SPEED,
   SOURCE_DEFAULT_LAST_PLAYER,
@@ -113,5 +114,18 @@ describe.skipIf(!existsSync(basePath) || !existsSync(menuPath))('source-authored
     expect(intParameter(base, qualification, 'Test')).toBe(5);
     expect(highscoreQualifies(1000, 1000)).toBe(false);
     expect(highscoreQualifies(1001, 1000)).toBe(true);
+  });
+
+  it('seeds every level leaderboard exactly like the shipped DB arrays', () => {
+    for (let level = 1; level <= 12; level++) {
+      const name = `DB_Highscore_Lv${String(level).padStart(2, '0')}`;
+      const array = base.byName.get(name)?.find((record) => record.kind === 'dataArray');
+      expect(array?.kind, name).toBe('dataArray');
+      if (array?.kind !== 'dataArray') continue;
+      expect(array.columns.map((column) => column.name)).toEqual(['Playername', 'Points']);
+      expect(array.rows).toEqual(
+        defaultTable(level).map((entry) => [entry.name, entry.score]),
+      );
+    }
   });
 });
