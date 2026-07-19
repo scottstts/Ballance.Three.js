@@ -253,6 +253,12 @@ class FanModul extends Modul {
     }
     this.loop = ctx.attachLoop('Misc_Ventilator.wav', instance.root, 1);
     this.loop.setDistanceRange(MODUL18_SOUND_RANGE.near, MODUL18_SOUND_RANGE.far);
+    // The prefab carries NO collision anywhere in the source: the solid fan
+    // grids are baked into the level's Phys_Floors meshes (0.7/0.3 static
+    // colliders with their own Sound_HitID/RollID surfaces), grid-less
+    // openings are hollow by design, the rotor spins below the grid plane,
+    // and the hidden Kollisionsquader is only the Box Box Intersection wind
+    // volume.
     for (const [partName, obj] of instance.parts) {
       if (partName.includes('Kollisionsquader') && obj instanceof THREE.Mesh) {
         obj.updateWorldMatrix(true, false);
@@ -260,10 +266,6 @@ class FanModul extends Modul {
         obj.visible = false;
       }
       if (partName.includes('Rotor')) this.rotor = obj;
-      // the grid/housing collides
-      if ((partName.includes('Gitter') || partName.includes('Boden')) && obj instanceof THREE.Mesh) {
-        this.makeFixedPart(obj, { suffix: partName, fixed: true, friction: 0.7, elasticity: 0.4, surface: 'metal' });
-      }
     }
   }
 

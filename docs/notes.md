@@ -1898,6 +1898,35 @@ sequence, and complete option subscreens are all implemented below.
   0 if the tutorial freeze is live, else 2. The port's settings
   subscription plus the tutorial-frozen PSI skip already reproduce both
   effects; no change needed.
+- The remaining graph files' top-level scripts (all Menu_* screens,
+  MenuLevel_Init + flame + ball-anim scripts, Balls.nmo's init/lightning/
+  explosion/reset-pieces/wind/coll-sound/shadow/particle scripts, both
+  AnimTrafo scripts; Camera.nmo and Tutorial.nmo have none) all map to
+  already-recovered systems. `Balls_Init` is Ops + Init Ballpieces.
+- A full string-parameter sweep of base.cmo/Gameplay/Levelinit/Sound/
+  Tutorial finds NO reference to the level groups named `invisible` or
+  `test`: the Wave-2 "redundant editor groupings" claim is now
+  evidence-backed for those two (Shadow was the exception - it is the
+  TT Simple Shadow receiver set).
+
+## 2026-07-19 fan housing collision provenance resolved
+
+- P_Modul_18.nmo contains exactly four entities (MF frame, Particle frame,
+  Rotor, hidden Kollisionsquader) and NO Physicalize block anywhere. The
+  solid surface at 88 of 92 fan placements is ordinary static level
+  geometry: the Modul18_Top/Gitter grid faces are baked into A*_Floor_*/
+  A*_Wood_* meshes that belong to Phys_Floors (fixed concave, 0.7/0.3,
+  with their own stone or wood Sound_HitID/RollID membership). L12 fans
+  01/02 and L4 fans 05/06 have NO grid - open wind shafts by design.
+  A04_VentiDeckel (L4) is a decorative cap in no group at all.
+- The port's former FanModul Gitter/Boden makeFixedPart branch was dead
+  code (loadPrefab yields only the three real parts) whose invented
+  0.7/0.4 values coincide with Levelinit's FixCube physicalize - which has
+  Enable Collision FALSE. The branch was deleted; behavior is unchanged
+  because the level-mesh static colliders already provide the authentic
+  collision and sounds.
+- The level P_Modul_18_XX placement entities are marker meshes deleted by
+  Replace PH at runtime; they never carry physics or sound groups.
 
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
