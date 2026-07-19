@@ -29,6 +29,8 @@ const toFilterText = process.argv.find((arg) => arg.startsWith('--to='))?.slice(
 const toFilter = toFilterText === undefined ? null : Number(toFilterText);
 const containsIndexText = process.argv.find((arg) => arg.startsWith('--contains-index='))?.slice('--contains-index='.length);
 const containsIndex = containsIndexText === undefined ? null : Number(containsIndexText);
+const usesIndexText = process.argv.find((arg) => arg.startsWith('--uses-index='))?.slice('--uses-index='.length);
+const usesIndex = usesIndexText === undefined ? null : Number(usesIndexText);
 const file = parseNmo(readFileSync(path));
 
 function parameterValue(parameter: ParameterRec): string {
@@ -72,6 +74,15 @@ function resolveParameter(parameter: ParameterRec): { record: ParameterRec; chai
   return { record: current, chain };
 }
 
+function behaviorUsesIndex(record: CKRecord, index: number): boolean {
+  if (record.kind !== 'behavior') return false;
+  return record.referenceLists.flat().some((memberIndex) => {
+    if (memberIndex === index) return true;
+    const member = file.objects[memberIndex];
+    return member?.kind === 'parameter' && resolveParameter(member).chain.includes(index);
+  });
+}
+
 console.log(`fileVersion=${file.info.fileVersion} writeMode=${file.info.fileWriteMode} objects=${file.objects.length}`);
 
 const byKind = new Map<string, number>();
@@ -87,6 +98,7 @@ if (objects) {
     if (fromFilter !== null && o.index < fromFilter) continue;
     if (toFilter !== null && o.index > toFilter) continue;
     if (containsIndex !== null && (o.kind !== 'behavior' || !o.referenceLists.some((list) => list.includes(containsIndex)))) continue;
+    if (usesIndex !== null && !behaviorUsesIndex(o, usesIndex)) continue;
     const chunk = file.chunks[o.index];
     console.log(
       `  [${String(o.index).padStart(4)}] class=${String(o.classId).padStart(3)} kind=${o.kind.padEnd(8)} ` +

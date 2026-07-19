@@ -5,6 +5,8 @@ import { buildScene } from '../engine/sceneBuilder.ts';
 import { buildSky, MENU_SKY_SOURCE } from '../engine/sky.ts';
 import { addLightRig } from '../engine/viewer.ts';
 import { Flame } from '../game/effects.ts';
+import { startSourceFrameLoop } from '../game/frameLoop.ts';
+import { gameStore } from '../game/store.ts';
 import { decodeImageFile } from '../engine/textures.ts';
 import {
   decodeMenuCameraSource,
@@ -95,10 +97,8 @@ export default function MenuBackdrop() {
     })();
 
     let last = performance.now();
-    let raf = 0;
     const frame = () => {
       if (disposed) return;
-      raf = requestAnimationFrame(frame);
       const now = performance.now();
       const dt = Math.min((now - last) / 1000, 0.1);
       last = now;
@@ -120,7 +120,10 @@ export default function MenuBackdrop() {
       for (const f of flames) f.update(dt, uScale);
       renderer.render(scene, camera);
     };
-    frame();
+    const stopFrameLoop = startSourceFrameLoop(
+      frame,
+      () => gameStore.getState().settings.syncToScreen,
+    );
     const onResize = () => {
       renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
       camera.aspect = cameraSource?.aspectRatio ?? 4 / 3;
@@ -129,7 +132,7 @@ export default function MenuBackdrop() {
     window.addEventListener('resize', onResize);
     return () => {
       disposed = true;
-      cancelAnimationFrame(raf);
+      stopFrameLoop();
       window.removeEventListener('resize', onResize);
       renderer.dispose();
     };

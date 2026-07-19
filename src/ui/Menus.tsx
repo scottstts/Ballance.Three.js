@@ -5,7 +5,14 @@
  * pause and win/fail flows with their exact English strings).
  */
 import { useEffect, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react';
-import { CONTROL_ROWS, SCREEN_MODES, displayKey, type ControlSetting, type Settings } from '../game/settings.ts';
+import {
+  CONTROL_ROWS,
+  SCREEN_MODES,
+  displayKey,
+  isSourceKey,
+  type ControlSetting,
+  type Settings,
+} from '../game/settings.ts';
 import { scoreCountStep } from '../game/score.ts';
 import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
@@ -287,10 +294,12 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
     const capture = (event: KeyboardEvent) => {
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (event.code !== 'Escape') {
+      if (isSourceKey(event.code)) {
         updateSettings({ [listening]: event.code } as Partial<Settings>);
+        setListening(null);
+      } else if (event.code === 'Escape') {
+        setListening(null);
       }
-      setListening(null);
     };
     window.addEventListener('keydown', capture, true);
     return () => window.removeEventListener('keydown', capture, true);
@@ -369,7 +378,7 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
             <div
               key={setting}
               role="button"
-              aria-label={`${label}: ${listening === setting ? 'Press Key' : displayKey(settings[setting])}`}
+              aria-label={`${label}: ${displayKey(settings[setting])}`}
               tabIndex={0}
               className={`og-source-key-field${listening === setting ? ' og-key-listening' : ''}`}
               style={{
@@ -382,7 +391,7 @@ export function OptionsScreen({ backPhase = 'menu', onExit }: { backPhase?: Game
               }}
             >
               <img src={ogui.text(label, 18).url} alt="" draggable={false} />
-              <img src={ogui.text(listening === setting ? 'Press Key' : displayKey(settings[setting]), 18).url} alt="" draggable={false} />
+              <img src={ogui.text(displayKey(settings[setting]), 18).url} alt="" draggable={false} />
             </div>
           ))}
           {field(OPTIONS_RECTS.controls.invertField, 'Invert Rotation?')}

@@ -26,6 +26,102 @@ export interface ScreenMode {
   bpp: number;
 }
 
+export interface SourceKeyEntry {
+  /** Browser physical-key identifier corresponding to the Virtools scan code. */
+  code: string;
+  /** English column of Language.nmo/all_keys, including its authored casing. */
+  label: string;
+}
+
+/**
+ * Language.nmo/all_keys in Virtools scan-code order. DB_Options stores the
+ * zero-based row index (for example 68 = Up and 39 = left Shift).
+ */
+export const SOURCE_KEYS: readonly SourceKeyEntry[] = [
+  { code: 'Digit1', label: '1' },
+  { code: 'Digit2', label: '2' },
+  { code: 'Digit3', label: '3' },
+  { code: 'Digit4', label: '4' },
+  { code: 'Digit5', label: '5' },
+  { code: 'Digit6', label: '6' },
+  { code: 'Digit7', label: '7' },
+  { code: 'Digit8', label: '8' },
+  { code: 'Digit9', label: '9' },
+  { code: 'Digit0', label: '0' },
+  { code: 'Minus', label: 'ß' },
+  { code: 'Equal', label: '´' },
+  { code: 'Backspace', label: 'back' },
+  { code: 'Tab', label: 'tab' },
+  { code: 'KeyQ', label: 'Q' },
+  { code: 'KeyW', label: 'W' },
+  { code: 'KeyE', label: 'E' },
+  { code: 'KeyR', label: 'R' },
+  { code: 'KeyT', label: 'T' },
+  { code: 'KeyY', label: 'Z' },
+  { code: 'KeyU', label: 'U' },
+  { code: 'KeyI', label: 'I' },
+  { code: 'KeyO', label: 'O' },
+  { code: 'KeyP', label: 'P' },
+  { code: 'BracketLeft', label: 'ü' },
+  { code: 'BracketRight', label: '+' },
+  { code: 'ControlLeft', label: 'ctrl' },
+  { code: 'KeyA', label: 'A' },
+  { code: 'KeyS', label: 'S' },
+  { code: 'KeyD', label: 'D' },
+  { code: 'KeyF', label: 'F' },
+  { code: 'KeyG', label: 'G' },
+  { code: 'KeyH', label: 'H' },
+  { code: 'KeyJ', label: 'J' },
+  { code: 'KeyK', label: 'K' },
+  { code: 'KeyL', label: 'L' },
+  { code: 'Semicolon', label: 'ö' },
+  { code: 'Quote', label: 'ä' },
+  { code: 'Backquote', label: '^' },
+  { code: 'ShiftLeft', label: 'Shift' },
+  { code: 'Backslash', label: '#' },
+  { code: 'KeyZ', label: 'Y' },
+  { code: 'KeyX', label: 'X' },
+  { code: 'KeyC', label: 'C' },
+  { code: 'KeyV', label: 'V' },
+  { code: 'KeyB', label: 'B' },
+  { code: 'KeyN', label: 'N' },
+  { code: 'KeyM', label: 'M' },
+  { code: 'Comma', label: ',' },
+  { code: 'Period', label: '.' },
+  { code: 'Slash', label: '-' },
+  { code: 'ShiftRight', label: 'right shift' },
+  { code: 'AltLeft', label: 'alternate' },
+  { code: 'Space', label: 'space' },
+  { code: 'Numpad7', label: '7 (num)' },
+  { code: 'Numpad8', label: '8  (num)' },
+  { code: 'Numpad9', label: '9  (num)' },
+  { code: 'NumpadSubtract', label: '-  (num)' },
+  { code: 'Numpad4', label: '4  (num)' },
+  { code: 'Numpad5', label: '5  (num)' },
+  { code: 'Numpad6', label: '6  (num)' },
+  { code: 'NumpadAdd', label: '+  (num)' },
+  { code: 'Numpad1', label: '1  (num)' },
+  { code: 'Numpad2', label: '2  (num)' },
+  { code: 'Numpad3', label: '3 (num)' },
+  { code: 'Numpad0', label: '0  (num)' },
+  { code: 'NumpadDecimal', label: ',  (num)' },
+  { code: 'IntlBackslash', label: '<' },
+  { code: 'ArrowUp', label: 'Up' },
+  { code: 'ArrowDown', label: 'Down' },
+  { code: 'ArrowLeft', label: 'Left' },
+  { code: 'ArrowRight', label: 'Right' },
+];
+
+const sourceKeyByCode = new Map(SOURCE_KEYS.map((entry, index) => [entry.code, { ...entry, index }]));
+
+export function sourceKeyCode(code: string): number | null {
+  return sourceKeyByCode.get(code)?.index ?? null;
+}
+
+export function isSourceKey(code: string): boolean {
+  return sourceKeyByCode.has(code);
+}
+
 /** Dummy_ScreenModes from Menu.nmo, populated by the renderer at runtime. */
 export const SCREEN_MODES: readonly ScreenMode[] = [
   { mode: 54, width: 640, height: 480, bpp: 16 },
@@ -67,16 +163,8 @@ export function screenMode(settings: Pick<Settings, 'screenMode'>): ScreenMode {
 }
 
 export function displayKey(code: string): string {
-  const known: Record<string, string> = {
-    ArrowUp: 'Up',
-    ArrowDown: 'Down',
-    ArrowLeft: 'Left',
-    ArrowRight: 'Right',
-    ShiftLeft: 'Left Shift',
-    ShiftRight: 'Right Shift',
-    Space: 'Space',
-  };
-  if (known[code]) return known[code];
+  const source = sourceKeyByCode.get(code);
+  if (source) return source.label;
   if (/^Key[A-Z]$/.test(code)) return code.slice(3);
   if (/^Digit\d$/.test(code)) return code.slice(5);
   return code.replace(/([a-z])([A-Z])/g, '$1 $2');

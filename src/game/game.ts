@@ -36,6 +36,7 @@ import { prepareBalloonInstance, UFO_SOUND_SOURCE, UfoFinale } from './finale.ts
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { fallLifeOutcome } from './lives.ts';
+import { startSourceFrameLoop } from './frameLoop.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
 import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/prefabs.ts';
 import { modulFactories } from './moduls/registry.ts';
@@ -818,12 +819,10 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     }
     present(frameDt);
   };
-  const loop = () => {
-    if (disposed) return;
-    requestAnimationFrame(loop);
-    frame();
-  };
-  loop();
+  const stopFrameLoop = startSourceFrameLoop(
+    frame,
+    () => gameStore.getState().settings.syncToScreen,
+  );
   // rAF stalls in hidden tabs; keep simulating/rendering so automation and
   // background tabs stay live (accumulator is wall-clock based, so safe).
   const hiddenDriver = setInterval(() => {
@@ -889,6 +888,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
     debug,
     dispose() {
       disposed = true;
+      stopFrameLoop();
       clearInterval(hiddenDriver);
       unsubscribeSettings();
       audio.dispose();

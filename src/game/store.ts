@@ -1,7 +1,7 @@
 /** Shared game state bridge between the engine loop and the React UI. */
 import { create } from 'zustand';
 import type { BallKind } from './constants.ts';
-import { DEFAULT_SETTINGS, SCREEN_MODES, type Settings } from './settings.ts';
+import { DEFAULT_SETTINGS, isSourceKey, SCREEN_MODES, type Settings } from './settings.ts';
 
 export type { Settings } from './settings.ts';
 
@@ -48,7 +48,8 @@ export function defaultTable(level: number): ScoreEntry[] {
 const STORAGE_KEY = 'ballance-save';
 
 function loadSettings(saved: Partial<Settings> | undefined): Settings {
-  const key = (value: unknown, fallback: string) => (typeof value === 'string' && value !== '' ? value : fallback);
+  const key = (value: unknown, fallback: string) =>
+    typeof value === 'string' && isSourceKey(value) ? value : fallback;
   const volume = typeof saved?.musicVolume === 'number' ? saved.musicVolume : DEFAULT_SETTINGS.musicVolume;
   const mode = typeof saved?.screenMode === 'number' ? Math.trunc(saved.screenMode) : DEFAULT_SETTINGS.screenMode;
   return {

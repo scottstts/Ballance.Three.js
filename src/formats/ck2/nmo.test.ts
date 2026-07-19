@@ -9,9 +9,10 @@ import { GAMEPLAY_SKY_SOURCE, MENU_SKY_SOURCE } from '../../engine/sky.ts';
 import { FLOOR_GROUPS } from '../../game/constants.ts';
 import { decodeCk2dCurve, evalCurve } from '../../game/curve.ts';
 import { decodeUfoPath } from '../../game/finale.ts';
+import { SOURCE_FRAME_LIMIT_HZ } from '../../game/frameLoop.ts';
 import { MODUL_PHYS } from '../../game/moduls/physTable.ts';
 import { SCORE_COUNT_SPEED, scoreCountStep } from '../../game/score.ts';
-import { DEFAULT_SETTINGS, SCREEN_MODES } from '../../game/settings.ts';
+import { DEFAULT_SETTINGS, SCREEN_MODES, SOURCE_KEYS, sourceKeyCode } from '../../game/settings.ts';
 import { defaultTable } from '../../game/store.ts';
 import { parseNmo } from './nmo.ts';
 import { CKClassId } from './types.ts';
@@ -526,11 +527,61 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
       const row = dbOptions.rows[0];
       expect(DEFAULT_SETTINGS.musicVolume).toBe(row[0]);
       expect(Number(DEFAULT_SETTINGS.syncToScreen)).toBe(row[1]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyForward)).toBe(row[2]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyBackward)).toBe(row[3]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyLeft)).toBe(row[4]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyRight)).toBe(row[5]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyRotateCamera)).toBe(row[6]);
+      expect(sourceKeyCode(DEFAULT_SETTINGS.keyLiftCamera)).toBe(row[7]);
       expect(Number(DEFAULT_SETTINGS.invertCameraRotation)).toBe(row[8]);
       expect(Number(DEFAULT_SETTINGS.clouds)).toBe(row[10]);
     }
 
+    const language = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/Language.nmo')));
+    const allKeys = language.byName.get('all_keys')?.[0];
+    expect(allKeys?.kind).toBe('dataArray');
+    if (allKeys?.kind === 'dataArray') {
+      expect(SOURCE_KEYS).toHaveLength(allKeys.rows.length);
+      expect(SOURCE_KEYS.map(({ label }, index) => [index + 1, label])).toEqual(
+        allKeys.rows.map((row) => [row[0], row[2]]),
+      );
+    }
+
     const menu = parseNmo(readFileSync(join(GAME_DIR, '3D Entities/Menu.nmo')));
+    const updateSettings = menu.byName
+      .get('Update Settings')
+      ?.find((record) => record.kind === 'behavior');
+    expect(updateSettings?.kind).toBe('behavior');
+    if (updateSettings?.kind === 'behavior') {
+      const timeSettings = updateSettings.referenceLists
+        .flat()
+        .map((index) => menu.objects[index])
+        .filter((record) => record?.kind === 'behavior' && record.name === 'Time Settings');
+      expect(timeSettings).toHaveLength(2);
+      const sourceInt = (behavior: (typeof timeSettings)[number], name: string): number => {
+        let parameter = behavior.referenceLists
+          .flat()
+          .map((index) => menu.objects[index])
+          .find((record) => record?.kind === 'parameter' && record.name === name);
+        const seen = new Set<number>();
+        while (parameter?.kind === 'parameter' && !seen.has(parameter.index)) {
+          seen.add(parameter.index);
+          const nextIndex = parameter.sourceIndex >= 0 ? parameter.sourceIndex : parameter.sharedIndex;
+          if (nextIndex < 0 || menu.objects[nextIndex]?.kind !== 'parameter') break;
+          parameter = menu.objects[nextIndex];
+        }
+        expect(parameter?.kind).toBe('parameter');
+        if (parameter?.kind !== 'parameter') return Number.NaN;
+        return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getInt32(0, true);
+      };
+      // BuildingBlocksAddons1.dll declares Free=1, Synchronize to Screen=2,
+      // Limit=3. The two branches select synchronized and 60 FPS limited.
+      expect(timeSettings.map((behavior) => sourceInt(behavior, 'Frame Rate')).sort()).toEqual([2, 3]);
+      expect(timeSettings.map((behavior) => sourceInt(behavior, 'Frame Limit Value'))).toEqual([
+        SOURCE_FRAME_LIMIT_HZ,
+        SOURCE_FRAME_LIMIT_HZ,
+      ]);
+    }
     const countSpeed = menu.byName.get('Menu_Score_CountSpeed')?.[0];
     expect(countSpeed?.kind).toBe('dataArray');
     if (countSpeed?.kind === 'dataArray') {

@@ -233,7 +233,12 @@ ballance-web/
    the 1 s repeat delay. End Level follows the serialized
    Score → optional name entry → context-Next highscore → End menu chain. Score timing and
    reserve conversion are behavior-driven, including the 200 ms fades, 1/5/25 accumulated
-   counter steps, 610 ms life subtraction cadence, and three authored skip keys.
+   counter steps, 610 ms life subtraction cadence, and three authored skip keys. The Graphics
+   Synch toggle follows its two shipped `Time Settings` branches: browser display sync when on,
+   or a 60 FPS presentation limit when off; neither changes the independent 66 Hz simulation.
+   Control remapping is restricted to the 72 `Language.nmo/all_keys` entries and displays that
+   table's exact English labels. Unsupported keys leave the waiter active and Escape cancels,
+   matching `Menu_Opt_Keys/SetKey` instead of accepting arbitrary browser key codes.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term

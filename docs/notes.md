@@ -1433,3 +1433,24 @@ options subscreens are simplified (volume only).
   uses a linear branch when `1-abs(dot) <= .01`. The browser finale now follows
   this exact path for all eight six-key UFO arm tracks; controller tags and
   representative sub-key rotations are source-locked.
+
+## 2026-07-18 source frame modes and control remapping
+
+- `Menu.nmo/Menu_Opt_Graphics/Update Settings` sends the Synch toggle through
+  two `Time Settings` blocks from `BuildingBlocksAddons1.dll`. The DLL declares
+  Frame Rate as `Free=1,Synchronize to Screen=2,Limit=3`; the true branch uses
+  mode 2, while false uses mode 3 with Frame Limit Value 60. The port now uses
+  `requestAnimationFrame` only for the synchronized branch and a 60 Hz limited
+  presentation timer otherwise, for both gameplay and the 3D menu. The fixed
+  66 Hz simulation remains independent, matching the source's separate time
+  and physics managers.
+- `Language.nmo/all_keys` is the complete remapping whitelist: 72 rows whose
+  parameter values are one-based while integer `DB_Options` stores the
+  zero-based row index. This proves the defaults exactly: 68/69/70/71 are the
+  four arrows, 39 is left Shift, and 53 is Space. `SetKey/Update` searches this
+  table and loops `TT_Key Waiter` after `Not Found`; it does not accept an
+  arbitrary scan code and does not replace the visible value with a prompt.
+  Browser remapping now accepts the same 72 physical keys, retains the old
+  source label while highlighted, ignores unsupported keys, and lets Escape
+  cancel. The English labels—including the shipped German-layout punctuation
+  and Y/Z placement—are source-locked row for row.
