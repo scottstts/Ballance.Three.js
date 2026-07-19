@@ -13,7 +13,11 @@ import {
   type ControlSetting,
   type Settings,
 } from '../game/settings.ts';
-import { scoreCountStep } from '../game/score.ts';
+import {
+  SOURCE_HIGHSCORE_NAME_MAX_LENGTH,
+  highscoreQualifies,
+  scoreCountStep,
+} from '../game/score.ts';
 import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
 import {
@@ -762,7 +766,9 @@ function SourceScorePanel({
 
 function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: number; total: number; onDone: () => void }) {
   const submitScore = useGameStore((state) => state.submitScore);
-  const [name, setName] = useState('');
+  const lastPlayer = useGameStore((state) => state.lastPlayer);
+  const [name, setName] = useState(lastPlayer);
+  const [caret, setCaret] = useState(lastPlayer.length);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     menuAudio.highscoreMusic();
@@ -778,19 +784,32 @@ function HighscoreEntry({ ogui, level, total, onDone }: { ogui: Ogui; level: num
       <div className="og-source-entry-title" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.title)}>
         <img src={ogui.text('New highscore entry!', 22).url} alt="" draggable={false} />
       </div>
-      <input
-        ref={inputRef}
-        aria-label="Highscore name"
-        className="og-source-entry-input"
-        style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.name)}
-        value={name}
-        maxLength={16}
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          if (event.key === 'Enter') submit();
-        }}
-      />
+      <div className="og-source-entry-score" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.score)}>
+        <img src={ogui.text(`${total} Points`, 22).url} alt="" draggable={false} />
+      </div>
+      <div className="og-source-entry-field" style={menuBandRectStyle(HIGHSCORE_ENTRY_RECTS.name)}>
+        <div className="og-source-entry-value" aria-hidden="true">
+          {name.slice(0, caret) && <img src={ogui.text(name.slice(0, caret), 22).url} alt="" draggable={false} />}
+          <span className="og-source-entry-caret" />
+          {name.slice(caret) && <img src={ogui.text(name.slice(caret), 22).url} alt="" draggable={false} />}
+        </div>
+        <input
+          ref={inputRef}
+          aria-label="Highscore name"
+          className="og-source-entry-input-proxy"
+          value={name}
+          maxLength={SOURCE_HIGHSCORE_NAME_MAX_LENGTH}
+          onChange={(event) => {
+            setName(event.target.value);
+            setCaret(event.target.selectionStart ?? event.target.value.length);
+          }}
+          onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? event.currentTarget.value.length)}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') submit();
+          }}
+        />
+      </div>
       <SourceButton rect={HIGHSCORE_ENTRY_RECTS.confirm} ogui={ogui} piece="buttonMedium" label="OK" onClick={submit} />
     </MenuBand>
   );
@@ -831,7 +850,7 @@ export function FinishedOverlay() {
     return {
       initialLives: lives,
       total,
-      qualifies: total > (progress.tables[level] ?? defaultTable(level)).at(-1)!.score,
+      qualifies: highscoreQualifies(total, (progress.tables[level] ?? defaultTable(level)).at(-1)!.score),
     };
   });
   const [flow, setFlow] = useState<'score' | 'entry' | 'highscore' | 'end'>('score');

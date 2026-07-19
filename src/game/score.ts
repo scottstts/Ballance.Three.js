@@ -5,6 +5,17 @@ export const SCORE_COUNT_SPEED: readonly { limit: number; step: number }[] = [
   { limit: 9999, step: 25 },
 ];
 
+/** base.cmo/DB_Options row 0, column LastPlayer. */
+export const SOURCE_DEFAULT_LAST_PLAYER = 'name';
+
+/** Menu.nmo/Menu_HighscoreEntry/TT InputString `Max Size`. */
+export const SOURCE_HIGHSCORE_NAME_MAX_LENGTH = 9;
+
+/** base.cmo/Check Highscore uses Test mode 5: strict A > B. */
+export function highscoreQualifies(score: number, cutoff: number): boolean {
+  return score > cutoff;
+}
+
 /**
  * Serialized graph input is the accumulated displayed value, not the amount
  * left to count. The original counter therefore accelerates at 80 and 500.

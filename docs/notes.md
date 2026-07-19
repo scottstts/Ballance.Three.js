@@ -1520,3 +1520,25 @@ options subscreens are simplified (volume only).
 - The browser maps the four remaining messages to completed scene construction,
   sky construction, gameplay effects, and modul construction. The full bar is
   retained for `Load_Object`'s serialized two-frame delayed completion link.
+
+## 2026-07-18 source-authored highscore entry
+
+- Source1 and the statically extracted source2 copies of `Menu.nmo` are
+  byte-identical (`sha256 024f7fa2d9a7b7eedb10b2d3871b01cb2ac350cafd1562c8814772e102361cdf`).
+  `Menu_HighscoreEntry` resets `TT InputString` from `base.cmo/DB_Options`
+  row 0, column 9 (`LastPlayer`, shipped value `name`), limits it to `Max
+  Size=9`, then writes the exact `StringWithoutCaret` back to that cell.
+  Blank and whitespace-only strings are therefore retained; trimming or a
+  browser-only `Player` fallback is not source-equivalent.
+- `M_HighEntry_Score` occupies normalized rect
+  `(.38,.43133345)..(.62,.50133342)` and displays `%d %s` from the final score
+  plus the English language value `Points`. `M_HighEntry_NameEntry` remains at
+  `(.38,.52733356)..(.62,.59733367)`, with a black material alpha of 110/255.
+  The input display uses `Font_1` and the white `M_Caret` (`Caret Size=.1`), so
+  the browser's native Georgia text/caret was replaced by the source bitmap
+  renderer over an invisible keyboard-input proxy.
+- `base.cmo/Check Highscore` compares total score against row 9 with Test mode
+  5, statically established elsewhere as strict `A > B`. An equal score does
+  not qualify. The source temporarily inserts `xxxxxxxxxxxxxxxxxxxx`, sorts,
+  then replaces that marker with `LastPlayer`; the browser achieves the same
+  visible top-ten result while preserving the exact submitted name.

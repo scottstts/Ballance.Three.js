@@ -233,7 +233,11 @@ ballance-web/
    the 1 s repeat delay. End Level follows the serialized
    Score → optional name entry → context-Next highscore → End menu chain. Score timing and
    reserve conversion are behavior-driven, including the 200 ms fades, 1/5/25 accumulated
-   counter steps, 610 ms life subtraction cadence, and three authored skip keys. The Graphics
+   counter steps, 610 ms life subtraction cadence, and three authored skip keys. Highscore
+   entry restores `DB_Options.LastPlayer` (shipped as `name`), displays the current
+   score as `<value> Points` in `M_HighEntry_Score`, accepts at most the serialized nine
+   characters, and writes the exact string back without web-only trimming or substitution.
+   Qualification is the source's strict greater-than comparison against row ten. The Graphics
    Synch toggle follows its two shipped `Time Settings` branches: browser display sync when on,
    or a 60 FPS presentation limit when off; neither changes the independent 66 Hz simulation.
    Control remapping is restricted to the 72 `Language.nmo/all_keys` entries and displays that

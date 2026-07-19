@@ -1,6 +1,7 @@
 /** Shared game state bridge between the engine loop and the React UI. */
 import { create } from 'zustand';
 import { LEVEL_START_LIVES, LEVEL_START_POINTS, type BallKind } from './constants.ts';
+import { SOURCE_DEFAULT_LAST_PLAYER, SOURCE_HIGHSCORE_NAME_MAX_LENGTH } from './score.ts';
 import { DEFAULT_SETTINGS, isSourceKey, SCREEN_MODES, type Settings } from './settings.ts';
 
 export type { Settings } from './settings.ts';
@@ -67,11 +68,21 @@ function loadSettings(saved: Partial<Settings> | undefined): Settings {
   };
 }
 
-function loadSave(): { progress: Progress; settings: Settings } {
+function sourcePlayerName(value: unknown): string {
+  return typeof value === 'string'
+    ? value.slice(0, SOURCE_HIGHSCORE_NAME_MAX_LENGTH)
+    : SOURCE_DEFAULT_LAST_PLAYER;
+}
+
+function loadSave(): { progress: Progress; settings: Settings; lastPlayer: string } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const data = JSON.parse(raw) as { progress?: Partial<Progress>; settings?: Partial<Settings> };
+      const data = JSON.parse(raw) as {
+        progress?: Partial<Progress>;
+        settings?: Partial<Settings>;
+        lastPlayer?: unknown;
+      };
       return {
         progress: {
           unlocked: data.progress?.unlocked ?? 1,
@@ -79,17 +90,22 @@ function loadSave(): { progress: Progress; settings: Settings } {
           tables: data.progress?.tables ?? {},
         },
         settings: loadSettings(data.settings),
+        lastPlayer: sourcePlayerName(data.lastPlayer),
       };
     }
   } catch {
     /* fresh save */
   }
-  return { progress: { unlocked: 1, highscores: {}, tables: {} }, settings: { ...DEFAULT_SETTINGS } };
+  return {
+    progress: { unlocked: 1, highscores: {}, tables: {} },
+    settings: { ...DEFAULT_SETTINGS },
+    lastPlayer: SOURCE_DEFAULT_LAST_PLAYER,
+  };
 }
 
-function persist(progress: Progress, settings: Settings): void {
+function persist(progress: Progress, settings: Settings, lastPlayer: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ progress, settings }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ progress, settings, lastPlayer }));
   } catch {
     /* storage unavailable */
   }
@@ -114,6 +130,8 @@ export interface GameState {
   tutorialVisible: boolean;
   progress: Progress;
   settings: Settings;
+  /** DB_Options.LastPlayer, used to reset the next authored name entry. */
+  lastPlayer: string;
   set: (partial: Partial<GameState>) => void;
   loadLevel: (level: number) => void;
   completeLevel: (level: number, score: number) => void;
@@ -139,6 +157,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   tutorialVisible: false,
   progress: initial.progress,
   settings: initial.settings,
+  lastPlayer: initial.lastPlayer,
   set: (partial) => set(partial),
   loadLevel: (level) =>
     set((state) => ({
@@ -147,31 +166,32 @@ export const useGameStore = create<GameState>((set, get) => ({
       runId: state.runId + 1,
     })),
   completeLevel: (level, score) => {
-    const { progress, settings } = get();
+    const { progress, settings, lastPlayer } = get();
     const next: Progress = {
       ...progress,
       unlocked: Math.max(progress.unlocked, Math.min(12, level + 1)),
       highscores: { ...progress.highscores, [level]: Math.max(progress.highscores[level] ?? 0, score) },
     };
-    persist(next, settings);
+    persist(next, settings, lastPlayer);
     set({ progress: next });
   },
   submitScore: (level, name, score) => {
     const { progress, settings } = get();
+    const lastPlayer = name.slice(0, SOURCE_HIGHSCORE_NAME_MAX_LENGTH);
     const table = [...(progress.tables[level] ?? defaultTable(level))];
     table.push({
-      name: name.trim() === '' ? 'Player' : name.trim().slice(0, 16),
+      name: lastPlayer,
       score,
     });
     table.sort((a, b) => b.score - a.score);
     const next: Progress = { ...progress, tables: { ...progress.tables, [level]: table.slice(0, 10) } };
-    persist(next, settings);
-    set({ progress: next });
+    persist(next, settings, lastPlayer);
+    set({ progress: next, lastPlayer });
   },
   updateSettings: (s) => {
-    const { progress, settings } = get();
+    const { progress, settings, lastPlayer } = get();
     const next = { ...settings, ...s };
-    persist(progress, next);
+    persist(progress, next, lastPlayer);
     set({ settings: next });
   },
 }));

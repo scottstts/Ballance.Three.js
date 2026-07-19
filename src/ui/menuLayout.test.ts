@@ -73,6 +73,7 @@ describe.skipIf(!existsSync(menuPath))('source-authored menu layout', () => {
     expect(CONFIRM_RECTS.no).toEqual(entity2d(menu, 'M_YesNo_But_No').rect);
 
     expect(HIGHSCORE_ENTRY_RECTS.title).toEqual(entity2d(menu, 'M_HighEntry_Title').rect);
+    expect(HIGHSCORE_ENTRY_RECTS.score).toEqual(entity2d(menu, 'M_HighEntry_Score').rect);
     expect(HIGHSCORE_ENTRY_RECTS.name).toEqual(entity2d(menu, 'M_HighEntry_NameEntry').rect);
     expect(HIGHSCORE_ENTRY_RECTS.confirm).toEqual(entity2d(menu, 'M_HighEntry_But_1').rect);
 
