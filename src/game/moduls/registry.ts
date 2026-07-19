@@ -150,11 +150,28 @@ class BridgeModul extends PhysicsModul {
   }
 
   override activate(): void {
+    // Activate Sector recreates all ten hinges fresh, so a bridge broken in
+    // an earlier visit is repaired exactly like on a sector reset.
     super.activate();
+    this.repairBridge();
     this.bridgeWakeGateActive = true;
     this.bridgeBreakGateActive = false;
     this.wakeSampler.reset();
     this.breakSampler.reset();
+  }
+
+  private repairBridge(): void {
+    if (!this.broken) return;
+    this.broken = false;
+    const hinge = this.phys.hinges?.[MODUL29_BREAK_JOINT_INDEX];
+    if (!hinge) return;
+    const part = this.findDynamic(hinge.part);
+    const pin = this.partWorldPosition(hinge.pin);
+    const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
+    if (part && pin) {
+      const axis = this.referenceWorldDirection(hinge.pin, hinge.axis ?? [0, 0, 1]);
+      if (axis) this.middleJoint = this.makeHinge(part, pin, axis, other, hinge.spherical, hinge.limits);
+    }
   }
 
   override update(dt: number): void {
@@ -193,19 +210,7 @@ class BridgeModul extends PhysicsModul {
     this.bridgeBreakGateActive = false;
     this.wakeSampler.reset();
     this.breakSampler.reset();
-    if (this.broken) {
-      this.broken = false;
-      const hinge = this.phys.hinges?.[MODUL29_BREAK_JOINT_INDEX];
-      if (hinge) {
-        const part = this.findDynamic(hinge.part);
-        const pin = this.partWorldPosition(hinge.pin);
-        const other = hinge.other ? (this.findDynamic(hinge.other) ?? null) : null;
-        if (part && pin) {
-          const axis = this.referenceWorldDirection(hinge.pin, hinge.axis ?? [0, 0, 1]);
-          if (axis) this.middleJoint = this.makeHinge(part, pin, axis, other, hinge.spherical, hinge.limits);
-        }
-      }
-    }
+    this.repairBridge();
   }
 
   override debugState(): Record<string, unknown> {
@@ -236,6 +241,8 @@ class FanModul extends Modul {
 
   constructor(name: string, sector: number, instance: PrefabInstance, ctx: ModulContext) {
     super(name, sector, instance, ctx);
+    // P_Modul_18's deactivation branch has no Hide/Restore IC.
+    this.hiddenWhenInactive = false;
     this.particleTarget = this.part('_Particle') ?? instance.root;
     this.particles = new FanParticles(ctx.scene, this.particleTarget);
     const smokeTexture = instance.file.byName

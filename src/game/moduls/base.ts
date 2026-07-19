@@ -123,20 +123,61 @@ export abstract class Modul {
     );
   }
 
-  // Inactive moduls sleep rather than disable: Rapier panics on joints
-  // attached to disabled bodies, and IVP "frozen" semantics are sleep-like
-  // anyway (bodies wake on contact once their sector is live).
+  /**
+   * Sector activation has stamped this instance at least once. Unactivated
+   * prefab copies in the source are parked hidden away from their placement,
+   * so systems like the Trafo Manager scan must ignore never-stamped moduls.
+   */
+  stamped = false;
+
+  /**
+   * P_Modul_18 is the only prefab whose deactivation branch has no
+   * Hide/Restore IC: fans stay visible when their sector is left.
+   */
+  protected hiddenWhenInactive = true;
+
+  /**
+   * Activate Sector: Set World Matrix (placement) + Show + Physicalize /
+   * Activate Script (Reset?=true) - a fresh authored state on every
+   * activation. Frozen bodies start asleep (IVP frozen semantics).
+   */
   activate(): void {
     this.active = true;
+    this.stamped = true;
+    this.depthCulled = false;
+    this.instance.root.visible = true;
     for (const p of this.dynamicParts) {
+      p.body.setBodyType(RAPIER.RigidBodyType.Dynamic, false);
+      for (const collider of p.colliders) collider.setEnabled(true);
+      p.body.setTranslation({ x: p.homePos.x, y: p.homePos.y, z: p.homePos.z }, false);
+      p.body.setRotation({ x: p.homeRot.x, y: p.homeRot.y, z: p.homeRot.z, w: p.homeRot.w }, false);
+      p.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+      p.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
       if (p.frozen) p.body.sleep();
       else p.body.wakeUp();
+      this.syncPart(p);
     }
   }
 
+  /**
+   * Deactivate Sector: the MF false branch destroys joints/forces,
+   * unphysicalizes, and Restore IC returns the authored arrangement hidden
+   * (Reset 2 objects get explicit Unphysicalize + Hide). The port keeps the
+   * joints but parks the bodies fixed with disabled colliders at the
+   * authored pose - inert, invisible, and rebuilt fresh on activation.
+   */
   deactivate(): void {
     this.active = false;
-    for (const p of this.dynamicParts) p.body.sleep();
+    if (this.hiddenWhenInactive) this.instance.root.visible = false;
+    for (const p of this.dynamicParts) {
+      p.body.setBodyType(RAPIER.RigidBodyType.Fixed, false);
+      for (const collider of p.colliders) collider.setEnabled(false);
+      p.body.setTranslation({ x: p.homePos.x, y: p.homePos.y, z: p.homePos.z }, false);
+      p.body.setRotation({ x: p.homeRot.x, y: p.homeRot.y, z: p.homeRot.z, w: p.homeRot.w }, false);
+      p.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+      p.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+      this.syncPart(p);
+    }
   }
 
   /**

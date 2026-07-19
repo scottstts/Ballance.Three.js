@@ -1794,6 +1794,37 @@ sequence, and complete option subscreens are all implemented below.
   (activated by Unpause Level) exists in no shipped file. Do not implement
   either.
 
+## 2026-07-19 source sector lifecycle (Activate/Deactivate Sector)
+
+- Prefab copies load HIDDEN at the authored pose with ICs captured in that
+  state (every P_Modul/PC/PS/PE prefab part serializes visible=false).
+  Activate Sector stamps the placement matrix, Shows, and physicalizes
+  (types 2/3) or runs the MF script fresh (type 1); Deactivate destroys
+  joints/forces, unphysicalizes, and Restore IC leaves the authored
+  arrangement hidden. Death tears down and rebuilds the ACTIVE sector
+  (deactivate then activate, 4 behavior frames apart, behind the white
+  pulse); checkpoints deactivate the old sector without reactivating it.
+- Port implementation: Modul.activate() = show + fresh home transforms +
+  dynamic bodies (frozen asleep); deactivate() = hide + fixed bodies with
+  colliders disabled at home pose (joints stay attached but inert - Rapier
+  panics only on DISABLED bodies). ModulManager parks every instance
+  deactivated at creation; setSector(1) performs the boot activation.
+  P_Modul_18 fans are the one prefab with no Hide/Restore IC on
+  deactivation - they stay visible (flag on FanModul).
+- The Trafo Manager scan ignores never-stamped moduls: unactivated copies
+  are parked away from their placements in the source, so a next-sector
+  transformer is unreachable until its checkpoint. Bridge (Modul_29)
+  activation repairs a broken HingeFrame07 exactly like a sector reset.
+- PE_Levelende is a PH row of the LAST sector: the balloon prefab shows
+  only when the final sector activates, and ANY final-sector death re-runs
+  its teardown/rebuild (assembly re-frozen at authored poses, one-shot
+  70-unit wake gate re-armed). Implemented as BalloonPhysics.resetAssembly.
+- Deferred follow-ups: (1) New Ball stamps Cam_MF with the reset-point
+  matrix + Restore IC - reconcile with the locked camera controller before
+  changing the rig. (2) The fan housing colliders (Gitter/Boden fixed parts,
+  friction .7/.4) have no recovered Physicalize backing - audit what makes
+  the original fan grid solid.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was

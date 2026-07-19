@@ -78,6 +78,9 @@ export class ModulManager {
         const instance = instantiatePrefab(prefab, e.object.matrix);
         ctx.scene.add(instance.root);
         const modul = f.create(e.rec.name, sectorOf(e.rec.name), instance, ctx);
+        // Prefab copies load hidden and unphysicalized; only Activate Sector
+        // stamps, shows, and physicalizes them.
+        modul.deactivate();
         mgr.moduls.push(modul);
       }
     }
@@ -151,6 +154,9 @@ export class ModulManager {
     let nearest: TrafoModul | null = null;
     let nearestDistance = Infinity;
     for (const trafo of this.trafos) {
+      // Never-stamped copies are parked away from their placement in the
+      // source; they only become reachable once their sector activated.
+      if (!trafo.stamped) continue;
       const distance = trafo.trafoAnchor(this.trafoAnchor).distanceTo(ballPosition);
       if (distance < nearestDistance) {
         nearestDistance = distance;

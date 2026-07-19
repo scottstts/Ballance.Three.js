@@ -231,6 +231,27 @@ export class BalloonPhysics extends Modul {
     this.findDynamic('_Platform')?.body.wakeUp();
   }
 
+  /**
+   * PE_Balloon's deactivation branch destroys its constraints, unphysicalizes
+   * everything, and Restore IC rebuilds the authored frozen assembly; any
+   * death in the final sector re-runs it. The port parks every body back on
+   * its authored pose asleep and re-arms the one-shot wake gate upstream.
+   */
+  resetAssembly(): void {
+    this.awake = false;
+    for (const part of this.dynamicParts) {
+      part.body.setTranslation({ x: part.homePos.x, y: part.homePos.y, z: part.homePos.z }, false);
+      part.body.setRotation(
+        { x: part.homeRot.x, y: part.homeRot.y, z: part.homeRot.z, w: part.homeRot.w },
+        false,
+      );
+      part.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
+      part.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+      part.body.sleep();
+      this.syncPart(part);
+    }
+  }
+
   launch(): void {
     this.wake();
     this.launched = true;

@@ -193,7 +193,12 @@ export async function startGame(
     }
   }
   for (const e of groupEntities(built, 'PR_Resetpoints')) e.object.visible = false;
-  if (balloonInstance) prepareBalloonInstance(balloonInstance);
+  if (balloonInstance) {
+    prepareBalloonInstance(balloonInstance);
+    // PE_Levelende is a PH row of the LAST sector: its prefab copy loads
+    // hidden and Activate Sector shows it when the final sector begins.
+    balloonInstance.root.visible = logic.sectorCount <= 1;
+  }
   const ufoFinale = level === 12 && balloonInstance ? new UfoFinale(await loadPrefab('PE_Balloon'), balloonInstance) : null;
 
   bootStage('ball');
@@ -371,6 +376,7 @@ export async function startGame(
     moduls.setSector(logic.sectorCount);
     flames.setSector(logic.sectorCount);
     pickups.setSector(logic.sectorCount);
+    if (balloonInstance) balloonInstance.root.visible = true;
     const end = groupEntities(built, 'PE_Levelende')[0];
     if (end) {
       // Start above the physical platform so the deterministic helper enters
@@ -504,6 +510,13 @@ export async function startGame(
     ball.teleport(rp.position);
     rig.rebindTarget();
     moduls.resetSector(logic.currentSector);
+    // Any death in the final sector re-runs PE_Balloon's teardown/rebuild
+    // and re-arms its one-shot 70-unit wake gate.
+    if (logic.currentSector === logic.sectorCount && balloonPhysics) {
+      balloonPhysics.resetAssembly();
+      balloonWakeProximity.reset();
+      balloonWakeProximityActive = true;
+    }
     s.set({ phase: 'playing', ballKind: ball.kind });
     startBirth();
     // The two-second source curve is at full white while the ball is swapped;
@@ -773,6 +786,7 @@ export async function startGame(
           // Last Stage starts the flat checkpoint loop and switches only the
           // theme graph Off. The independent atmosphere graph remains live.
           if (ev.sector === logic.sectorCount) {
+            if (balloonInstance) balloonInstance.root.visible = true;
             balloonWakeProximity.reset();
             balloonWakeProximityActive = true;
             audio.enterLastStage();
