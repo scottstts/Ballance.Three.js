@@ -79,7 +79,7 @@ export class LevelLogic {
 
   spawnFor(sector: number): ResetPoint {
     const rp = this.resetPoints[sector] ?? this.resetPoints[1];
-    if (!rp) return { position: new THREE.Vector3(0, 5, 0), yaw: 0 };
+    if (!rp) return { position: new THREE.Vector3(0, 5, 0), yaw: 0, rotation: new THREE.Quaternion() };
     return rp;
   }
 
