@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../../formats/ck2/nmo.ts';
 import type { BehaviorRec, NmoFile, ParameterRec } from '../../formats/ck2/types.ts';
+import { FLOOR_GROUPS } from '../constants.ts';
 import { MODUL18_PARTICLE_SOURCE } from './fanParticles.ts';
 import {
   MODUL18_FORCE,
@@ -504,4 +505,87 @@ describe.skipIf(!hasGame)('source-backed module physics table', () => {
       expect(boolValue(source.get('Squared Distance?'))).toBe(definition.spec.squaredDistance);
     });
   }
+});
+
+describe.skipIf(!hasGame)('Levelinit physicalization tables', () => {
+  const levelinit = hasGame
+    ? parseNmo(readFileSync(join(GAME_DIR, '3D Entities/Levelinit.nmo')))
+    : null;
+
+  function table(name: string) {
+    const record = levelinit?.byName.get(name)?.find((candidate) => candidate.kind === 'dataArray');
+    if (record?.kind !== 'dataArray') throw new Error(`missing source dataArray ${name}`);
+    return record;
+  }
+
+  /** boolean cells in these arrays are CK_ARRAYTYPE_PARAMETER object refs */
+  function cellBool(cell: unknown): boolean {
+    expect(typeof cell).toBe('number');
+    const parameter = levelinit!.objects[cell as number];
+    expect(parameter?.kind).toBe('parameter');
+    if (parameter?.kind !== 'parameter') throw new Error('unresolvable parameter cell');
+    return new DataView(parameter.valueBytes.buffer, parameter.valueBytes.byteOffset).getInt32(0, true) !== 0;
+  }
+
+  it('locks the three floor groups to Physicalize_Floors', () => {
+    const rows = table('Physicalize_Floors');
+    expect(rows.columns.map((column) => column.name)).toEqual([
+      'Group_Name',
+      'Friction',
+      'Elasticity',
+      'Mass',
+      'Col Group',
+      'Enable Col?',
+    ]);
+    const byName = new Map(rows.rows.map((row) => [row[0] as string, row]));
+    expect([...byName.keys()].sort()).toEqual(['Phys_FloorRails', 'Phys_FloorStopper', 'Phys_Floors']);
+    for (const [name, row] of byName) {
+      const definition = FLOOR_GROUPS[name];
+      expect(definition, `${name} needs a runtime floor definition`).toBeDefined();
+      expect(definition.friction).toBeCloseTo(row[1] as number, 6);
+      expect(definition.elasticity).toBeCloseTo(row[2] as number, 6);
+      expect(cellBool(row[5])).toBe(true);
+    }
+    expect(byName.get('Phys_Floors')?.[4]).toBe('Floor');
+    expect(byName.get('Phys_FloorRails')?.[4]).toBe('Floor');
+    expect(byName.get('Phys_FloorStopper')?.[4]).toBe('Ball');
+  });
+
+  it('locks loose convex props to Physicalize_Convex', () => {
+    const rows = new Map(table('Physicalize_Convex').rows.map((row) => [row[0] as string, row]));
+    expect([...rows.keys()].sort()).toEqual(['P_Ball_Paper', 'P_Box', 'P_Dome']);
+    for (const [name, row] of rows) {
+      const part = MODUL_PHYS[name]?.parts[0];
+      expect(part, `${name} needs a runtime prop definition`).toBeDefined();
+      expect(part.fixed ?? false).toBe(cellBool(row[1]));
+      expect(part.friction).toBeCloseTo(row[2] as number, 6);
+      expect(part.elasticity).toBeCloseTo(row[3] as number, 6);
+      if (!(part.fixed ?? false)) {
+        expect(part.mass ?? 1).toBeCloseTo(row[4] as number, 6);
+        expect(part.linearDamp ?? 0.1).toBeCloseTo(row[9] as number, 6);
+        expect(part.rotDamp ?? 0.1).toBeCloseTo(row[10] as number, 6);
+      }
+      expect(cellBool(row[6])).toBe(false); // Frozen?
+      expect(cellBool(row[7])).toBe(true); // Enable Col?
+      expect(part.sphereRadius).toBeUndefined(); // convex table = mesh hulls
+    }
+  });
+
+  it('locks loose ball props to Physicalize_Balls', () => {
+    const rows = new Map(table('Physicalize_Balls').rows.map((row) => [row[0] as string, row]));
+    expect([...rows.keys()].sort()).toEqual(['P_Ball_Stone', 'P_Ball_Wood']);
+    for (const [name, row] of rows) {
+      const part = MODUL_PHYS[name]?.parts[0];
+      expect(part, `${name} needs a runtime prop definition`).toBeDefined();
+      expect(part.fixed ?? false).toBe(cellBool(row[1]));
+      expect(part.friction).toBeCloseTo(row[2] as number, 6);
+      expect(part.elasticity).toBeCloseTo(row[3] as number, 6);
+      expect(part.mass ?? 1).toBeCloseTo(row[4] as number, 6);
+      expect(cellBool(row[6])).toBe(false); // Frozen?
+      expect(cellBool(row[7])).toBe(true); // Enable Col?
+      expect(part.linearDamp ?? 0.1).toBeCloseTo(row[9] as number, 6);
+      expect(part.rotDamp ?? 0.1).toBeCloseTo(row[10] as number, 6);
+      expect(part.sphereRadius).toBeCloseTo(row[11] as number, 6);
+    }
+  });
 });

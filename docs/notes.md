@@ -1736,3 +1736,22 @@ sequence, and complete option subscreens are all implemented below.
   float32 as well).
 - Lesson: the last commit wave landed without a green gate. Run the full
   gate (lint, typecheck, 209 tests, build) BEFORE each commit.
+
+## 2026-07-19 Levelinit physicalization tables source-locked
+
+- Levelinit.nmo serializes three authoritative dataArrays: Physicalize_Floors
+  (Phys_FloorRails/Phys_Floors 0.7/0.3 mass 1 col-group Floor;
+  Phys_FloorStopper 0.7/0.3 mass 1 col-group Ball; all Enable Col),
+  Physicalize_Convex (P_Box dynamic 1kg 0.7/0.3 damp .1/.1; P_Ball_Paper
+  0.2kg 0.5/0.4 damp 1.5/.1 as mesh hull; P_Dome FIXED 0.2/0.8), and
+  Physicalize_Balls (P_Ball_Wood 2kg 0.6/0.2 damp .6/.1 radius 2;
+  P_Ball_Stone 10kg 0.7/0.1 damp .2/.1 radius 2). Boolean cells are
+  CK_ARRAYTYPE_PARAMETER object refs like Energy.Timefactor.
+- Every existing runtime value already matched; new physTable tests lock
+  FLOOR_GROUPS and the five loose-prop MODUL_PHYS entries to these rows.
+- FLOOR_GROUPS carried an invented Phys_FloorWoods row; the source table has
+  exactly three rows and no level group uses that name, so it was removed.
+- The same Levelinit graph area also authors placeholder FixCubes
+  (fixed, friction .7, elasticity .4, collision DISABLED) and the
+  Activate/Deactivate Sector Physicalize paths for placeholder types - the
+  sector activation audit should start from init Placeholders.

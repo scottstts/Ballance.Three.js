@@ -74,9 +74,9 @@ export interface FloorDef {
   hitSound?: string;
 }
 
+/** Levelinit.nmo/Physicalize_Floors: exactly these three groups exist. */
 export const FLOOR_GROUPS: Record<string, FloorDef> = {
   Phys_Floors: { friction: 0.7, elasticity: 0.3, surface: 'stone' },
-  Phys_FloorWoods: { friction: 0.7, elasticity: 0.3, surface: 'wood' },
   Phys_FloorRails: { friction: 0.7, elasticity: 0.3, surface: 'metal' },
   Phys_FloorStopper: { friction: 0.7, elasticity: 0.3, surface: 'wood', hitSound: 'Hit_WoodenFlap.wav' },
 };
