@@ -59,7 +59,7 @@ export default function App() {
   const inMenus = ['menu', 'levelselect', 'highscore', 'options', 'credits'].includes(phase);
   return (
     <div className="game-frame">
-      {inGame && <GameCanvas key={`level-${level}-run-${runId}`} level={level} />}
+      {inGame && <GameCanvas key={`level-${level}-run-${runId}`} level={level} showLoading={phase === 'loading'} />}
       {inGame && phase !== 'loading' && <Hud />}
       {inGame && <TutorialOverlay />}
       {inMenus && <MenuBackdrop />}

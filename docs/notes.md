@@ -1503,3 +1503,20 @@ options subscreens are simplified (volume only).
   stages. P_Modul_26's Sequencer starts at `Current=-1`, so its first Out 1
   creates the +Z force; it alternates signs every 1500 ms. Binary-backed tests
   now lock both initial signs, stages, force values, referentials, and delays.
+
+## 2026-07-18 source loading screen recovery
+
+- The installed source1 `base.cmo` and the statically extracted source2 copy are
+  byte-identical (`sha256 4adcf457eab13168a59144c538b146a410208c5f98e3bb8b1c217a638c80177b`).
+  Both author the loading display as the textureless 2D entity/material
+  `Ladebalken`, not as `Cursor_busy`: X starts at zero, Y is `.9700004458`, and
+  `TT Set_2DSprite` supplies height `.03` and a growing width.
+- `Loading_Screen` divides one by `LoadingCount=9`, shows the entity, and adds
+  that step before waiting for `Part_Loaded`. Its serialized local `Sizefactor`
+  is already `4/9`, so the first visible updated state is `5/9`; four messages
+  reach full width. Alpha is linearly interpolated at the same progress from
+  RGBA `(1,.65882355,0,.15686275)` to `(1,.65882355,0,1)`. Preserve this saved
+  state rather than resetting the browser bar to zero or inventing nine events.
+- The browser maps the four remaining messages to completed scene construction,
+  sky construction, gameplay effects, and modul construction. The full bar is
+  retained for `Load_Object`'s serialized two-frame delayed completion link.

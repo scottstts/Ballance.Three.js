@@ -41,6 +41,7 @@ import { prepareBalloonInstance, UFO_SOUND_SOURCE, UfoFinale } from './finale.ts
 import { Input } from './input.ts';
 import { LevelLogic } from './level.ts';
 import { fallLifeOutcome } from './lives.ts';
+import { LOADING_SOURCE, completedLoadHandoffDelayMs } from './loading.ts';
 import { startSourceFrameLoop } from './frameLoop.ts';
 import { ModulManager, sectorLookup } from './moduls/manager.ts';
 import { instantiatePrefab, loadPrefab, type PrefabInstance } from './moduls/prefabs.ts';
@@ -98,7 +99,17 @@ const bootStage = (s: string): void => {
   if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__bootStage = s;
 };
 
-export async function startGame(canvas: HTMLCanvasElement, level: number): Promise<GameHandle> {
+export async function startGame(
+  canvas: HTMLCanvasElement,
+  level: number,
+  onLoadingPart?: (part: number) => void,
+): Promise<GameHandle> {
+  let loadingPart: number = LOADING_SOURCE.initialPart;
+  const partLoaded = () => {
+    loadingPart = Math.min(LOADING_SOURCE.parts, loadingPart + 1);
+    onLoadingPart?.(loadingPart);
+  };
+
   bootStage('rapier');
   await initRapier();
 
@@ -118,12 +129,14 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const file = await loadNmo(levelPath(level));
   bootStage('build-scene');
   const built: BuiltScene = await buildScene(file);
+  partLoaded();
   scene.add(built.root);
   bootStage('sky');
   const builtSky = await buildSky(skyLetter(level), fogColor);
   const sky = builtSky.group;
   scene.add(sky);
   renderer.setClearColor(builtSky.horizonColor);
+  partLoaded();
 
   bootStage('colliders');
   const bootFlags = new URLSearchParams(window.location.search);
@@ -189,6 +202,7 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   const ballShadow = new BallShadow(physics);
   await ballShadow.init();
   scene.add(ballShadow.mesh);
+  partLoaded();
 
   const rig = new CamRig(4 / 3);
   const input = new Input(() => gameStore.getState().settings);
@@ -295,6 +309,11 @@ export async function startGame(canvas: HTMLCanvasElement, level: number): Promi
   flames.setSector(1);
   pickups.setSector(1);
   bootStage('done');
+  partLoaded();
+
+  // `Load_Object` broadcasts completion after a two-frame delayed link. Keep
+  // the completed ninth visible for the same handoff before gameplay appears.
+  await new Promise((resolve) => window.setTimeout(resolve, completedLoadHandoffDelayMs()));
 
   input.attach(window);
 

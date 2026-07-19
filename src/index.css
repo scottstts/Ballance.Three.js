@@ -96,6 +96,21 @@ body,
   z-index: 10;
 }
 
+/* base.cmo/Loading_Screen: normalized `Ladebalken` 2D entity. */
+.loading-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.loading-bar {
+  position: absolute;
+  left: 0;
+  top: 97.000044584%;
+  height: 2.999999933%;
+}
+
 /* ---------- in-game HUD (original sprite pieces) ---------- */
 
 .hud {

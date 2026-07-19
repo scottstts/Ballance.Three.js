@@ -36,18 +36,18 @@ Neither the dev server nor the production build serves `Ballance_bin` directly.
 
 | Path | What it is | Port relevance |
 |---|---|---|
-| `base.cmo` | Virtools composition: engine bootstrap + all game logic graphs | Logic reference only — not convertible |
+| `base.cmo` | Virtools composition: engine bootstrap + all game logic graphs | Primary behavior/UI reference; decoded for audit and tests, never shipped as runtime data |
 | `3D Entities/Level/Level_01..12.NMO` (~1–2 MB each) | Per-level scenes: floor/rail/wall meshes, materials, modul placements (as `PH` placeholder objects), and Virtools **groups** carrying semantics (`Sector_XX`, `Phys_Floors`, `Phys_FloorRails`, checkpoints…) | **Primary conversion target** |
 | `3D Entities/PH/*.nmo` | Prefabs: 3 balls, 3 trafos, checkpoint (`PC_TwoFlames`), start point (`PS_FourFlames`), end balloon (`PE_Balloon`), extra life/point, dome, box, and 13 `P_Modul_XX` mechanical elements | Convert each to a GLB prefab |
 | `3D Entities/Balls.nmo` | Ball meshes + materials (paper/wood/stone + lightning spheres) | Convert |
-| `3D Entities/Menu.nmo`, `MenuLevel.nmo` | 3D main-menu scene, source-authored curve camera, menus, credits, and score flow | Converted and runtime-decoded; remaining records stay in the fidelity audit |
-| `3D Entities/Gameplay.nmo`, `Levelinit.nmo`, `Sound.nmo`, `Camera.nmo`, `Tutorial.nmo`, `AnimTrafo.nmo`, `Intro.nmo`, `Language.nmo`, `Musicfiles.nmo` | Framework data (camera params, sound mappings, trafo animation, language) | Reference / partial conversion |
+| `3D Entities/Menu.nmo`, `MenuLevel.nmo` | 3D main-menu scene, source-authored curve camera, menus, credits, and score flow | Runtime-decoded scene plus source-reimplemented UI and behavior graphs |
+| `3D Entities/Gameplay.nmo`, `Levelinit.nmo`, `Sound.nmo`, `Camera.nmo`, `Tutorial.nmo`, `AnimTrafo.nmo`, `Intro.nmo`, `Language.nmo`, `Musicfiles.nmo` | Framework data (camera params, sound mappings, trafo animation, language) | Primary runtime and source-lock input for their reimplemented systems |
 | `Textures/` (200 BMP/TGA images) | All surface textures + UI | BMP → lossless PNG; TGA byte-exact |
 | `Textures/sky/` (60 files) | 12 skyboxes (A–L) × **5 faces** — Back/Down/Front/Left/Right. Ballance skyboxes have **no top face**; the fog color closes the dome | Convert; special-case the missing +Y face |
 | `Sounds/` (62 WAV, ~52 MB) | Hit sounds per material pair (`Hit_Stone_Wood`…), rolling loops per pair (`Roll_*`), death sounds (`Pieces_*`), misc SFX, and music (5 themes × 3 variations + atmos) | Copy byte-exact |
 | `Text/Tutorial1..5.txt` | Tutorial overlay strings | Copy byte-exact |
 | `Database.tdb` | Highscore DB (proprietary) | Replace with `localStorage` |
-| `Bin/`, `BuildingBlocks/`, `Managers/`, `Plugins/`, `RenderEngines/` | Virtools runtime DLLs | Irrelevant |
+| `Bin/`, `BuildingBlocks/`, `Managers/`, `Plugins/`, `RenderEngines/` | Virtools/runtime DLLs | Static behavioral/ABI reference for opaque building blocks; not browser-deployable |
 
 The current exact/lossless runtime set is 86.4 MiB of file contents; the complete production
 directory is about 111 MiB on disk. The untranscoded WAV music is the bulk.
@@ -239,6 +239,12 @@ ballance-web/
    Control remapping is restricted to the 72 `Language.nmo/all_keys` entries and displays that
    table's exact English labels. Unsupported keys leave the waiter active and Escape cancels,
    matching `Menu_Opt_Keys/SetKey` instead of accepting arbitrary browser key codes.
+   Level transitions retain `base.cmo/Loading_Screen` rather than substituting a generic
+   spinner: its textureless `Ladebalken` entity occupies normalized Y `.97000045..1`, uses
+   the serialized orange alpha interpolation, starts from the shipped `4/9` local state plus
+   its immediate `1/9` activation step, and consumes four browser initialization milestones
+   as the equivalent `Part_Loaded` messages. The completed ninth remains visible for the
+   source `Load_Object` graph's two-frame delayed completion handoff.
 8. **Source scene lighting and cloud motion.** The embedded CKScene in `base.cmo` stores
    ambient `0x000F0F0F`. Because Virtools has a distinct per-material ambient channel, the
    renderer folds `materialAmbient * sceneAmbient` into the texture-modulated emissive term
