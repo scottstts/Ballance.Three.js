@@ -12,7 +12,7 @@ import type { BehaviorRec, LightRec, NmoFile, ParameterRec, TextureRec } from '.
 import { localVertices } from './moduls/base.ts';
 import { FORCE_SCALE, type BallKind } from './constants.ts';
 import { decodeCk2dCurve, evalCurve, type CurveKey } from './curve.ts';
-import type { PhysicsWorld } from './physics.ts';
+import { BALL_PIECE_COLLISION_GROUPS, type PhysicsWorld } from './physics.ts';
 import { ScaleableProximity, type ScaleableProximitySpec } from './proximity.ts';
 
 async function spriteTexture(path: string, mode: 'glow' | 'shadow' = 'glow'): Promise<THREE.Texture | null> {
@@ -1409,7 +1409,10 @@ export class ShatterSystem {
         .setMass(mass)
         .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
         .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
-        .setActiveEvents(monitorsCollision ? RAPIER.ActiveEvents.COLLISION_EVENTS : RAPIER.ActiveEvents.NONE);
+        .setActiveEvents(monitorsCollision ? RAPIER.ActiveEvents.COLLISION_EVENTS : RAPIER.ActiveEvents.NONE)
+        // Pieces physicalize with IVP Collision Group "Ball": they never
+        // collide with the player ball.
+        .setCollisionGroups(BALL_PIECE_COLLISION_GROUPS);
       const collider = this.physics.world.createCollider(desc, body);
       // Every source Physicalize has Automatic Calculate Mass Center=false
       // and Shift Mass Center=(0,0,0). Retain Rapier's shape inertia while

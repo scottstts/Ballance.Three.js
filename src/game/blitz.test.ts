@@ -175,4 +175,29 @@ describe.skipIf(!existsSync(gameplayPath) || !existsSync(soundPath))('original G
     // parameter/file pair when the group receives Donner.
     expect(existsSync(join(GAME_DIR, 'Sounds/Music_thunder.wav'))).toBe(true);
   });
+
+  it('activates only on the last level through letzer Level?', () => {
+    if (!gameplay) return;
+    // Gameplay_Ingame/activate Scripts runs `letzer Level?`: Get Cell reads
+    // CurrentLevel[0][0] and Test mode 1 (==) compares it against the
+    // AllLevel row count before the one conditional Activate Script - the
+    // blitz exists only on level 12.
+    const gate = behavior(gameplay, 'letzer Level?');
+    const test = gate.referenceLists
+      .flat()
+      .map((index) => gameplay.objects[index])
+      .find((record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Test');
+    expect(test).toBeDefined();
+    if (!test) return;
+    const view = parameter(gameplay, test, 'Test');
+    expect(new DataView(view.valueBytes.buffer, view.valueBytes.byteOffset).getInt32(0, true)).toBe(1);
+    const getCell = gate.referenceLists
+      .flat()
+      .map((index) => gameplay.objects[index])
+      .find((record): record is BehaviorRec => record?.kind === 'behavior' && record.name === 'Get Cell');
+    expect(getCell).toBeDefined();
+    if (!getCell) return;
+    const column = parameter(gameplay, getCell, 'Column Index');
+    expect(new DataView(column.valueBytes.buffer, column.valueBytes.byteOffset).getInt32(0, true)).toBe(0);
+  });
 });

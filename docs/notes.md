@@ -1876,6 +1876,49 @@ sequence, and complete option subscreens are all implemented below.
   fan-housing collider provenance, and a side-by-side feel/visual pass
   against original gameplay footage now that the physics rate matches.
 
+## 2026-07-19 playtest findings round (user-reported, evidence-resolved)
+
+- **Thunder is last-level-only.** Gameplay_Ingame/activate Scripts runs
+  `letzer Level?`: Get Cell CurrentLevel[0][0] -> Test mode 1 (==) against
+  the AllLevel row count, guarding the one conditional Activate Script.
+  Gameplay_Blitz itself contains only the Pause/Unpause Binary Memory gate
+  (no level test) - the port previously ran the blitz on every level; it is
+  now constructed only for level 12 (blitz.test locks the gate).
+- **D3D lights per VERTEX.** The fixed-function pipeline computes specular
+  at vertices and interpolates the color (added after texturing via
+  SPECULARENABLE). Floor_Top_* materials serialize specular 0x989898 power
+  100, which per-pixel Phong turned into a glossy road; per-vertex on flat
+  coarse plates is effectively matte. materialToThree now zeroes three's
+  per-pixel specular and renders the serialized specular through a
+  vertex-computed (Gouraud) patch using the scene's one specular light
+  (Light_Ingame + per-level tint, published by addLightRig). The texgen and
+  Gouraud patches compose in one onBeforeCompile.
+- **Tutorial opening holds the birth.** New Ball's `activate Tutorial?`
+  (level==1 && GameSettings Tutorial?) activates Gameplay_Tutorial and
+  blocks at Wait Message "Tutorial Ready" BEFORE the Ball_Lightning send;
+  `Tut continue/exit` sends Tutorial Ready on the opening chapter's Return
+  (and its Q exit). Nothing spawns until then: no ball, no lightning, no
+  counter (Counter active fires only after the birth). The port now holds
+  the birth on the tutorial level until TutorialSystem.birthReleased.
+- **WASD is the port's one approved deviation.** DEFAULT_SETTINGS ships
+  W/S/A/D for movement (the shipped DB_Options defaults remain the four
+  arrows and stay locked as SOURCE_DEFAULT_MOVEMENT_KEYS); saves whose
+  movement keys exactly match the old arrow defaults migrate once to WASD,
+  custom remaps are preserved. Everything stays remappable through the
+  72-key whitelist.
+- **Shatter debris never blocks the player ball.** The piece Physicalize
+  blocks (Init Ballpieces + Wood/Paper/Stone Explosion) serialize IVP
+  Collision Group "Ball" while the player ball physicalizes with no group;
+  in the original the debris does not collide with the player. Rapier
+  interaction groups now model the exclusion (PLAYER_BALL_COLLISION_GROUPS
+  bit 1 / BALL_PIECE_COLLISION_GROUPS filtering bit 1 out); pieces still
+  collide with world geometry and loose props. The full physics_RT
+  collision-group rule (incl. Phys_FloorStopper's "Ball" group) is under
+  separate static analysis - do not extend groups further without it.
+- Level start ALSO runs New Ball (birth lightning at boot on every level) -
+  already implemented; noted here because the tutorial hold sits in front
+  of it only on level 1.
+
 ## 2026-07-19 top-level script coverage census
 
 - Enumerated every top-level (unreferenced) behavior script in base.cmo,

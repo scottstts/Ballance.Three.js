@@ -12,7 +12,13 @@ import { decodeUfoPath } from '../../game/finale.ts';
 import { SOURCE_FRAME_LIMIT_HZ } from '../../game/frameLoop.ts';
 import { MODUL_PHYS } from '../../game/moduls/physTable.ts';
 import { SCORE_COUNT_SPEED, scoreCountStep } from '../../game/score.ts';
-import { DEFAULT_SETTINGS, SCREEN_MODES, SOURCE_KEYS, sourceKeyCode } from '../../game/settings.ts';
+import {
+  DEFAULT_SETTINGS,
+  SCREEN_MODES,
+  SOURCE_DEFAULT_MOVEMENT_KEYS,
+  SOURCE_KEYS,
+  sourceKeyCode,
+} from '../../game/settings.ts';
 import { defaultTable } from '../../game/store.ts';
 import { parseNmo } from './nmo.ts';
 import { CKClassId } from './types.ts';
@@ -118,8 +124,12 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
       expect(material).toBeInstanceOf(THREE.MeshPhongMaterial);
       if (material instanceof THREE.MeshPhongMaterial) {
         expect(material.emissive.r).toBeCloseTo(floorWood.emissive[0] + floorWood.ambient[0] * SCENE_AMBIENT, 8);
-        expect(material.specular.r).toBeCloseTo(floorWood.specular[0], 8);
+        // D3D lights per VERTEX: the serialized specular renders through the
+        // Gouraud patch while three's per-pixel term stays black.
+        expect(material.specular.r).toBe(0);
         expect(material.shininess).toBeCloseTo(floorWood.specularPower, 8);
+        expect(floorWood.specularPower).toBeGreaterThan(0);
+        expect(material.customProgramCacheKey()).toContain('gouraud');
       }
     }
   });
@@ -527,10 +537,18 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
       const row = dbOptions.rows[0];
       expect(DEFAULT_SETTINGS.musicVolume).toBe(row[0]);
       expect(Number(DEFAULT_SETTINGS.syncToScreen)).toBe(row[1]);
-      expect(sourceKeyCode(DEFAULT_SETTINGS.keyForward)).toBe(row[2]);
-      expect(sourceKeyCode(DEFAULT_SETTINGS.keyBackward)).toBe(row[3]);
-      expect(sourceKeyCode(DEFAULT_SETTINGS.keyLeft)).toBe(row[4]);
-      expect(sourceKeyCode(DEFAULT_SETTINGS.keyRight)).toBe(row[5]);
+      // The shipped movement defaults are the four arrows; the port ships
+      // WASD as its one approved deviation (still remappable).
+      expect(sourceKeyCode(SOURCE_DEFAULT_MOVEMENT_KEYS.keyForward)).toBe(row[2]);
+      expect(sourceKeyCode(SOURCE_DEFAULT_MOVEMENT_KEYS.keyBackward)).toBe(row[3]);
+      expect(sourceKeyCode(SOURCE_DEFAULT_MOVEMENT_KEYS.keyLeft)).toBe(row[4]);
+      expect(sourceKeyCode(SOURCE_DEFAULT_MOVEMENT_KEYS.keyRight)).toBe(row[5]);
+      expect([DEFAULT_SETTINGS.keyForward, DEFAULT_SETTINGS.keyBackward, DEFAULT_SETTINGS.keyLeft, DEFAULT_SETTINGS.keyRight]).toEqual([
+        'KeyW',
+        'KeyS',
+        'KeyA',
+        'KeyD',
+      ]);
       expect(sourceKeyCode(DEFAULT_SETTINGS.keyRotateCamera)).toBe(row[6]);
       expect(sourceKeyCode(DEFAULT_SETTINGS.keyLiftCamera)).toBe(row[7]);
       expect(Number(DEFAULT_SETTINGS.invertCameraRotation)).toBe(row[8]);

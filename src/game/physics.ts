@@ -7,6 +7,17 @@ import { GRAVITY_Y, SIM_DT, type BallDef } from './constants.ts';
 
 let rapierReady: Promise<void> | null = null;
 
+/**
+ * The shatter pieces physicalize with IVP Collision Group "Ball" while the
+ * player ball physicalizes with no group; in the original, trafo debris never
+ * blocks the player ball. Rapier interaction groups model the exclusion: the
+ * player ball is the only member of bit 1; pieces are members of bit 2 and
+ * filter out bit 1. Every default collider (memberships 0xffff) still
+ * collides with both.
+ */
+export const PLAYER_BALL_COLLISION_GROUPS = (0x0002 << 16) | 0xffff;
+export const BALL_PIECE_COLLISION_GROUPS = (0x0004 << 16) | (0xffff & ~0x0002);
+
 export interface RigidBodyMotion {
   center: { x: number; y: number; z: number };
   linear: { x: number; y: number; z: number };
@@ -240,7 +251,8 @@ export class PhysicsWorld {
       .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
       .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
       .setMass(def.mass)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
+      .setCollisionGroups(PLAYER_BALL_COLLISION_GROUPS);
     const collider = this.world.createCollider(colliderDesc, body);
     return { body, collider };
   }

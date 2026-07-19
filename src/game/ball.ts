@@ -7,7 +7,7 @@ import { OBB } from 'three/addons/math/OBB.js';
 import { loadNmo } from '../engine/assets.ts';
 import { buildScene } from '../engine/sceneBuilder.ts';
 import { BALL_DEFS, FORCE_SCALE, type BallDef, type BallKind } from './constants.ts';
-import type { PhysicsWorld } from './physics.ts';
+import { PLAYER_BALL_COLLISION_GROUPS, type PhysicsWorld } from './physics.ts';
 import { sourceEntityObb } from './sourceBounds.ts';
 
 export class Ball {
@@ -86,7 +86,10 @@ export class Ball {
       .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
       .setRestitutionCombineRule(RAPIER.CoefficientCombineRule.Multiply)
       .setMass(this.def.mass)
-      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS);
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS | RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
+      // The player ball is the sole member of the PLAYER_BALL_GROUP bit so
+      // the "Ball"-collision-group shatter pieces can exclude it.
+      .setCollisionGroups(PLAYER_BALL_COLLISION_GROUPS);
     this.collider = world.createCollider(desc, this.body);
     this.physics.setIvpDamping(this.body, this.def.linearDamp, this.def.rotDamp);
     this.body.wakeUp();

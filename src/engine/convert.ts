@@ -114,41 +114,97 @@ export interface MaterialBuildOptions {
 }
 
 /**
- * Per-frame camera-space texture generation matching the engine's texgen
- * setup: u = 0.4*x + 0.5, v = -0.4*y + 0.5 over the camera-space normal
- * (Chrome) or reflection vector (Reflect). View-space x/y agree between the
- * mirrored-Z scene and the original D3D camera space, and textures load with
- * flipY=false, so the D3D constants apply verbatim.
+ * The single specular light of the fixed-function scene (Light_Ingame plus
+ * the per-level tint). Shared uniform objects: addLightRig republishes the
+ * live values before each scene build.
  */
-function applyTexGen(mat: THREE.Material, mode: 'reflect' | 'chrome'): void {
-  const vertexMath =
-    mode === 'chrome'
-      ? `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
-  vTexGenUv = vec2( 0.4 * texgenNormal.x + 0.5, -0.4 * texgenNormal.y + 0.5 );`
-      : `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
+const sceneSpecularLight = {
+  /** world-space direction the light points at (Virtools forward row, converted) */
+  direction: new THREE.Vector3(0.30222097, -0.7331351, -0.60921866),
+  color: new THREE.Color(1, 1, 1),
+};
+
+export function setSceneSpecularLight(direction: THREE.Vector3, color: THREE.Color): void {
+  sceneSpecularLight.direction.copy(direction).normalize();
+  sceneSpecularLight.color.copy(color);
+}
+
+interface CkShaderPatch {
+  texGen?: 'reflect' | 'chrome';
+  /** D3D fixed-function VERTEX lighting: specular computed per vertex */
+  gouraudSpecular?: { specular: THREE.Color; shininess: number };
+}
+
+/**
+ * Per-frame camera-space texture generation matching the engine's texgen
+ * setup (u = 0.4*x + 0.5, v = -0.4*y + 0.5 over the camera-space normal for
+ * Chrome or reflection vector for Reflect), plus D3D's per-VERTEX specular:
+ * the fixed-function pipeline lights at vertices and interpolates the
+ * specular color, so large flat plates show almost none of the highlight a
+ * per-pixel evaluation of the same power would produce. Specular is added
+ * after texturing (D3DRS_SPECULARENABLE), using the scene's one specular
+ * directional light.
+ */
+function applyCkShaderPatch(mat: THREE.Material, patch: CkShaderPatch): void {
+  const texGen = patch.texGen ?? null;
+  const gouraud = patch.gouraudSpecular ?? null;
+  mat.onBeforeCompile = (shader) => {
+    let vertexDecl = '';
+    let vertexMain = '';
+    let fragmentDecl = '';
+    if (texGen) {
+      vertexDecl += 'varying vec2 vTexGenUv;\n';
+      fragmentDecl += 'varying vec2 vTexGenUv;\n';
+      vertexMain +=
+        texGen === 'chrome'
+          ? `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
+  vTexGenUv = vec2( 0.4 * texgenNormal.x + 0.5, -0.4 * texgenNormal.y + 0.5 );\n`
+          : `  vec3 texgenNormal = normalize( normalMatrix * vec3( normal ) );
   vec3 texgenEye = normalize( mvPosition.xyz );
   vec3 texgenReflected = 2.0 * dot( texgenNormal, texgenEye ) * texgenNormal - texgenEye;
-  vTexGenUv = vec2( 0.4 * texgenReflected.x + 0.5, -0.4 * texgenReflected.y + 0.5 );`;
-  mat.onBeforeCompile = (shader) => {
+  vTexGenUv = vec2( 0.4 * texgenReflected.x + 0.5, -0.4 * texgenReflected.y + 0.5 );\n`;
+    }
+    if (gouraud) {
+      shader.uniforms.uCkSpecularColor = { value: gouraud.specular };
+      shader.uniforms.uCkShininess = { value: gouraud.shininess };
+      shader.uniforms.uCkLightDirection = { value: sceneSpecularLight.direction };
+      shader.uniforms.uCkLightColor = { value: sceneSpecularLight.color };
+      vertexDecl +=
+        'uniform vec3 uCkSpecularColor;\nuniform float uCkShininess;\nuniform vec3 uCkLightDirection;\nuniform vec3 uCkLightColor;\nvarying vec3 vCkSpecular;\n';
+      fragmentDecl += 'varying vec3 vCkSpecular;\n';
+      vertexMain += `  vec3 ckNormal = normalize( normalMatrix * vec3( normal ) );
+  vec3 ckToLight = normalize( ( viewMatrix * vec4( -uCkLightDirection, 0.0 ) ).xyz );
+  vec3 ckToView = normalize( -mvPosition.xyz );
+  vec3 ckHalf = normalize( ckToLight + ckToView );
+  vCkSpecular = uCkLightColor * uCkSpecularColor * pow( max( dot( ckNormal, ckHalf ), 0.0 ), uCkShininess );\n`;
+    }
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vTexGenUv;')
-      .replace('#include <fog_vertex>', `#include <fog_vertex>\n{\n${vertexMath}\n}`);
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec2 vTexGenUv;')
-      .replace(
-        '#include <map_fragment>',
-        `#ifdef USE_MAP
+      .replace('#include <common>', `#include <common>\n${vertexDecl}`)
+      .replace('#include <fog_vertex>', `#include <fog_vertex>\n{\n${vertexMain}}`);
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>\n${fragmentDecl}`);
+    if (texGen) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <map_fragment>',
+          `#ifdef USE_MAP
   diffuseColor *= texture2D( map, vTexGenUv );
 #endif`,
-      )
-      .replace(
-        '#include <emissivemap_fragment>',
-        `#ifdef USE_EMISSIVEMAP
+        )
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#ifdef USE_EMISSIVEMAP
   totalEmissiveRadiance *= texture2D( emissiveMap, vTexGenUv ).rgb;
 #endif`,
+        );
+    }
+    if (gouraud) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <opaque_fragment>',
+        'outgoingLight += vCkSpecular;\n#include <opaque_fragment>',
       );
+    }
   };
-  mat.customProgramCacheKey = () => `ck-texgen-${mode}`;
+  mat.customProgramCacheKey = () => `ck-${texGen ?? 'none'}-${gouraud ? 'gouraud' : 'plain'}`;
 }
 
 export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOptions): THREE.Material {
@@ -182,11 +238,20 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
       color: new THREE.Color(diffuse[0], diffuse[1], diffuse[2]),
       emissive,
       emissiveMap: texture,
-      specular: specOn
-        ? new THREE.Color(rec.specular[0], rec.specular[1], rec.specular[2])
-        : new THREE.Color(0, 0, 0),
+      // Specular renders through the D3D per-vertex patch below; three's
+      // per-pixel term stays disabled.
+      specular: new THREE.Color(0, 0, 0),
       shininess: specOn ? rec.specularPower : 30,
     });
+    const patch: { texGen?: 'reflect' | 'chrome'; gouraudSpecular?: { specular: THREE.Color; shininess: number } } = {};
+    if (texture && opts.effectTexGen) patch.texGen = opts.effectTexGen;
+    if (specOn && rec) {
+      patch.gouraudSpecular = {
+        specular: new THREE.Color(rec.specular[0], rec.specular[1], rec.specular[2]),
+        shininess: rec.specularPower,
+      };
+    }
+    if (patch.texGen || patch.gouraudSpecular) applyCkShaderPatch(mat, patch);
   }
 
   const opacity = diffuse[3];
@@ -211,7 +276,8 @@ export function materialToThree(rec: MaterialRec | null, opts: MaterialBuildOpti
     // color-keyed textures need a cutout to avoid dark fringes
     mat.alphaTest = 0.5;
   }
-  if (texture && opts.effectTexGen) applyTexGen(mat, opts.effectTexGen);
+  // Prelit meshes carry baked lighting; only their texgen needs the patch.
+  if (prelit && texture && opts.effectTexGen) applyCkShaderPatch(mat, { texGen: opts.effectTexGen });
   return mat;
 }
 

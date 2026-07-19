@@ -240,7 +240,10 @@ export async function startGame(
   const input = new Input(() => gameStore.getState().settings);
 
   const audio = new AudioManager(rig.camera);
-  const blitz = new BlitzSystem(scene, () => audio.restartFlat('Music_thunder.wav', 1));
+  // Gameplay_Ingame/activate Scripts gates Gameplay_Blitz behind
+  // `letzer Level?` (Test mode 1: CurrentLevel == the AllLevel row count):
+  // the ambient lightning and thunder exist ONLY on the final level.
+  const blitz = level === 12 ? new BlitzSystem(scene, () => audio.restartFlat('Music_thunder.wav', 1)) : null;
   shatter.setSoundPlayer((name, volume) => audio.playFlat(name, volume));
   let skyLayerRef: THREE.Object3D | null = null;
   const applyVolumes = () => {
@@ -438,7 +441,17 @@ export async function startGame(
     audio.restartFlat('Misc_Lightning.wav', 1);
   };
   audio.restartFlat('Misc_StartLevel.wav', 1);
-  startBirth();
+  // On the tutorial level, New Ball blocks at Wait Message "Tutorial Ready"
+  // BEFORE the birth lightning: nothing spawns until the opening chapter's
+  // Return (or Q). The camera stamp above already happened, as in the source.
+  let birthHeld = tutorial !== null;
+  if (birthHeld) {
+    ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    ball.collider.setEnabled(false);
+    ball.visual.visible = false;
+  } else {
+    startBirth();
+  }
 
   const consumeFinishSkip = (): boolean => {
     let pressed = false;
@@ -581,7 +594,7 @@ export async function startGame(
     audio.updateSimulation(SIM_DT);
     // Gameplay_Blitz listens to Pause/Unpause Level independently of the main
     // gameplay phase and otherwise remains live through death/finish screens.
-    if (s.phase !== 'paused' && s.phase !== 'pauseOptions' && s.phase !== 'pauseHighscore') blitz.update(SIM_DT);
+    if (s.phase !== 'paused' && s.phase !== 'pauseOptions' && s.phase !== 'pauseHighscore') blitz?.update(SIM_DT);
     const previousLastStageProximityDelay = lastStageProximityDelay;
     lastStageProximityDelay = Math.max(0, lastStageProximityDelay - SIM_DT);
     if (previousLastStageProximityDelay > 0 && lastStageProximityDelay === 0) {
@@ -655,6 +668,11 @@ export async function startGame(
     if (s.phase !== 'playing') return; // paused/gameover freeze the sim
 
     tutorial?.update(SIM_DT, ball.position, input, ball.kind);
+    if (birthHeld && tutorial?.birthReleased) {
+      // Tutorial Ready received: New Ball resumes with the birth lightning.
+      birthHeld = false;
+      startBirth();
+    }
     if (tutorial?.frozen) {
       // CK's tutorial writes the global physics time factor to zero. Keep
       // rigid-body velocities intact and simply do not advance the world.
@@ -699,7 +717,7 @@ export async function startGame(
     }
 
     // birth lightning / trafo hold: no player control meanwhile
-    if (birthTimer > 0 || pendingTrafo) {
+    if (birthTimer > 0 || pendingTrafo || birthHeld) {
       if (birthTimer > 0) {
         birthTimer -= SIM_DT;
         if (birthTimer <= 0) {
@@ -773,8 +791,9 @@ export async function startGame(
     const velocity = ball.body.linvel();
     audio.updateRoll(ball.kind, contactSurfaces(), Math.hypot(velocity.x, velocity.y, velocity.z), SIM_DT);
 
-    // point countdown (held while the birth lightning plays)
-    if (birthTimer <= 0) advancePoints(SIM_DT);
+    // point countdown (held while the birth lightning plays, and while the
+    // tutorial still holds the New Ball flow: Counter active never fired)
+    if (birthTimer <= 0 && !birthHeld) advancePoints(SIM_DT);
 
     const pos = ball.position;
     flames.updateSimulation(pos);
@@ -995,7 +1014,7 @@ export async function startGame(
         moduls: moduls.debugState(),
         balloonAwake: balloonPhysics?.isAwake() ?? false,
         balloonWakeProximityActive,
-        blitz: blitz.debugState(),
+        blitz: blitz?.debugState() ?? null,
       }),
     };
   }
@@ -1008,7 +1027,7 @@ export async function startGame(
       clearInterval(hiddenDriver);
       unsubscribeSettings();
       audio.dispose();
-      blitz.dispose();
+      blitz?.dispose();
       shatter.clear();
       ballShadow.dispose();
       balloonPhysics?.dispose();

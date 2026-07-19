@@ -77,6 +77,13 @@ export function tutorialEligible(level: number, flags: URLSearchParams): boolean
 export class TutorialSystem {
   active = true;
   frozen = true;
+  /**
+   * New Ball's `activate Tutorial?` blocks at Wait Message "Tutorial Ready"
+   * before the birth lightning. `Tut continue/exit` sends that message on
+   * the opening chapter's Return (and its Q exit), so nothing spawns until
+   * the player dismisses the opening text.
+   */
+  birthReleased = false;
   chapter = 0;
   private stage: Stage = 'text';
   private chapterTime = 0;
@@ -197,6 +204,8 @@ export class TutorialSystem {
     if (enter && this.stage === 'text') {
       const arrowsReady = this.chapter === 0 || this.chapterTime >= TUTORIAL_SOURCE.arrowFadeMs / 1000;
       if (this.chapter <= 2 && arrowsReady) {
+        // The opening Return is `Tut continue/exit`: it sends Tutorial Ready.
+        if (this.chapter === 0) this.birthReleased = true;
         this.beginTransition(
           { kind: 'enter', chapter: this.chapter + 1 },
           this.chapter === 0 ? 0 : TUTORIAL_SOURCE.arrowFadeMs / 1000,
@@ -370,6 +379,8 @@ export class TutorialSystem {
     completedThisSession = true;
     this.active = false;
     this.frozen = false;
+    // The Q exit path also passes through Tut continue/exit's Tutorial Ready.
+    this.birthReleased = true;
     this.hideArrows(true);
     gameStore.getState().set({
       tutorialChapter: null,

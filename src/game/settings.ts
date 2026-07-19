@@ -132,20 +132,34 @@ export const SCREEN_MODES: readonly ScreenMode[] = [
   { mode: 138, width: 1600, height: 1200, bpp: 16 },
 ];
 
-/** DB_Options defaults translated from Virtools key codes to KeyboardEvent.code. */
+/**
+ * DB_Options defaults translated from Virtools key codes to KeyboardEvent
+ * codes — EXCEPT movement: the shipped defaults are the four arrows
+ * (rows 68..71), but this port deliberately ships WASD as its one approved
+ * deviation from the original. All keys remain remappable through the
+ * source 72-key whitelist.
+ */
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   musicVolume: 1,
   syncToScreen: false,
   screenMode: 0,
-  keyForward: 'ArrowUp',
-  keyBackward: 'ArrowDown',
-  keyLeft: 'ArrowLeft',
-  keyRight: 'ArrowRight',
+  keyForward: 'KeyW',
+  keyBackward: 'KeyS',
+  keyLeft: 'KeyA',
+  keyRight: 'KeyD',
   keyRotateCamera: 'ShiftLeft',
   keyLiftCamera: 'Space',
   invertCameraRotation: false,
   clouds: true,
 };
+
+/** The unmodified shipped DB_Options movement defaults (the four arrows). */
+export const SOURCE_DEFAULT_MOVEMENT_KEYS = {
+  keyForward: 'ArrowUp',
+  keyBackward: 'ArrowDown',
+  keyLeft: 'ArrowLeft',
+  keyRight: 'ArrowRight',
+} as const;
 
 export type ControlSetting = keyof ControlBindings;
 

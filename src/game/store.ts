@@ -2,7 +2,13 @@
 import { create } from 'zustand';
 import { LEVEL_START_LIVES, LEVEL_START_POINTS, type BallKind } from './constants.ts';
 import { SOURCE_DEFAULT_LAST_PLAYER, SOURCE_HIGHSCORE_NAME_MAX_LENGTH } from './score.ts';
-import { DEFAULT_SETTINGS, isSourceKey, SCREEN_MODES, type Settings } from './settings.ts';
+import {
+  DEFAULT_SETTINGS,
+  isSourceKey,
+  SCREEN_MODES,
+  SOURCE_DEFAULT_MOVEMENT_KEYS,
+  type Settings,
+} from './settings.ts';
 
 export type { Settings } from './settings.ts';
 
@@ -53,6 +59,24 @@ function loadSettings(saved: Partial<Settings> | undefined): Settings {
     typeof value === 'string' && isSourceKey(value) ? value : fallback;
   const volume = typeof saved?.musicVolume === 'number' ? saved.musicVolume : DEFAULT_SETTINGS.musicVolume;
   const mode = typeof saved?.screenMode === 'number' ? Math.trunc(saved.screenMode) : DEFAULT_SETTINGS.screenMode;
+  // One-time migration to the approved WASD deviation: a save whose movement
+  // keys are exactly the old arrow DEFAULTS follows the new defaults; any
+  // custom remap is preserved.
+  if (
+    saved &&
+    saved.keyForward === SOURCE_DEFAULT_MOVEMENT_KEYS.keyForward &&
+    saved.keyBackward === SOURCE_DEFAULT_MOVEMENT_KEYS.keyBackward &&
+    saved.keyLeft === SOURCE_DEFAULT_MOVEMENT_KEYS.keyLeft &&
+    saved.keyRight === SOURCE_DEFAULT_MOVEMENT_KEYS.keyRight
+  ) {
+    saved = {
+      ...saved,
+      keyForward: DEFAULT_SETTINGS.keyForward,
+      keyBackward: DEFAULT_SETTINGS.keyBackward,
+      keyLeft: DEFAULT_SETTINGS.keyLeft,
+      keyRight: DEFAULT_SETTINGS.keyRight,
+    };
+  }
   return {
     musicVolume: Math.max(0, Math.min(1, volume)),
     syncToScreen: saved?.syncToScreen ?? DEFAULT_SETTINGS.syncToScreen,

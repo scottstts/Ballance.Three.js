@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadNmo, levelPath, skyLetter } from './assets.ts';
+import { setSceneSpecularLight } from './convert.ts';
 import { buildScene, groupEntities, type BuiltScene } from './sceneBuilder.ts';
 import { buildSky } from './sky.ts';
 
@@ -25,8 +26,12 @@ export function addLightRig(scene: THREE.Scene, tint = 0xffffff): void {
   source.position.set(-5.1707215, 15.2553339, -3.6059473);
   // Virtools local +Z is the light direction; convert its world forward row
   // from left-handed coordinates to Three's right-handed world.
-  source.target.position.copy(source.position).add(new THREE.Vector3(0.30222097, -0.7331351, -0.60921866));
+  const direction = new THREE.Vector3(0.30222097, -0.7331351, -0.60921866);
+  source.target.position.copy(source.position).add(direction);
   scene.add(source, source.target);
+  // Publish Light_Ingame for the D3D per-vertex specular patch (the blitz
+  // light serializes Specular off; this is the scene's one specular light).
+  setSceneSpecularLight(direction, source.color);
 }
 
 export async function startViewer(canvas: HTMLCanvasElement, level: number): Promise<ViewerHandle> {
