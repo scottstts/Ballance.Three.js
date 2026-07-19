@@ -367,11 +367,10 @@ the 3D menu tower with the original sprite/font UI (not DOM-styled), the trafo
 uses the AnimTrafo.nmo ring cage + old-ball piece burst (not the lightning
 sphere — that is the birth effect), extra points fly staggered (+100 then six
 +20 with Extra_Hit), and death-by-fall no longer shatters (Misc_Fall + white
-fade + falling ball, per the original). Still-open approximations: balloon
-fly-off is a kinematic rise (not the original multi-body flight), L12 UFO is
-sound-only even though the authored UFO lives in `PE_Balloon.nmo`, tutorial arrows
-(Tutorial.nmo) and the intro logo sequence (Intro.nmo) are not implemented,
-options subscreens are simplified (volume only).
+fade + falling ball, per the original). The approximation list that originally
+followed here is historical and is superseded by later primary-source recovery:
+multi-body balloon physics, the full L12 UFO, tutorial arrows/chapters, the intro
+sequence, and complete option subscreens are all implemented below.
 
 ## Wave-2 audit round (camera prefab values, endgame, menus, coverage)
 
@@ -1564,3 +1563,24 @@ options subscreens are simplified (volume only).
   normalized X `.504999876`, while field labels remain left-aligned with two
   pixel margins. `M_Opt_Gra_ResField` and `M_Opt_Sound_VolField` are static
   `M_Button_Up` surfaces; they must not be rendered permanently in hover state.
+
+## 2026-07-18 exact DepthTestCubes collision volumes
+
+- The former port converted every `DepthTestCubes` object to a world-axis
+  `THREE.Box3`, expanded it uniformly by ball radius, then added a guessed
+  `lowest floor - 30` kill threshold. This enlarged rotated cube volumes into
+  their world AABBs, killed at the wrong corners, treated the paper convex hull
+  as a sphere, and introduced a death plane absent from the original.
+- Every one of the 12 original level files contains a non-empty
+  `DepthTestCubes` group of actual mesh entities; several are rotated. The
+  browser now installs those authored world-space triangles as invisible
+  non-response Rapier sensors. A collision-start edge against the current ball
+  collider triggers the existing source death sequence, so wood/stone spheres
+  and paper's convex hull use their real collision shapes without blocking the
+  fall or producing impact audio.
+- `Gameplay.nmo/get maxDepth` separately iterates the exact named group, extracts
+  candidate bounds, and uses Test mode 3 (strict `<`) to retain its minimum.
+  `Gameplay.nmo/DepthTest` is the fallen-object cleanup graph: it has its own
+  iterator, Physicalize/Unphysicalize, Hide, Set Position, and serialized 200
+  offset. It does not authorize a browser-only floor-derived player kill plane.
+  Binary-backed tests cover both graphs and every level's member/mesh set.

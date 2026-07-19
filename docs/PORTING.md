@@ -148,8 +148,11 @@ ballance-web/
 
 1. **Ball + input.** Arrow keys apply a camera-relative horizontal force; no jump. Three ball
    types with distinct mass / push force / friction / restitution / damping — decode the
-   original Physicalize and controller graphs rather than guessing. Falling below the sector kill
-   plane → life lost → respawn at current checkpoint. `Pieces_*` belongs to trafo shatter,
+   original Physicalize and controller graphs rather than guessing. Entering one of the level's
+   invisible `DepthTestCubes` mesh volumes → life lost → respawn at current checkpoint. These
+   are exact non-response physics sensors, including rotated volumes and paper's convex-hull
+   contact—not expanded world AABBs or an invented floor-minus-30 kill plane. `get maxDepth`
+   remains the source's separate fallen-object cleanup graph. `Pieces_*` belongs to trafo shatter,
    not ordinary falls.
 2. **Camera rig.** `Camera.nmo` authors the 58° 4:3 target camera (near 3, far 1200), its
    22-unit horizontal / 35-unit vertical slot, and the target/orientation hierarchy.

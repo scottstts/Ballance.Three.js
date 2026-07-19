@@ -1,6 +1,7 @@
 /**
  * Level rules: sectors, checkpoints, reset points, fall detection via the
- * level's DepthTestCubes volumes, point countdown, pickups, level end.
+ * point countdown, pickups, and level end. DepthTestCubes are installed as
+ * exact physics sensors by the game bootstrap.
  */
 import * as THREE from 'three';
 import type { BuiltScene, BuiltEntity } from '../engine/sceneBuilder.ts';
@@ -45,14 +46,10 @@ export class LevelLogic {
   private checkpoints: (THREE.Vector3 | null)[] = [];
   private resetPoints: (ResetPoint | null)[] = [];
   private balloon: THREE.Vector3 | null;
-  private depthBoxes: THREE.Box3[] = [];
   private pickupsPoint: SectorPickup[] = [];
   private pickupsLife: SectorPickup[] = [];
   private collected = new Set<string>();
-  private fallbackMinY: number;
-
-  constructor(built: BuiltScene, fallbackMinY: number) {
-    this.fallbackMinY = fallbackMinY;
+  constructor(built: BuiltScene) {
 
     // checkpoints: PC_TwoFlames_NN activates sector NN+1
     const cps = groupEntities(built, 'PC_Checkpoints');
@@ -76,11 +73,6 @@ export class LevelLogic {
     const sectorNames = [...built.groups.keys()].filter((n) => /^Sector_\d+$/.test(n));
     this.sectorCount = Math.max(sectorNames.length, this.resetPoints.length - 1);
 
-    for (const e of groupEntities(built, 'DepthTestCubes')) {
-      const box = new THREE.Box3().setFromObject(e.object);
-      if (!box.isEmpty()) this.depthBoxes.push(box.expandByScalar(2));
-    }
-
     this.pickupsPoint = sectorPickups(built, rootPlacements(groupEntities(built, 'P_Extra_Point')));
     this.pickupsLife = sectorPickups(built, rootPlacements(groupEntities(built, 'P_Extra_Life')));
   }
@@ -96,18 +88,6 @@ export class LevelLogic {
     for (const pickup of this.pickupsLife) {
       if (pickup.sector === this.currentSector) this.collected.delete(pickup.entity.rec.name);
     }
-  }
-
-  /**
-   * Death check: the DepthTestCubes are kill volumes stacked *beneath* the
-   * course — the ball dying means it fell into one (or below the safety net).
-   */
-  isOutOfWorld(ballPos: THREE.Vector3): boolean {
-    if (ballPos.y < this.fallbackMinY) return true;
-    for (const box of this.depthBoxes) {
-      if (box.containsPoint(ballPos)) return true;
-    }
-    return false;
   }
 
   /** Per-tick trigger checks. Returns events that fired. */

@@ -148,9 +148,14 @@ export async function startGame(
         floorHitByCollider: new Map<number, string>(),
       }
     : buildStaticColliders(physics, built);
-  const minY = computeMinY(built) - 30;
-
-  const logic = new LevelLogic(built, minY);
+  const logic = new LevelLogic(built);
+  const depthSensorHandles = new Set<number>();
+  for (const entry of groupEntities(built, 'DepthTestCubes')) {
+    entry.object.visible = false;
+    if (!(entry.object instanceof THREE.Mesh)) continue;
+    const sensor = physics.addStaticSensorMesh(entry.object);
+    if (sensor) depthSensorHandles.add(sensor.handle);
+  }
 
   // the level file only carries gray placement dummies for the scenery
   // pieces; the textured versions live in PH/*.nmo (as the original loads)
@@ -658,12 +663,18 @@ export async function startGame(
 
     // physics_RT.dll uses the magnitude of IVP's pre-response relative-speed
     // vector, including angular velocity at the collision point.
+    let depthHit = false;
     physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
-      shatter.handleCollision(h1, h2);
       const firstCollider = physics.world.getCollider(h1);
       const secondCollider = physics.world.getCollider(h2);
       if (!firstCollider || !secondCollider) return;
+      const ballHandle = ball.collider.handle;
+      if (depthSensorHandles.has(h1) || depthSensorHandles.has(h2)) {
+        if (h1 === ballHandle || h2 === ballHandle) depthHit = true;
+        return;
+      }
+      shatter.handleCollision(h1, h2);
       let impact: number | null = null;
       const relativeSpeed = () => {
         impact ??= physics.collisionRelativeSpeed(firstCollider, secondCollider, motions);
@@ -677,12 +688,17 @@ export async function startGame(
       const secondFloorSound = floorHitByCollider.get(h2);
       if (secondFloorSound) audio.woodenFlapHit(secondFloorSound, h2, relativeSpeed());
 
-      const ballHandle = ball.collider.handle;
       if (h1 !== ballHandle && h2 !== ballHandle) return;
       const other = h1 === ballHandle ? h2 : h1;
       const surface = hitSurfaceByCollider.get(other) ?? 'stone';
       audio.hit(ball.kind, surface, relativeSpeed());
     });
+
+    if (depthHit) {
+      if (logic.currentSector === logic.sectorCount) lastStageProximityDelay = 3;
+      die();
+      return;
+    }
 
     const velocity = ball.body.linvel();
     audio.updateRoll(ball.kind, contactSurfaces(), Math.hypot(velocity.x, velocity.y, velocity.z), SIM_DT);
@@ -701,13 +717,6 @@ export async function startGame(
     }
     if (lastStageProximityDelay === 0 && levelEndPosition) {
       audio.updateLastStageDistance(pos.distanceTo(levelEndPosition));
-    }
-    if (logic.isOutOfWorld(pos)) {
-      // Last Stage disables its proximity behavior on Ball Off and enables it
-      // again after the source-authored 3000 ms Delayer.
-      if (logic.currentSector === logic.sectorCount) lastStageProximityDelay = 3;
-      die();
-      return;
     }
     const pointHits = pickups.updateSimulation(SIM_DT, pos);
     for (const ev of logic.update(pos, ball.kind, (name) => pickups.canCollect(name))) {
@@ -972,20 +981,6 @@ function buildStaticColliders(
 /** debug: a scene view with no groups, so no moduls get created */
 function emptyScene(built: BuiltScene): BuiltScene {
   return { ...built, groups: new Map() };
-}
-
-function computeMinY(built: BuiltScene): number {
-  let minY = Infinity;
-  const box = new THREE.Box3();
-  for (const groupName of Object.keys(FLOOR_GROUPS)) {
-    for (const e of groupEntities(built, groupName)) {
-      if (e.object instanceof THREE.Mesh) {
-        box.setFromObject(e.object);
-        if (box.min.y < minY) minY = box.min.y;
-      }
-    }
-  }
-  return Number.isFinite(minY) ? minY : -100;
 }
 
 export type { BallKind };
