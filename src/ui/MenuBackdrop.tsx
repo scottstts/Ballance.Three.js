@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { loadNmo } from '../engine/assets.ts';
 import { buildScene } from '../engine/sceneBuilder.ts';
-import { buildSky } from '../engine/sky.ts';
+import { buildSky, MENU_SKY_SOURCE } from '../engine/sky.ts';
 import { addLightRig } from '../engine/viewer.ts';
 import { Flame } from '../game/effects.ts';
 import { decodeImageFile } from '../engine/textures.ts';
@@ -67,7 +67,7 @@ export default function MenuBackdrop() {
       stoneBall = built.entities.get('I_Ball_Stone')?.object ?? null;
       if (stoneBall) applyMenuStoneAnimation(stoneAnimation, 0, stoneBall);
       // the original day menu uses the C sky with warm linear fog 100-800
-      const sky = await buildSky('C', fogColor);
+      const sky = await buildSky('C', fogColor, MENU_SKY_SOURCE);
       if (disposed) return;
       scene.add(sky.group);
       scene.fog = new THREE.Fog(0xd3c894, 100, 800);

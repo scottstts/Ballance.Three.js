@@ -241,6 +241,16 @@ ballance-web/
    active+specular directional source, tinted only by the `AllLevel.Light` values for levels
    9 and 12. `SkyLayer` uses the twelve `AllLevel.Skytranslation` vectors through the
    source `Per Second -> Texture Scroller` behavior rather than a common guessed rate.
+9. **Shipped procedural sky geometry.** `MenuLevel.nmo` and `Gameplay.nmo` instantiate the
+   `TT Sky` prototype from `TT_Toolbox_RT.dll`; they do not use an arbitrary engine skybox.
+   Static recovery of the DLL's `TT SkyAround` runtime function establishes a four-sector
+   camera-centered, world-aligned prism whose side materials are ordered Back, Right, Front,
+   Left, followed by a four-triangle Down fan. The outward-wound object is rendered first with
+   both Z testing and Z writes disabled. Ballance enables its quadratic side option, which
+   derives the height from one radius chord, and disables the top material entirely. The menu
+   serializes radius 70 and distortion .1; gameplay serializes radius 100 and distortion .15.
+   The port reconstructs the DLL topology and D3D UVs directly, including the diamond-sector
+   orientation and wrap addressing, instead of adding an unowned zenith cap.
 
 ### 4.4 Moduls present in this install (each = one TS behavior class)
 

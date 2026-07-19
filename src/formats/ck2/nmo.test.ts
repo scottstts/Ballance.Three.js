@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { LEVEL_LIGHT_COLORS, skyLetter, skyTranslation } from '../../engine/assets.ts';
 import { materialToThree, SCENE_AMBIENT } from '../../engine/convert.ts';
+import { GAMEPLAY_SKY_SOURCE, MENU_SKY_SOURCE } from '../../engine/sky.ts';
 import { FLOOR_GROUPS } from '../../game/constants.ts';
 import { decodeCk2dCurve, evalCurve } from '../../game/curve.ts';
 import { decodeUfoPath } from '../../game/finale.ts';
@@ -298,6 +299,63 @@ describe.skipIf(!hasGame)('parseNmo on original game files', () => {
       expect(tutorialId.typeGuid).toEqual([0x5a5716fd, 0x44e276d7]);
       expect(tutorialId.sourceIndex).toBe(6678);
     }
+  });
+
+  it('locks both TT SkyAround instances to their serialized source values', () => {
+    const readSky = (relativePath: string) => {
+      const file = parseNmo(readFileSync(join(GAME_DIR, relativePath)));
+      const behavior = file.byName.get('TT Sky')?.find((record) => record.kind === 'behavior');
+      expect(behavior?.kind).toBe('behavior');
+      if (behavior?.kind !== 'behavior') throw new Error(`TT Sky missing from ${relativePath}`);
+      expect(behavior.headerData.slice(1, 3)).toEqual([0x36691920, 0x3b261630]);
+
+      const resolveParameter = (listIndex: number, name: string) => {
+        const index = behavior.referenceLists[listIndex].find((candidate) => file.objects[candidate]?.name === name);
+        let record = index === undefined ? undefined : file.objects[index];
+        for (let depth = 0; record?.kind === 'parameter' && depth < 8; depth++) {
+          const next = record.sourceIndex >= 0 ? record.sourceIndex : record.sharedIndex;
+          if (next < 0) break;
+          record = file.objects[next];
+        }
+        expect(record?.kind).toBe('parameter');
+        if (record?.kind !== 'parameter') throw new Error(`${name} missing from ${relativePath}`);
+        return record;
+      };
+      const number = (listIndex: number, name: string) => {
+        const record = resolveParameter(listIndex, name);
+        const view = new DataView(record.valueBytes.buffer, record.valueBytes.byteOffset, record.valueBytes.byteLength);
+        return view.getFloat32(0, true);
+      };
+      const integer = (listIndex: number, name: string) => {
+        const record = resolveParameter(listIndex, name);
+        const view = new DataView(record.valueBytes.buffer, record.valueBytes.byteOffset, record.valueBytes.byteLength);
+        return view.getInt32(0, true);
+      };
+
+      return {
+        inputNames: behavior.referenceLists[0].map((index) => file.objects[index].name),
+        distortion: number(0, 'Distortion'),
+        radius: number(0, 'Radius'),
+        quadraticSideFaces: integer(0, 'Quadratic SideFaces?') !== 0,
+        sideFaceHeight: number(0, 'or SideFace-Heigth'),
+        yPosition: number(0, 'Y-Position of Sky'),
+        sideMaterialCount: integer(1, 'Side Materials'),
+        topMaterial: integer(1, 'Top Material') !== 0,
+        bottomMaterial: integer(1, 'Bottom Material') !== 0,
+      };
+    };
+
+    const menu = readSky('3D Entities/MenuLevel.nmo');
+    const gameplay = readSky('3D Entities/Gameplay.nmo');
+    expect(menu.inputNames.slice(7)).toEqual([
+      '1.Side-Mat',
+      '2.Side-Mat',
+      '3.Side-Mat',
+      '4.Side-Mat',
+      'Bottom Mat',
+    ]);
+    expect(menu).toMatchObject(MENU_SKY_SOURCE);
+    expect(gameplay).toMatchObject(GAMEPLAY_SKY_SOURCE);
   });
 
   it('retains the original UFO path and behavior embedded in PE_Balloon', () => {

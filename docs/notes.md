@@ -1392,3 +1392,27 @@ options subscreens are simplified (volume only).
   the saved rotations, converts the absolute Virtools transform to Three's
   handedness, and repeats at the graph boundary. The first recorded position
   exactly matches `I_Ball_Stone`'s serialized world position.
+
+## 2026-07-18 shipped TT SkyAround recovery
+
+- `MenuLevel.nmo/TT Sky` and `Gameplay.nmo/TT Sky` use prototype GUID
+  `36691920:3b261630`. Static decompilation of the read-only source1
+  `TT_Toolbox_RT.dll` resolves its declaration to `TT SkyAround` and its
+  procedural execute function. The behavior creates `TT_SkyAround_Mesh` plus
+  `TT_SkyAround_Entity`, marks the entity RenderFirst, NoZBufferWrite, and
+  NoZBufferTest, and repositions it to the active camera without inheriting
+  camera rotation when Orientation Object is null.
+- Ballance sets Side Materials=4, Top Material=false, Bottom Material=true,
+  Quadratic SideFaces=true, side height fallback 10, and Y=0. Quadratic mode
+  replaces that fallback with the radius chord: `sqrt((r-r*cos(2pi/4))^2 +
+  (-r*sin(2pi/4))^2)`. Menu radius/distortion are 70/.099999994; gameplay is
+  100/.149999991. The execute function clamps Distortion but does not consume
+  it again when constructing this mesh.
+- Each of four sectors duplicates four side vertices and emits triangles
+  `[2,0,1]` and `[2,3,0]` with D3D UVs `(1,1),(0,1),(0,0),(1,0)`. Its optional
+  bottom duplicates center/current/next vertices and emits `[2,1,0]`; radial
+  UVs are `normalizedXZ*.5+.5`. Material order comes from both source graphs as
+  Back, Right, Front, Left, Down. After the Virtools-to-Three handedness flip,
+  this is a diamond-oriented open-top prism, not the port's former 1500-unit
+  axis-aligned cube and invented solid zenith plane. The recovered menu/game
+  radii, topology, groups, winding, and UVs now have source-lock tests.
