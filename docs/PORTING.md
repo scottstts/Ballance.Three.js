@@ -236,7 +236,10 @@ ballance-web/
    the 1 s repeat delay. End Level follows the serialized
    Score → optional name entry → context-Next highscore → End menu chain. Score timing and
    reserve conversion are behavior-driven, including the 200 ms fades, 1/5/25 accumulated
-   counter steps, 610 ms life subtraction cadence, and three authored skip keys. Highscore
+   counter steps, one increment per configured presentation frame, 610 ms life subtraction
+   cadence, and three authored skip keys. The frame edge follows the same shipped Graphics
+   Synch setting as the menu: display-synchronized when enabled and 60 Hz limited otherwise.
+   Highscore
    entry restores `DB_Options.LastPlayer` (shipped as `name`), displays the current
    score as `<value> Points` in `M_HighEntry_Score`, accepts at most the serialized nine
    characters, and writes the exact string back without web-only trimming or substitution.

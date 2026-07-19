@@ -1584,3 +1584,12 @@ sequence, and complete option subscreens are all implemented below.
   iterator, Physicalize/Unphysicalize, Hide, Set Position, and serialized 200
   offset. It does not authorize a browser-only floor-derived player kill plane.
   Binary-backed tests cover both graphs and every level's member/mesh set.
+
+## 2026-07-18 score counter presentation cadence
+
+- `Menu_Score` advances its accumulated Time Points counter from a behavior-frame
+  edge, not an unconditional 16.67 ms web timeout. The port now schedules each
+  1/5/25 increment through the source presentation-frame path: display
+  `requestAnimationFrame` when Graphics Synch is enabled, or the shipped 60 Hz
+  limiter when disabled. The serialized millisecond waits and 610 ms reserve
+  conversion cadence remain time-based and unchanged.

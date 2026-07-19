@@ -28,6 +28,7 @@ import {
   highscoreQualifies,
   scoreCountStep,
 } from '../game/score.ts';
+import { startSourceFrameLoop } from '../game/frameLoop.ts';
 import { defaultTable, useGameStore, type GamePhase } from '../game/store.ts';
 import { menuAudio } from './menuAudio.ts';
 import {
@@ -697,6 +698,19 @@ function waitFor(ms: number, cancelled: () => boolean, interrupted?: () => boole
   });
 }
 
+function waitForMenuFrame(cancelled: () => boolean, interrupted: () => boolean): Promise<boolean> {
+  return new Promise((resolve) => {
+    const stop = startSourceFrameLoop(
+      () => {
+        stop();
+        resolve(cancelled() || interrupted());
+      },
+      () => useGameStore.getState().settings.syncToScreen,
+      false,
+    );
+  });
+}
+
 function SourceScorePanel({
   ogui,
   level,
@@ -756,7 +770,7 @@ function SourceScorePanel({
         const current = displayedPoints;
         setValues([levelBonus, current, 0, 0]);
         menuAudio.counter();
-        await waitFor(1000 / 60, isCancelled);
+        if (await waitForMenuFrame(isCancelled, shouldFast)) return fastFinish();
       }
       if (cancelled) return;
       menuAudio.dong();
