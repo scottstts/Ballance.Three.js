@@ -1876,6 +1876,29 @@ sequence, and complete option subscreens are all implemented below.
   fan-housing collider provenance, and a side-by-side feel/visual pass
   against original gameplay footage now that the physics rate matches.
 
+## 2026-07-19 top-level script coverage census
+
+- Enumerated every top-level (unreferenced) behavior script in base.cmo,
+  Gameplay.nmo, Levelinit.nmo, and Sound.nmo and checked each against the
+  implemented systems. Three had never been examined:
+- `base.cmo/Default Level` (flags 0x4003, the boot orchestrator): its
+  children are the already-recovered Screen Modes / intro / loading /
+  database / Synch to Screen paths plus environment plumbing (Set Language
+  via TT_ReadRegistry, GetSystemVersion, Show Evaluation Copy ? gated off
+  in retail, Player Active?). Nothing gameplay-visible is unimplemented;
+  the browser fixes the English language column the UK release defaults to.
+- `base.cmo/Debug_Info` serializes behaviorFlags 0x4002 - the active bit
+  (0x1) present on Default Level is absent, and its activation path runs
+  through `set DebugMode`, whose DB debug flag ships off. The FPS/texture
+  displays and the Exit Player key are retail-inert; the port correctly
+  omits them.
+- `Gameplay.nmo/Gameplay_Refresh` (activated with Reset by Unpause Level):
+  re-reads DB_Options and its `Tutorial freeze/unfreeze` branch drives one
+  of the Set Physics Globals writers through a Parameter Selector - factor
+  0 if the tutorial freeze is live, else 2. The port's settings
+  subscription plus the tutorial-frozen PSI skip already reproduce both
+  effects; no change needed.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was
