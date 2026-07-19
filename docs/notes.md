@@ -1860,6 +1860,22 @@ sequence, and complete option subscreens are all implemented below.
   colors (Rail diffuse .392/.463/.522, specular .824 power 10, emissive
   .486/.525/.588, ModulateAlpha) - "rails render flat white" is closed.
 
+## 2026-07-19 post-batch 12-level sweep
+
+- After the factor-2 physics, sector lifecycle, AABB death scan, placement
+  recovery, and VX_EFFECT batches: the full deterministic sweep passed on
+  all 12 levels (every ordered checkpoint advanced its sector, every
+  balloon teleport reached `finished`), L1 via the tutorial Q exit. Zero
+  console errors. Visual checks: L1 opening scene, 3D menu tower with
+  Chrome rails and Reflect trafo shells, L2 sector-2 moduls appearing on
+  the checkpoint and sector-1 loose props disappearing; balloon hidden
+  until the final sector; game-over falls without a fade; stone kind
+  retained through respawn; wood free-fall vy after one wall second is
+  -18.594 = the exact 132-PSI IVP series.
+- Remaining audit follow-ups: the Cam_MF respawn stamp reconciliation, the
+  fan-housing collider provenance, and a side-by-side feel/visual pass
+  against original gameplay footage now that the physics rate matches.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was
