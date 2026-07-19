@@ -1961,6 +1961,26 @@ sequence, and complete option subscreens are all implemented below.
   had it). If a pass-through persists after this, the specific fence
   location is needed to reproduce.
 
+## 2026-07-19 Gameplay.nmo second-level census complete
+
+- Every composite child of all nine Gameplay top-level scripts is now
+  accounted for. Four had never been traced; all four dispositioned:
+- `Ball Navigation`: four SetPhysicsForce blocks with unit directions
+  (1,0,0)/(-1,0,0)/(0,0,-1)/(0,0,1), linked Direction Referential (the
+  camera orientation frame), Position (0,0,0) at the body, Force Value
+  linked from the Physicalize_GameBall force column, Key Events fed from
+  the remap table - exactly the port's push model. The fifth force (0,1,0)
+  sits behind a Test `debug == 1` gate with its own key: the debug fly
+  key, off in retail (matches the earlier "UpForce is debug-only" note).
+- `LevelInfo` (Gameplay_Energy): a Display Textures "Level:"/sector
+  readout on key 61, gated by the same `debug == 1` Test as set DebugMode -
+  retail-inert; the port correctly has no equivalent.
+- `Timer_subpoints`: the subtract belly of the recovered Energy Timer
+  (same operation GUIDs, Set Cell Points, != tests); no new behavior.
+- `set first Checkpoint` (Gameplay_Events): boot-time Show + Get Row 0 +
+  Set World Matrix + Activate Script (Reset) on the first checkpoint -
+  the port's boot arming of PC_TwoFlames_01 already reproduces it.
+
 ## 2026-07-19 top-level script coverage census
 
 - Enumerated every top-level (unreferenced) behavior script in base.cmo,
