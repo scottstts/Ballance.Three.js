@@ -517,10 +517,10 @@ options subscreens are simplified (volume only).
   SHA-256 hashes for `Intro.nmo`, `Textures/atari.avi`, and `Sounds/ATARI.wav`.
   The intro evidence is therefore common to both original sources.
 - `base.cmo` launches `Intro_Start`, starts `Music_Theme_4_1` after exactly
-  6000 ms at source gain 0.5, and invokes `Intro_End` after its parallel main
+  6000 ms at its serialized gain 1/pitch 1, and invokes `Intro_End` after its parallel main
   loading/minimum-delay controller completes. `Intro.nmo` itself waits 1000 ms,
-  plays the 125-frame/25-fps Atari AVI for 5000 ms with `ATARI.wav` at gain
-  0.5 and pitch 0.8, covers to black over 300 ms, then reveals the logo/cloud
+  plays the 125-frame/25-fps Atari AVI for 5000 ms with `ATARI.wav` at serialized
+  gain 0.8000000119/pitch 1, covers to black over 300 ms, then reveals the logo/cloud
   composition through black over 3000 ms. `Intro_End` covers in 300 ms.
 - Exact CK2dEntity rectangles are used for Atari, Gravitylogo, two clouds, and
   four edge masks. The cloud UV crops come from `relativeRect`; their position
@@ -1377,7 +1377,8 @@ options subscreens are simplified (volume only).
   orbit around `I_Dome_MF`.
 - `Menu_atmo` is a flat/background, non-looping 15,952 ms CKWaveSound at gain 1
   and pitch 1. Its graph plays once and waits a random 1-10 seconds after the
-  end event; the settings music volume is the only additional runtime gain.
+  end event; the normalized settings value passes through `TT_LinearVolume`
+  before becoming its additional runtime gain.
 
 ## 2026-07-18 recorded menu stone-ball animation recovery
 
@@ -1454,3 +1455,24 @@ options subscreens are simplified (volume only).
   source label while highlighted, ignores unsupported keys, and lets Escape
   cancel. The English labels—including the shipped German-layout punctuation
   and Y/Z placement—are source-locked row for row.
+
+## 2026-07-18 original audio gain audit
+
+- A read-only census tool now scans every shipped NMO/CMO for CKWaveSound
+  records and the sound building blocks targeting them. `Sound.nmo` contains
+  41 flat/background waves at gain 1, pan 0, pitch 1, and priority .5; only
+  `Misc_Ventilator_01` is serialized looping. `Intro.nmo/ATARI` is the distinct
+  exception at gain .8000000119, pitch 1, and non-looping.
+- The prior intro gain/pitch assumption was disproved directly by both wave
+  records and their owning graphs. `Intro.nmo/Atari-Logo` has a direct Wave
+  Player and no volume/pitch control. `base.cmo/Intro Start` likewise plays
+  `Music_Theme_4_1` after 6000 ms at its saved gain 1/pitch 1; `Preload Sound`
+  reads and restores those properties rather than overriding them. Neither cue
+  is routed through the later `DB_Options` music mixer.
+- The sound option persists its UI percentage as normalized float `value*.01`.
+  Both `Menu.nmo/Volume` and `Sound.nmo/Fade In Music` feed that normalized
+  value through shipped `TT_LinearVolume`: `x<=.01 ? 0 : .02*50^x`, capped at
+  1. The port now applies this acoustic curve consistently to menu atmosphere,
+  high-score music, and gameplay music instead of treating the stored setting
+  as linear gain. Per-level audio teardown also removes its browser gesture
+  listeners so restarts no longer accumulate event handlers.

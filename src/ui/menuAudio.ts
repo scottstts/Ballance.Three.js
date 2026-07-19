@@ -1,7 +1,14 @@
 /** Menu sounds: the original atmosphere loop and click, via Web Audio. */
 import { fetchGameBuffer } from '../engine/assets.ts';
 import { SIM_DT } from '../game/constants.ts';
+import { linearVolume } from '../game/soundGain.ts';
 import { gameStore } from '../game/store.ts';
+
+/** Exact CKWaveSound settings serialized by base.cmo and Intro.nmo. */
+export const INTRO_AUDIO_SOURCE = {
+  theme: { gain: 1, pitch: 1 },
+  atari: { gain: 0.800000011920929, pitch: 1 },
+} as const;
 
 class MenuAudio {
   private ctx: AudioContext | null = null;
@@ -45,7 +52,7 @@ class MenuAudio {
         if (!buffer || !this.atmoWanted) return;
         const ctx = this.ensureCtx();
         const gain = ctx.createGain();
-        gain.gain.value = gameStore.getState().settings.musicVolume;
+        gain.gain.value = linearVolume(gameStore.getState().settings.musicVolume);
         gain.connect(ctx.destination);
         const src = ctx.createBufferSource();
         src.buffer = buffer;
@@ -80,7 +87,7 @@ class MenuAudio {
   }
 
   setMusicVolume(volume: number): void {
-    if (this.atmo) this.atmo.gain.gain.value = volume;
+    if (this.atmo) this.atmo.gain.gain.value = linearVolume(volume);
   }
 
   private oneShot(name: string, volume = 1, music = false, playbackRate = 1): void {
@@ -88,7 +95,7 @@ class MenuAudio {
       if (!buffer) return;
       const ctx = this.ensureCtx();
       const gain = ctx.createGain();
-      gain.gain.value = volume * (music ? gameStore.getState().settings.musicVolume : 1);
+      gain.gain.value = volume * (music ? linearVolume(gameStore.getState().settings.musicVolume) : 1);
       gain.connect(ctx.destination);
       const src = ctx.createBufferSource();
       src.buffer = buffer;
@@ -116,7 +123,7 @@ class MenuAudio {
       if (!buffer || this.restartGenerations.get(name) !== generation) return;
       const ctx = this.ensureCtx();
       const gain = ctx.createGain();
-      gain.gain.value = music ? gameStore.getState().settings.musicVolume : 1;
+      gain.gain.value = music ? linearVolume(gameStore.getState().settings.musicVolume) : 1;
       gain.connect(ctx.destination);
       const src = ctx.createBufferSource();
       src.buffer = buffer;
@@ -157,12 +164,12 @@ class MenuAudio {
 
   /** intro sequence theme */
   introMusic(): void {
-    this.oneShot('Music_Theme_4_1.wav', 0.5, true);
+    this.oneShot('Music_Theme_4_1.wav', INTRO_AUDIO_SOURCE.theme.gain, false, INTRO_AUDIO_SOURCE.theme.pitch);
   }
 
-  /** Atari movie sound: CKWaveSound gain 0.5 and pitch 0.8. */
+  /** Atari movie sound is independent of the later DB_Options music mixer. */
   atariIntro(): void {
-    this.oneShot('ATARI.wav', 0.5, true, 0.8);
+    this.oneShot('ATARI.wav', INTRO_AUDIO_SOURCE.atari.gain, false, INTRO_AUDIO_SOURCE.atari.pitch);
   }
 }
 

@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import { fetchGameBuffer } from '../engine/assets.ts';
 import { SIM_DT, type BallKind } from './constants.ts';
 import { ScaleableProximity } from './proximity.ts';
+import { linearVolume } from './soundGain.ts';
+
+export { linearVolume } from './soundGain.ts';
 
 export type Surface = 'stone' | 'wood' | 'metal' | 'dome';
 
@@ -59,13 +62,6 @@ export function collisionSpeedVolume(speed: number, maxSpeed: number): number {
   if (speed <= 0.0001) return 0.0001;
   if (maxSpeed < 0.0001 || speed / maxSpeed > 1) return 1;
   return speed / maxSpeed;
-}
-
-/** TT_Toolbox_RT.dll's TT_LinearVolume conversion used by wooden flaps. */
-export function linearVolume(normalized: number): number {
-  if (normalized > 1) return 1;
-  if (normalized <= 0.01) return 0;
-  return 0.02 * Math.pow(50, normalized);
 }
 
 /** TT ProximityVolumeControl's full-near, silent-far linear gain. */
@@ -188,6 +184,7 @@ export class AudioManager {
     squaredDistance: false,
   });
   private disposed = false;
+  private readonly resumeAudio: () => void;
   sfxVolume = 1;
   musicVolume = 1;
 
@@ -195,12 +192,12 @@ export class AudioManager {
     this.listener = new THREE.AudioListener();
     camera.add(this.listener);
     // browsers gate audio behind a user gesture
-    const resume = () => {
+    this.resumeAudio = () => {
       const ctx = this.listener.context;
       if (ctx.state === 'suspended') void ctx.resume();
     };
-    window.addEventListener('keydown', resume);
-    window.addEventListener('pointerdown', resume);
+    window.addEventListener('keydown', this.resumeAudio);
+    window.addEventListener('pointerdown', this.resumeAudio);
   }
 
   private load(name: string): Promise<AudioBuffer | null> {
@@ -215,11 +212,11 @@ export class AudioManager {
   }
 
   setMusicVolume(volume: number): void {
-    this.musicVolume = volume;
+    this.musicVolume = linearVolume(volume);
     if (this.musicGain && !this.musicFadingOut) {
       const now = this.listener.context.currentTime;
       this.musicGain.gain.cancelScheduledValues(now);
-      this.musicGain.gain.setValueAtTime(volume, now);
+      this.musicGain.gain.setValueAtTime(this.musicVolume, now);
     }
   }
 
@@ -676,6 +673,8 @@ export class AudioManager {
 
   dispose(): void {
     this.disposed = true;
+    window.removeEventListener('keydown', this.resumeAudio);
+    window.removeEventListener('pointerdown', this.resumeAudio);
     this.stopMusic();
     for (const loop of this.rollLoops.values()) {
       if (loop.isPlaying) loop.stop();

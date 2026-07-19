@@ -19,6 +19,7 @@ import {
   rollVolume,
 } from './audio.ts';
 import { scaleableProximityFrameDelay } from './proximity.ts';
+import { INTRO_AUDIO_SOURCE } from '../ui/menuAudio.ts';
 
 const GAME_DIR = [
   fileURLToPath(new URL('../../Ballance_bin/Ballance', import.meta.url)),
@@ -27,6 +28,8 @@ const GAME_DIR = [
 const soundPath = join(GAME_DIR, '3D Entities/Sound.nmo');
 const levelinitPath = join(GAME_DIR, '3D Entities/Levelinit.nmo');
 const musicfilesPath = join(GAME_DIR, '3D Entities/Musicfiles.nmo');
+const introPath = join(GAME_DIR, '3D Entities/Intro.nmo');
+const basePath = join(GAME_DIR, 'base.cmo');
 const parameterOperationsPath = join(GAME_DIR, 'Managers/ParameterOperations.dll');
 
 function behavior(file: NmoFile, name: string): BehaviorRec {
@@ -346,6 +349,11 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
         const progression = children(sound, graph, 'Linear Progression')[0];
         expect(floatValue(parameter(sound, progression, 'Duration')) / 1000).toBe(MUSIC_SOURCE.fadeDuration);
       }
+      const fadeIn = behavior(sound, 'Fade In Music');
+      expect(children(sound, fadeIn.name, 'TT_LinearVolume')).toHaveLength(1);
+      const musicOption = children(sound, fadeIn.name, 'Get Cell')[0];
+      expect(integerValue(parameter(sound, musicOption, 'Row Index'))).toBe(0);
+      expect(integerValue(parameter(sound, musicOption, 'Column Index'))).toBe(0);
     });
 
     it('stops only the theme at the last checkpoint and keeps atmosphere independent', () => {
@@ -413,3 +421,36 @@ describe.skipIf(!existsSync(soundPath) || !existsSync(levelinitPath) || !existsS
     });
   },
 );
+
+describe.skipIf(!existsSync(introPath) || !existsSync(basePath))('original intro audio binary authority', () => {
+  const intro = existsSync(introPath) ? parseNmo(readFileSync(introPath)) : null;
+  const base = existsSync(basePath) ? parseNmo(readFileSync(basePath)) : null;
+
+  it('plays the Atari wave at its serialized gain and pitch without mixer controls', () => {
+    if (!intro) return;
+    const wave = intro.byName.get('ATARI')?.find((record): record is WaveSoundRec => record.kind === 'waveSound');
+    expect(wave?.gain).toBe(INTRO_AUDIO_SOURCE.atari.gain);
+    expect(wave?.pitch).toBe(INTRO_AUDIO_SOURCE.atari.pitch);
+    expect(wave?.loop).toBe(false);
+    const graph = behavior(intro, 'Atari-Logo');
+    expect(children(intro, graph.name, 'Wave Player').map((player) => waveTargetName(intro, player))).toEqual(['ATARI']);
+    expect(children(intro, graph.name, 'Volume Control')).toHaveLength(0);
+    expect(children(intro, graph.name, 'Pitch Control')).toHaveLength(0);
+  });
+
+  it('plays the startup theme at its serialized full gain and normal pitch', () => {
+    if (!base) return;
+    const wave = base.byName
+      .get('Music_Theme_4_1')
+      ?.find((record): record is WaveSoundRec => record.kind === 'waveSound');
+    expect(wave?.gain).toBe(INTRO_AUDIO_SOURCE.theme.gain);
+    expect(wave?.pitch).toBe(INTRO_AUDIO_SOURCE.theme.pitch);
+    expect(wave?.loop).toBe(false);
+    const graph = behavior(base, 'Intro Start');
+    expect(children(base, graph.name, 'Wave Player').map((player) => waveTargetName(base, player))).toEqual([
+      'Music_Theme_4_1',
+    ]);
+    expect(children(base, graph.name, 'Volume Control')).toHaveLength(0);
+    expect(children(base, graph.name, 'Pitch Control')).toHaveLength(0);
+  });
+});
