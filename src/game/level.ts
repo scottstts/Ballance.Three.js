@@ -6,7 +6,6 @@
 import * as THREE from 'three';
 import type { BuiltScene, BuiltEntity } from '../engine/sceneBuilder.ts';
 import { groupEntities } from '../engine/sceneBuilder.ts';
-import type { BallKind } from './constants.ts';
 
 export type LevelEvent =
   | { kind: 'checkpoint'; sector: number }
