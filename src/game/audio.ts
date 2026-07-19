@@ -374,6 +374,11 @@ export class AudioManager {
     }
   }
 
+  /** IngameParameter "RollSound activate?": whether ball detectors are live. */
+  get ballSoundsOn(): boolean {
+    return this.ballSoundsActive;
+  }
+
   /** Mirror BallNav activate/deactivate, which creates/stops ball detectors. */
   setBallSoundsActive(active: boolean): void {
     if (active === this.ballSoundsActive) return;
@@ -583,6 +588,28 @@ export class AudioManager {
       };
       source.start(this.listener.context.currentTime + delay);
     });
+  }
+
+  /**
+   * Pause Level sends End Music: the one-second group fade to silence, but
+   * the Music_Atmo/Music_Theme schedulers stay live and keep starting waves
+   * silently (behavior time keeps running while physics is frozen).
+   */
+  pauseMusic(): void {
+    if (!this.musicGain || this.musicFadingOut) return;
+    const now = this.listener.context.currentTime;
+    this.musicGain.gain.cancelScheduledValues(now);
+    this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+    this.musicGain.gain.linearRampToValueAtTime(0, now + MUSIC_SOURCE.fadeDuration);
+  }
+
+  /** Unpause Level sends Start Music: fade back to the TT_LinearVolume gain. */
+  resumeMusic(): void {
+    if (!this.musicGain || this.musicFadingOut) return;
+    const now = this.listener.context.currentTime;
+    this.musicGain.gain.cancelScheduledValues(now);
+    this.musicGain.gain.setValueAtTime(this.musicGain.gain.value, now);
+    this.musicGain.gain.linearRampToValueAtTime(this.musicVolume, now + MUSIC_SOURCE.fadeDuration);
   }
 
   /** End Music message: source-authored one-second group fade. */

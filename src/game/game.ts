@@ -30,6 +30,7 @@ import {
   LEVEL_START_LIVES,
   LEVEL_START_POINTS,
   LIFE_BONUS_POINTS,
+  PHYSICS_TIME_FACTOR,
   SIM_DT,
   finishMenuDelay,
   type BallKind,
@@ -232,10 +233,26 @@ export async function startGame(
     if (skyLayerRef) skyLayerRef.visible = s.clouds;
   };
   applyVolumes();
+  // Esc sends BallNav deactivate then Pause Level (End Music: one-second
+  // group fade while the schedulers keep running). Unpause Level sends
+  // Start Music and re-sends BallNav activate only if the RollSound cell was
+  // set. base.cmo's Dead branch sends neither, so game over keeps the music.
+  const PAUSE_PHASES = new Set(['paused', 'pauseOptions', 'pauseHighscore']);
+  let ballSoundsBeforePause = false;
   const unsubscribeSettings = gameStore.subscribe((s, prev) => {
     if (s.settings !== prev.settings) {
       input.clear();
       applyVolumes();
+    }
+    const wasPaused = PAUSE_PHASES.has(prev.phase);
+    const isPaused = PAUSE_PHASES.has(s.phase);
+    if (!wasPaused && isPaused) {
+      ballSoundsBeforePause = audio.ballSoundsOn;
+      audio.setBallSoundsActive(false);
+      audio.pauseMusic();
+    } else if (wasPaused && !isPaused && s.phase === 'playing') {
+      audio.resumeMusic();
+      if (ballSoundsBeforePause) audio.setBallSoundsActive(true);
     }
   });
   audio.startMusic(level);
@@ -394,6 +411,9 @@ export async function startGame(
     ball.collider.setEnabled(false);
     ball.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     ball.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    // physicalize new Ball runs Show only after the 3000 ms Delayer; until
+    // then only the lightning sphere is visible.
+    ball.visual.visible = false;
     lightning.start();
     audio.restartFlat('Misc_Lightning.wav', 1);
   };
@@ -473,14 +493,14 @@ export async function startGame(
     shatter.clear();
     logic.resetAfterFall();
     pickups.resetAfterFall();
-    ball.visual.visible = true;
-    // original: the ball materializes exactly at the reset point
+    // New Ball physicalizes CurrentLevel.ActiveBall - the CURRENT kind.
+    // Nothing on the death path rewrites that cell, so dying after a
+    // transformation respawns the transformed ball.
     const rp = logic.spawnFor(logic.currentSector);
-    ball.setKind(logic.sectorBallKind);
     ball.teleport(rp.position);
     rig.rebindTarget();
     moduls.resetSector(logic.currentSector);
-    s.set({ phase: 'playing', ballKind: logic.sectorBallKind });
+    s.set({ phase: 'playing', ballKind: ball.kind });
     startBirth();
     // The two-second source curve is at full white while the ball is swapped;
     // its second half reveals the stationary three-second birth sequence.
@@ -502,26 +522,22 @@ export async function startGame(
     pendingTrafo = null;
     audio.restartFlat('Misc_Fall.wav', 1);
     const outcome = fallLifeOutcome(s.lives);
-    s.set({ whiteFade: true });
     if (outcome.gameOver) {
+      // Deactivate Ball's False branch: NO white pulse, no unphysicalize, no
+      // hide - the ball keeps falling. Gameplay_Events waits 2000 ms, then
+      // detaches Cam_Pos and sends "Dead"; base.cmo only opens Menu_Dead
+      // (music keeps playing - no End Music is serialized on this path).
       s.set({ lives: 0 });
       rig.setNavigationActive(false);
-      after(BALL_OFF_DELAY, () => {
-        ball.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
-        ball.collider.setEnabled(false);
-        ball.visual.visible = false;
-      });
-      after(DEATH_FADE_DURATION, () => gameStore.getState().set({ whiteFade: false }));
-      // Gameplay_Events detaches Cam_Pos after its 2000 ms Game Over delay.
-      after(DEATH_FADE_DURATION, () => rig.detachSlot());
       after(GAME_OVER_MENU_DELAY, () => {
-        audio.endMusic();
+        rig.detachSlot();
         gameStore.getState().set({ phase: 'gameover' });
       });
       s.set({ phase: 'dead' });
       deathTimer = Infinity; // gameover timer takes over
     } else {
-      s.set({ lives: outcome.lives, phase: 'dead' });
+      // The white Überblendung pulse exists only on the lives>0 branch.
+      s.set({ whiteFade: true, lives: outcome.lives, phase: 'dead' });
       deathTimer = BALL_OFF_DELAY;
     }
   };
@@ -547,7 +563,8 @@ export async function startGame(
     }
     if (s.phase === 'dead') {
       shatter.advance(SIM_DT);
-      physics.step(); // the ball keeps falling into the void
+      // the ball keeps falling into the void at the source Physic Time Factor
+      for (let psi = 0; psi < PHYSICS_TIME_FACTOR; psi++) physics.step();
       deathTimer -= SIM_DT;
       if (deathTimer <= 0) respawn();
       return;
@@ -591,7 +608,7 @@ export async function startGame(
           ball.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
         }
       }
-      physics.step();
+      for (let psi = 0; psi < PHYSICS_TIME_FACTOR; psi++) physics.step();
       simTicks++;
       balloonPhysics?.syncVisuals();
       if (carryPosition) {
@@ -653,6 +670,7 @@ export async function startGame(
         birthTimer -= SIM_DT;
         if (birthTimer <= 0) {
           birthTimer = 0;
+          ball.visual.visible = true;
           ball.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
           ball.collider.setEnabled(true);
           ball.body.wakeUp();
@@ -667,37 +685,44 @@ export async function startGame(
     balloonPhysics?.update();
     moduls.update(SIM_DT);
     shatter.advance(SIM_DT);
-    const motions = physics.snapshotMotions();
-    physics.step();
+
+    // Two IVP PSIs per behavior tick (Physic Time Factor 2). The behavior-set
+    // Rapier forces persist across both steps, exactly like IVP controllers
+    // firing on every PSI. Collision events are measured per PSI against that
+    // PSI's pre-solve velocity snapshot.
+    for (let psi = 0; psi < PHYSICS_TIME_FACTOR; psi++) {
+      const motions = physics.snapshotMotions();
+      physics.step();
+
+      // physics_RT.dll uses the magnitude of IVP's pre-response relative-speed
+      // vector, including angular velocity at the collision point.
+      physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
+        if (!started) return;
+        const firstCollider = physics.world.getCollider(h1);
+        const secondCollider = physics.world.getCollider(h2);
+        if (!firstCollider || !secondCollider) return;
+        const ballHandle = ball.collider.handle;
+        shatter.handleCollision(h1, h2);
+        let impact: number | null = null;
+        const relativeSpeed = () => {
+          impact ??= physics.collisionRelativeSpeed(firstCollider, secondCollider, motions);
+          return impact;
+        };
+
+        // HitSound Woodenflaps owns one detector per Phys_FloorStopper member,
+        // independent of BallNav and therefore also valid for loose objects.
+        const firstFloorSound = floorHitByCollider.get(h1);
+        if (firstFloorSound) audio.woodenFlapHit(firstFloorSound, h1, relativeSpeed());
+        const secondFloorSound = floorHitByCollider.get(h2);
+        if (secondFloorSound) audio.woodenFlapHit(secondFloorSound, h2, relativeSpeed());
+
+        if (h1 !== ballHandle && h2 !== ballHandle) return;
+        const other = h1 === ballHandle ? h2 : h1;
+        const surface = hitSurfaceByCollider.get(other) ?? 'stone';
+        audio.hit(ball.kind, surface, relativeSpeed());
+      });
+    }
     simTicks++;
-
-    // physics_RT.dll uses the magnitude of IVP's pre-response relative-speed
-    // vector, including angular velocity at the collision point.
-    physics.eventQueue.drainCollisionEvents((h1, h2, started) => {
-      if (!started) return;
-      const firstCollider = physics.world.getCollider(h1);
-      const secondCollider = physics.world.getCollider(h2);
-      if (!firstCollider || !secondCollider) return;
-      const ballHandle = ball.collider.handle;
-      shatter.handleCollision(h1, h2);
-      let impact: number | null = null;
-      const relativeSpeed = () => {
-        impact ??= physics.collisionRelativeSpeed(firstCollider, secondCollider, motions);
-        return impact;
-      };
-
-      // HitSound Woodenflaps owns one detector per Phys_FloorStopper member,
-      // independent of BallNav and therefore also valid for loose objects.
-      const firstFloorSound = floorHitByCollider.get(h1);
-      if (firstFloorSound) audio.woodenFlapHit(firstFloorSound, h1, relativeSpeed());
-      const secondFloorSound = floorHitByCollider.get(h2);
-      if (secondFloorSound) audio.woodenFlapHit(secondFloorSound, h2, relativeSpeed());
-
-      if (h1 !== ballHandle && h2 !== ballHandle) return;
-      const other = h1 === ballHandle ? h2 : h1;
-      const surface = hitSurfaceByCollider.get(other) ?? 'stone';
-      audio.hit(ball.kind, surface, relativeSpeed());
-    });
 
     // BallManager: one DepthTestCubes AABB examined per behavioral frame,
     // round-robin, against the ball entity's world AABB.

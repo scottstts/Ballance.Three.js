@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseNmo } from '../formats/ck2/nmo.ts';
 import type { NmoFile, ParameterRec } from '../formats/ck2/types.ts';
-import { GRAVITY_Y } from './constants.ts';
+import { GRAVITY_Y, PHYSICS_TIME_FACTOR } from './constants.ts';
 import {
   ivpAngularDampingFactor,
   ivpLinearDampingFactor,
@@ -101,9 +101,10 @@ describe.skipIf(!existsSync(GAME_DIR))('Set Physics Globals binary authority', (
       }
     }
     expect(instances).toBeGreaterThanOrEqual(12);
-    // Freeze paths write 0; every gameplay resume path writes 2. The port's
-    // 66 Hz step interprets these through the recovered physics_RT manager
-    // semantics.
-    expect([...factors].sort()).toEqual([0, 2]);
+    // Freeze paths write 0; every gameplay resume path writes 2.
+    // physics_RT.dll multiplies the wall frame delta by this factor before
+    // advancing the IVP environment (1/66-second PSIs in physics time), so
+    // the runtime steps PHYSICS_TIME_FACTOR PSIs per 66 Hz behavior tick.
+    expect([...factors].sort()).toEqual([0, PHYSICS_TIME_FACTOR]);
   });
 });

@@ -1,8 +1,18 @@
 /** Faithful gameplay constants decoded from the original game data and DLLs. */
 
 export const GRAVITY_Y = -20;
-export const SIM_RATE = 66; // original physics PSI rate (Hz)
+export const SIM_RATE = 66; // IVP PSI rate per PHYSICS second (1/66 s per PSI)
 export const SIM_DT = 1 / SIM_RATE;
+
+/**
+ * Set Physics Globals serializes Physic Time Factor 2 on every gameplay
+ * resume path. physics_RT.dll's manager advances the IVP environment by
+ * frameSeconds * factor (factor stored as f*0.001 against millisecond frame
+ * deltas, DLL default 1), so shipped Ballance simulates two physics-seconds
+ * per wall second: two 1/66 PSIs per 66 Hz behavior tick. Factor 0 (pause,
+ * tutorial freeze) halts PSIs entirely with no catch-up debt.
+ */
+export const PHYSICS_TIME_FACTOR = 2;
 
 /** Gameplay.nmo/Energy row 0, converted to seconds where appropriate. */
 export const LEVEL_START_POINTS = 1000;

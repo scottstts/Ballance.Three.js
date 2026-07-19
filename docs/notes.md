@@ -1736,6 +1736,40 @@ sequence, and complete option subscreens are all implemented below.
 - Unphysicalize maps to a fixed body with all colliders disabled (never a
   disabled body: Rapier panics on joints attached to disabled bodies).
 
+## 2026-07-19 Physic Time Factor 2 - the port ran at half speed
+
+- Static recovery of physics_RT.dll (corroborated line-for-line by the
+  doyaGu/physics_RT community decompilation): Set Physics Globals stores
+  factor*0.001; the manager's PostProcess advances the IVP environment by
+  smoothedFrameMs * that value, and IVP fires PSIs every 1/66 of a PHYSICS
+  second. Shipped Ballance therefore simulates TWO physics-seconds per wall
+  second (132 PSI/s). Factor 0 (pause/tutorial freeze) halts PSIs with no
+  catch-up debt. The DLL default is 1; Ballance's graphs set 2 on every
+  resume path.
+- The port now runs PHYSICS_TIME_FACTOR (=2) world steps per 66 Hz behavior
+  tick in all three stepping sites (playing, dead fall, finished). Behavior
+  clocks (module 500 ms stages, trafo/birth/energy timers, proximity frame
+  delays, audio contact delays) remain 1x wall time, exactly like the
+  original's render-frame behavior graphs. Rapier forces set behavior-side
+  persist across both PSIs = IVP controllers firing each PSI. Collision
+  events are drained per PSI against that PSI's pre-solve snapshot.
+- Deterministic validation: a wood ball (damping .9) free-falling one wall
+  second reaches vy = -18.594, matching the closed-form 132-PSI IVP series
+  -0.30303*(1-0.98636^132)/0.013636 = -18.60 (a 66-PSI run would read -13.2).
+- Death-path corrections from the Deactivate Ball graph: the white pulse
+  exists ONLY on the lives>0 branch. Game over = no fade, no unphysicalize,
+  no hide - the ball keeps falling; menu after the 2000 ms delay; music KEEPS
+  playing (no End Music is serialized on the Dead path). New Ball
+  physicalizes the CURRENT ActiveBall: dying after a transformation respawns
+  the transformed kind (the port's sector-entry-kind revert was invented and
+  is removed). The replacement ball is hidden until the 3000 ms birth ends
+  (only the lightning sphere is visible), from level start too.
+- Pause parity: Esc sends BallNav deactivate (roll loops stop, detectors
+  torn down) then Pause Level -> End Music = one-second fade of the music
+  GAIN only; schedulers keep drawing waves silently. Unpause fades back and
+  re-arms ball sounds only if they were active. Implemented via a store
+  phase subscription; gameover endMusic() was removed.
+
 ## 2026-07-19 baseline repair: seven committed-red tests resolved by bytes
 
 - The prior "progress save" wave left 7 failing tests. Every dispute was

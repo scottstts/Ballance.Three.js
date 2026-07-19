@@ -41,8 +41,6 @@ export const EXTRA_POINT_VALUE = 220;
 export class LevelLogic {
   readonly sectorCount: number;
   currentSector = 1;
-  /** ball kind to restore on respawn (kind held when the sector was reached) */
-  sectorBallKind: BallKind = 'wood';
   private checkpoints: (THREE.Vector3 | null)[] = [];
   private resetPoints: (ResetPoint | null)[] = [];
   private balloon: THREE.Vector3 | null;
@@ -103,7 +101,6 @@ export class LevelLogic {
     const cp = this.checkpoints[nextSector];
     if (cp && sphereContains(cp, ballPos, LEVEL_TRIGGER_SOURCE.checkpointDistance)) {
       this.currentSector = nextSector;
-      this.sectorBallKind = currentBall;
       events.push({ kind: 'checkpoint', sector: nextSector });
     }
 
